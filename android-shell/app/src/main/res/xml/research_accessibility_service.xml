@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/research_service_description"
+    android:summary="@string/research_service_summary"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:canRetrieveWindowContent="false"
+    android:canTakeScreenshot="false"
+    android:canPerformGestures="false"
+    android:canRequestFilterKeyEvents="false"
+    android:isAccessibilityTool="false"
+    android:settingsActivity="dev.boundarylab.browser.MainActivity" />

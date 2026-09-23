@@ -1,0 +1,401 @@
+{
+  "schema_version": 1,
+  "captured_at": "2026-09-19T08:00:00+08:00",
+  "display": {
+    "width": 360,
+    "height": 760
+  },
+  "windows": [
+    {
+      "id": "application-1",
+      "type": "application",
+      "package": "dev.boundarylab.fixture",
+      "root_status": "available",
+      "active": true,
+      "focused": true,
+      "nodes": [
+        {
+          "id": "n0",
+          "parent_id": null,
+          "class_name": "android.widget.FrameLayout",
+          "view_id": "dev.boundarylab.fixture:id/root",
+          "bounds": [
+            0,
+            28,
+            360,
+            736
+          ],
+          "text_present": false,
+          "flags": {
+            "visible": true,
+            "enabled": true,
+            "clickable": false
+          }
+        },
+        {
+          "id": "n1",
+          "parent_id": "n0",
+          "class_name": "android.widget.LinearLayout",
+          "view_id": "dev.boundarylab.fixture:id/header",
+          "bounds": [
+            20,
+            56,
+            340,
+            134
+          ],
+          "text_present": false,
+          "flags": {
+            "visible": true,
+            "enabled": true,
+            "clickable": false
+          }
+        },
+        {
+          "id": "n2",
+          "parent_id": "n1",
+          "class_name": "android.widget.TextView",
+          "view_id": "dev.boundarylab.fixture:id/title",
+          "bounds": [
+            24,
+            60,
+            330,
+            98
+          ],
+          "text_present": true,
+          "flags": {
+            "visible": true,
+            "enabled": true,
+            "clickable": false
+          }
+        },
+        {
+          "id": "n3",
+          "parent_id": "n1",
+          "class_name": "android.widget.TextView",
+          "view_id": "dev.boundarylab.fixture:id/subtitle",
+          "bounds": [
+            24,
+            104,
+            320,
+            124
+          ],
+          "text_present": true,
+          "flags": {
+            "visible": true,
+            "enabled": true,
+            "clickable": false
+          }
+        },
+        {
+          "id": "n4",
+          "parent_id": "n0",
+          "class_name": "android.widget.LinearLayout",
+          "view_id": "dev.boundarylab.fixture:id/content",
+          "bounds": [
+            20,
+            158,
+            340,
+            656
+          ],
+          "text_present": false,
+          "flags": {
+            "visible": true,
+            "enabled": true,
+            "clickable": false
+          }
+        },
+        {
+          "id": "n5",
+          "parent_id": "n4",
+          "class_name": "android.widget.TextView",
+          "view_id": "dev.boundarylab.fixture:id/section",
+          "bounds": [
+            36,
+            174,
+            240,
+            198
+          ],
+          "text_present": true,
+          "flags": {
+            "visible": true,
+            "enabled": true,
+            "clickable": false
+          }
+        },
+        {
+          "id": "n6",
+          "parent_id": "n4",
+          "class_name": "android.widget.LinearLayout",
+          "view_id": "dev.boundarylab.fixture:id/row_wifi",
+          "bounds": [
+            36,
+            218,
+            324,
+            278
+          ],
+          "text_present": false,
+          "flags": {
+            "visible": true,
+            "enabled": true,
+            "clickable": false
+          }
+        },
+        {
+          "id": "n7",
+          "parent_id": "n6",
+          "class_name": "android.widget.TextView",
+          "view_id": "dev.boundarylab.fixture:id/label_wifi",
+          "bounds": [
+            52,
+            234,
+            210,
+            258
+          ],
+          "text_present": true,
+          "flags": {
+            "visible": true,
+            "enabled": true,
+            "clickable": false
+          }
+        },
+        {
+          "id": "n8",
+          "parent_id": "n6",
+          "class_name": "android.widget.Switch",
+          "view_id": "dev.boundarylab.fixture:id/switch_wifi",
+          "bounds": [
+            264,
+            232,
+            310,
+            258
+          ],
+          "text_present": false,
+          "flags": {
+            "visible": true,
+            "enabled": true,
+            "clickable": true
+          }
+        },
+        {
+          "id": "n9",
+          "parent_id": "n4",
+          "class_name": "android.widget.LinearLayout",
+          "view_id": "dev.boundarylab.fixture:id/row_notification",
+          "bounds": [
+            36,
+            278,
+            324,
+            338
+          ],
+          "text_present": false,
+          "flags": {
+            "visible": true,
+            "enabled": true,
+            "clickable": false
+          }
+        },
+        {
+          "id": "n10",
+          "parent_id": "n9",
+          "class_name": "android.widget.TextView",
+          "view_id": "dev.boundarylab.fixture:id/label_notification",
+          "bounds": [
+            52,
+            295,
+            224,
+            319
+          ],
+          "text_present": true,
+          "flags": {
+            "visible": true,
+            "enabled": true,
+            "clickable": false
+          }
+        },
+        {
+          "id": "n11",
+          "parent_id": "n9",
+          "class_name": "android.widget.Switch",
+          "view_id": "dev.boundarylab.fixture:id/switch_notification",
+          "bounds": [
+            264,
+            292,
+            310,
+            318
+          ],
+          "text_present": false,
+          "flags": {
+            "visible": true,
+            "enabled": true,
+            "clickable": true
+          }
+        },
+        {
+          "id": "n12",
+          "parent_id": "n4",
+          "class_name": "android.widget.TextView",
+          "view_id": "dev.boundarylab.fixture:id/input_label",
+          "bounds": [
+            36,
+            382,
+            310,
+            410
+          ],
+          "text_present": true,
+          "flags": {
+            "visible": true,
+            "enabled": true,
+            "clickable": false
+          }
+        },
+        {
+          "id": "n13",
+          "parent_id": "n4",
+          "class_name": "android.widget.EditText",
+          "view_id": "dev.boundarylab.fixture:id/fixture_input",
+          "bounds": [
+            36,
+            420,
+            324,
+            474
+          ],
+          "text_present": true,
+          "flags": {
+            "visible": true,
+            "enabled": true,
+            "clickable": false,
+            "editable": true
+          }
+        },
+        {
+          "id": "n14",
+          "parent_id": "n4",
+          "class_name": "android.widget.Button",
+          "view_id": "dev.boundarylab.fixture:id/save",
+          "bounds": [
+            36,
+            502,
+            324,
+            550
+          ],
+          "text_present": true,
+          "flags": {
+            "visible": true,
+            "enabled": true,
+            "clickable": true
+          }
+        },
+        {
+          "id": "n15",
+          "parent_id": "n4",
+          "class_name": "android.widget.TextView",
+          "view_id": "dev.boundarylab.fixture:id/caption",
+          "bounds": [
+            36,
+            580,
+            324,
+            640
+          ],
+          "text_present": true,
+          "flags": {
+            "visible": true,
+            "enabled": true,
+            "clickable": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "system-2",
+      "type": "system",
+      "package": "com.android.systemui",
+      "root_status": "available",
+      "active": false,
+      "focused": false,
+      "nodes": [
+        {
+          "id": "s0",
+          "parent_id": null,
+          "class_name": "android.widget.FrameLayout",
+          "view_id": "dev.boundarylab.fixture:id/status",
+          "bounds": [
+            0,
+            0,
+            360,
+            28
+          ],
+          "text_present": false,
+          "flags": {
+            "visible": true,
+            "enabled": true,
+            "clickable": false
+          }
+        },
+        {
+          "id": "s1",
+          "parent_id": "s0",
+          "class_name": "android.widget.TextView",
+          "view_id": "dev.boundarylab.fixture:id/clock",
+          "bounds": [
+            20,
+            5,
+            85,
+            22
+          ],
+          "text_present": true,
+          "flags": {
+            "visible": true,
+            "enabled": true,
+            "clickable": false
+          }
+        },
+        {
+          "id": "s2",
+          "parent_id": "s0",
+          "class_name": "android.widget.TextView",
+          "view_id": "dev.boundarylab.fixture:id/battery",
+          "bounds": [
+            297,
+            5,
+            340,
+            22
+          ],
+          "text_present": true,
+          "flags": {
+            "visible": true,
+            "enabled": true,
+            "clickable": false
+          }
+        }
+      ]
+    }
+  ],
+  "diagnostics": {
+    "elapsed_ms": 24,
+    "truncated": false
+  },
+  "observations": [
+    {
+      "scenario": "password_field",
+      "case_id": "DEMO-PWD-001",
+      "channel": "accessibility_event",
+      "event_type": "TYPE_VIEW_TEXT_CHANGED",
+      "fixture": "synthetic",
+      "password_flag": true,
+      "sensitive_flag": true,
+      "text_returned": false,
+      "synthetic_match": "not_tested"
+    },
+    {
+      "scenario": "sms_ui",
+      "case_id": "DEMO-SMS-001",
+      "channel": "accessibility_node",
+      "event_type": "manual_probe",
+      "fixture": "synthetic",
+      "password_flag": false,
+      "sensitive_flag": false,
+      "text_returned": true,
+      "synthetic_match": "match"
+    }
+  ]
+}

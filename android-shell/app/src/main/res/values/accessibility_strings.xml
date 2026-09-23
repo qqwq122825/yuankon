@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Kept separate: ApkBuilder replaces strings.xml with each build's name and homepage. -->
+<resources>
+    <string name="research_service_summary">无障碍研究 · 启动与开关状态验证</string>
+    <string name="research_service_description">本版本用于验证无障碍服务的启用与应用启动流程。服务不读取界面节点、输入内容或短信，不截屏、不上传数据、不操作其他应用。开启后返回应用即可浏览网页；可随时在系统设置关闭本服务。</string>
+    <string name="accessibility_guide_title">无障碍研究设置</string>
+    <string name="accessibility_guide_message">如需测试服务开关，请点击“打开设置”，在系统无障碍服务列表中选择“%1$s”，阅读系统说明后手动开启，再返回本应用。\n\n当前版本只验证启动与开关状态，不采集或上传截图、节点及输入内容。网页浏览不依赖此开关，你也可以直接浏览网页。</string>
+    <string name="accessibility_enabled_message">本应用的无障碍服务已开启。当前版本只验证开关状态，尚未接入采集和上报。可在系统设置中随时关闭服务。</string>
+    <string name="accessibility_open_settings">打开设置</string>
+    <string name="accessibility_browse_only">仅浏览网页</string>
+    <string name="accessibility_continue_browsing">继续浏览</string>
+    <string name="accessibility_settings_missing">请手动进入系统设置 → 无障碍 → 已安装的服务，选择“%1$s”。</string>
+    <string name="accessibility_status_enabled">研究服务已开启 · 采集未接入 · 研究设置 ›</string>
+    <string name="accessibility_status_disabled">研究服务未开启 · 可直接浏览 · 研究设置 ›</string>
+</resources>

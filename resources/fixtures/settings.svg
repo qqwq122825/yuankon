@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="760" viewBox="0 0 360 760">
+<rect width="360" height="760" fill="#f6f7fb"/><g font-family="Arial, PingFang SC, sans-serif" fill="#23334a">
+<text x="22" y="21" font-size="12">08:00</text><text x="298" y="21" font-size="12">86%</text>
+<text x="24" y="86" font-size="28" font-weight="700">研究测试页</text><text x="24" y="121" font-size="12" fill="#78869d">BOUNDARY LAB · SYNTHETIC FIXTURE</text>
+<rect x="20" y="158" width="320" height="500" rx="20" fill="#fff" stroke="#e7ebf2"/>
+<text x="36" y="193" font-size="13" fill="#74829a">基础控件</text>
+<path d="M36 277H324M36 337H324" stroke="#ecf0f6"/>
+<text x="52" y="253" font-size="16">网络连接</text><rect x="264" y="233" width="46" height="26" rx="13" fill="#5262ef"/><circle cx="297" cy="246" r="9" fill="white"/>
+<text x="52" y="313" font-size="16">测试通知</text><rect x="264" y="293" width="46" height="26" rx="13" fill="#dae0ed"/><circle cx="277" cy="306" r="9" fill="white"/>
+<text x="36" y="403" font-size="13" fill="#78869d">测试输入框</text><rect x="36" y="420" width="288" height="54" rx="9" fill="#f8f9fc" stroke="#e5eaf2"/><text x="51" y="452" font-size="14" fill="#97a2b4">输入正文不进入节点数据</text>
+<rect x="36" y="502" width="288" height="48" rx="10" fill="#5262ef"/><text x="180" y="532" text-anchor="middle" font-size="15" fill="#fff">保存测试设置</text>
+<text x="36" y="600" font-size="12" fill="#78869d">此图为合成 UI 样例</text><text x="36" y="623" font-size="12" fill="#78869d">用于比较节点边界，不是真机截图</text>
+<text x="180" y="702" text-anchor="middle" font-size="11" fill="#a0aaba">仅用于界面演示 · 无真实用户信息</text><rect x="137" y="743" width="86" height="4" rx="2" fill="#bdc5d3"/>
+</g></svg>
