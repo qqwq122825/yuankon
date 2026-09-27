@@ -1,2 +1,0 @@
-@props(['entries'])
-<div class="lab-timeline">@forelse($entries as $event)<div class="timeline-item"><span class="timeline-mark"></span><div><div class="timeline-meta"><time>{{ $event->occurred_at->format('m-d H:i:s') }}</time><x-source :value="$event->source"/></div><strong>{{ $event->kind }}</strong><p>{{ $event->summary }}</p></div></div>@empty<p class="text-secondary">暂无观察记录。</p>@endforelse</div>

@@ -1,0 +1,168 @@
+import { listSchema, SORT_COLUMNS, normalizeSnapshot, labelsFor, fail } from './protocol.js';
+export class Store {
+    constructor(db, projectId) {
+        this.db = db;
+        this.projectId = projectId;
+        this.live = new Map();
+    }
+    devices() {
+        const query = this.db('devices').whereNull('devices.deleted_at');
+        return this.projectId === null ? query : query.where('devices.project_id', this.projectId);
+    }
+    async device(id, publicId = false) {
+        const row = await this.devices()
+            .where(publicId ? 'public_id' : 'id', id)
+            .first();
+        if (!row) throw fail(404, '设备不存在');
+        return this.dto(row);
+    }
+    dto(row) {
+        const live = row.is_blacklisted ? null : this.live.get(row.public_id);
+        return {
+            ...row,
+            is_blacklisted: Boolean(row.is_blacklisted),
+            accessibility_enabled:
+                row.accessibility_enabled === null ? null : Boolean(row.accessibility_enabled),
+            status: live && Date.now() - live.seen < 90000 ? 'online' : 'offline',
+            isLocked: live?.isLocked ?? null,
+            isScreenOn: live?.isScreenOn ?? null,
+            lastSeen: live?.seen ?? null,
+        };
+    }
+    async list(input) {
+        const filter = listSchema.parse(input);
+        const base = this.devices().select('devices.*');
+        const snap = this.db('snapshots')
+            .whereColumn('device_id', 'devices.id')
+            .whereColumn('project_id', 'devices.project_id');
+        base.select({
+            snapshots_count: snap.clone().count('*'),
+            node_count: snap.clone().select('node_count').orderBy('id', 'desc').limit(1),
+            window_count: snap.clone().select('window_count').orderBy('id', 'desc').limit(1),
+        });
+        if (filter.q.trim())
+            base.where((q) => {
+                for (const c of ['name', 'public_id', 'note', 'brand'])
+                    q.orWhere(c, 'like', `%${filter.q.trim()}%`);
+            });
+        if (filter.source) base.where('source', filter.source);
+        if (filter.a11y) base.where('accessibility_enabled', filter.a11y === 'enabled');
+        if (filter.status) {
+            const ids = [...this.live.entries()]
+                .filter(([, v]) => Date.now() - v.seen < 90000)
+                .map(([id]) => id);
+            if (filter.status === 'online')
+                base.whereIn('public_id', ids).where('is_blacklisted', false);
+            else base.where((q) => q.whereNotIn('public_id', ids).orWhere('is_blacklisted', true));
+        }
+        const query = this.db.from(base.as('filtered'));
+        const { count } = await query.clone().count('* as count').first();
+        const column = SORT_COLUMNS[filter.sort];
+        query.orderByRaw('?? IS NULL ASC', [column]);
+        if (filter.sort === 'android') {
+            query.orderByRaw(
+                "CASE WHEN android_version IN ('', '待记录', '—') THEN 1 ELSE 0 END ASC",
+            );
+            query.orderBy(this.db.raw('CAST(?? AS REAL)', [column]), filter.direction);
+        } else query.orderBy(column, filter.direction);
+        query.orderBy('id', 'asc');
+        return {
+            data: (await query.offset((filter.page - 1) * 10).limit(10)).map((row) =>
+                this.dto(row),
+            ),
+            total: Number(count),
+            page: filter.page,
+            perPage: 10,
+            filters: filter,
+            stats: await this.stats(),
+        };
+    }
+    async stats() {
+        const [{ count }] = await this.devices().count('* as count');
+        const apiDevices = await this.devices()
+            .where('source', 'api')
+            .select('public_id', 'is_blacklisted');
+        const onlineCount = apiDevices.filter((d) => {
+            const live = this.live.get(d.public_id);
+            return !d.is_blacklisted && live && Date.now() - live.seen < 90000;
+        }).length;
+        return {
+            devices: Number(count),
+            online: apiDevices.length ? onlineCount : null,
+            periods: [
+                { label: '今日', installed: null, offline: null, accessibility: null },
+                { label: '昨日', installed: null, offline: null, accessibility: null },
+            ],
+        };
+    }
+    snapshotQuery() {
+        const query = this.db('snapshots').whereExists(
+            this.devices()
+                .select(this.db.raw('1'))
+                .whereColumn('devices.id', 'snapshots.device_id')
+                .whereColumn('devices.project_id', 'snapshots.project_id'),
+        );
+        return this.projectId === null
+            ? query
+            : query.where('snapshots.project_id', this.projectId);
+    }
+    async snapshot(id) {
+        const row = await this.snapshotQuery().where('id', id).first();
+        if (!row) throw fail(404, '快照不存在');
+        return { ...row, payload: normalizeSnapshot(JSON.parse(row.payload)) };
+    }
+    async detail(id, snapshotId) {
+        const device = await this.device(id);
+        const snapshots = await this.snapshotQuery()
+            .where('device_id', id)
+            .select('id', 'captured_at', 'node_count', 'window_count', 'source')
+            .orderBy('id', 'desc')
+            .limit(50);
+        const selected = snapshotId ?? snapshots[0]?.id;
+        const snapshot = selected ? await this.snapshot(selected) : null;
+        if (snapshot && snapshot.device_id !== id) throw fail(404, '快照不存在');
+        const events = await this.db('lab_events')
+            .where({ project_id: device.project_id, device_id: id })
+            .orderBy('occurred_at', 'desc')
+            .limit(50);
+        return {
+            device,
+            owner: device.owner_account_id
+                ? await this.db('accounts')
+                      .where('id', device.owner_account_id)
+                      .first('id', 'username')
+                : null,
+            snapshots,
+            snapshot: snapshot
+                ? {
+                      ...snapshot,
+                      screenshot_path: undefined,
+                      imageUrl: snapshot.screenshot_path
+                          ? `/api/snapshots/${snapshot.id}/image`
+                          : null,
+                      labels: labelsFor(snapshot),
+                  }
+                : null,
+            events,
+        };
+    }
+    async note(id, note) {
+        await this.device(id);
+        await this.devices().where('id', id).update({ note });
+        return this.device(id);
+    }
+    async audit(type, channel, deviceId = null, size = 0, dir = 'up') {
+        const device = deviceId
+            ? await this.devices().where('public_id', deviceId).first('project_id')
+            : null;
+        await this.db('protocol_logs').insert({
+            project_id: device?.project_id ?? this.projectId ?? 1,
+            ts: Date.now(),
+            device_id: deviceId,
+            type,
+            channel,
+            size,
+            dir,
+        });
+    }
+}

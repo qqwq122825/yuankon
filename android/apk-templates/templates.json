@@ -1,0 +1,20 @@
+[
+  {
+    "id": "screenagent-1.0",
+    "name": "v1.0 · ScreenAgent 单张截图",
+    "versionName": "1.0.0",
+    "versionCode": 1,
+    "sourceDir": "screenagent-1.0",
+    "kind": "screenagent",
+    "description": "手机确认后发送一张截图；首次接入仍需设备登记码。"
+  },
+  {
+    "id": "browser-1.0",
+    "name": "v1.0 · 浏览器基础版",
+    "versionName": "1.0",
+    "versionCode": 1,
+    "sourceDir": "browser-1.0",
+    "kind": "browser",
+    "description": "可见 WebView 浏览器与开关引导；不执行设备登记或截图上报。"
+  }
+]

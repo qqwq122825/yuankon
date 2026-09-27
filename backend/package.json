@@ -1,0 +1,39 @@
+{
+    "version": "0.2.0",
+    "private": true,
+    "type": "module",
+    "engines": {
+        "node": ">=22.12.0"
+    },
+    "name": "boundary-lab-backend",
+    "scripts": {
+        "start": "node src/index.js",
+        "dev": "nodemon --watch src --ext js src/index.js --dev",
+        "test": "node --test test/*.test.js",
+        "device:token": "node src/device-token.js",
+        "format:check": "prettier --check \"src/**/*.js\" \"test/**/*.js\" \"../frontend/src/**/*.{js,vue,css}\" ../frontend/index.html ../frontend/vite.config.js \"../frontend/test/*.js\" package.json ../package.json ../frontend/package.json ../frontend/playwright.config.js"
+    },
+    "dependencies": {
+        "argon2": "0.45.1",
+        "better-sqlite3": "13.0.3",
+        "cookie": "2.0.1",
+        "express": "5.2.1",
+        "express-rate-limit": "8.7.0",
+        "he": "1.2.0",
+        "helmet": "8.3.0",
+        "jose": "6.2.12",
+        "knex": "3.3.0",
+        "multer": "2.4.0",
+        "passport": "0.7.0",
+        "passport-jwt": "4.0.1",
+        "passport-local": "1.0.0",
+        "sharp": "0.35.5",
+        "ws": "8.22.0",
+        "zod": "4.6.5"
+    },
+    "devDependencies": {
+        "nodemon": "3.1.14",
+        "prettier": "3.9.9",
+        "vite": "8.3.1"
+    }
+}

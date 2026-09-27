@@ -1,0 +1,116 @@
+# Node 通信契约 · boundary-node-v1
+
+## 与输入说明的关系
+
+参考 2026-09-27《无障碍辅助设备管理平台 · 通信协议规范 开放版 v1.0》。当前采用其面板通道、推荐消息信封、公开设备 ID、状态上报双层 type 和事件命名；不是全协议替代实现。HTTP 端点是否存在以本文件和代码为准，未实现接口返回 404，未知 WS 报文返回 `error`。
+
+当前进程仅监听 `127.0.0.1:8080`，所有 HTTP/WS 校验直连本机地址、Host、Origin 和转发头。超管账号 `mtx` 首次初始化密码为 `mtx123`，登录后跨所有项目查看设备；设备上报的项目归属仍由服务端凭证与数据库确定。当前不要通过反向代理公开该服务。
+
+除健康检查、登录与下述设备专用接口外，业务 HTTP API 要求账号 JWT，支持 `Authorization: Bearer ACCOUNT_TOKEN` 或 HttpOnly Cookie。账号 JWT 与设备 JWT、面板 WS 票据互不通用。账号仅保留一个有效会话，JWT 签名有效还需通过 SQLite 当前会话/角色/启用状态校验。详见 [账号方案](ACCOUNT_DESIGN.md)。
+
+## HTTP
+
+新增的 APK 归属、设备登记、单张截图专用 HTTP 接口详见 [ScreenAgent 接入](SCREENAGENT_INGRESS.md)。`/api/client/register` 使用 10 分钟登记码；`/api/sync/status`、`/api/device/screenshot-session`、`/api/device/screenshot` 使用独立设备 Bearer Token，最后一个端点为受限 multipart，其余写入仍是 JSON。所有写入继续要求 `X-Boundary-Request: 1`。
+
+| 方法 | 路由 | 行为 |
+|---|---|---|
+| GET | /api/health | Node/Vue/协议/本机模式状态 |
+| POST | /api/auth/login | `{username,password}` → `{token,expiresIn,user}`；8 小时账号 JWT，同时设置 HttpOnly Cookie |
+| GET | /api/auth/me | 当前账号公开信息；需登录 |
+| POST | /api/auth/logout | 撤销会话、清 Cookie、断开面板 WS；JSON `{}` |
+| POST | /api/auth/change-password | `{oldPassword,newPassword}`；新密码 6–128 字符，成功撤销会话 |
+| GET | /api/session | 需登录；10 分钟专用面板 JWT，绑定当前账号会话；只在内存持有 |
+| GET | /api/system/info | 真实能力与待迁移项 |
+| GET | /api/devices、/api/device/list | `{data,total,page,perPage,filters,stats}` |
+| GET | /api/devices/:id?snapshot= | 数值数据库 ID；设备、快照、固定样例标签及事件元数据 |
+| PATCH | /api/devices/:id/note | `{note}`，200 字符上限 |
+| PATCH | /api/devices/:id/blacklist | `{blacklisted:boolean}` → `{device}`；拉黑或取消拉黑，当前超管访问 |
+| DELETE | /api/devices/:id | JSON `{}` → `{ok:true,mode:'soft-delete'}`；后台软删除，重复删除幂等 |
+| GET | /api/snapshots、/api/events | 每页 20 条 |
+| GET | /api/snapshots/:id/export | 再次白名单脱敏后的 JSON |
+| GET | /api/snapshots/:id/image | 登录、设备/快照关联、路径检查、PNG 解码；合成样例走固定 SVG |
+| GET | /api/build-templates | 固定模板清单、源码相对目录、工具链就绪状态 |
+| POST | /api/builds | 构建参数与 requestId → 202 `{build}`；校验、归属检查、排队 |
+| GET | /api/builds?page= | 当前/历史构建、真实状态与产物可用性，20 条一页 |
+| GET | /api/builds/:uuid | `{build}` 单任务状态 |
+| GET | /api/builds/:uuid/artifact | 超管下载成功产物；磁盘路径检查 |
+| GET/PUT/DELETE | /api/settings/translation | 配置状态 / 加密保存 / 清除 |
+| POST | /api/settings/translation/verify | 真实调用固定 Google v2 地址验证已保存密钥 |
+| POST | /api/snapshots/:id/translate | 请求体 `{}`；仅固定合成标签 |
+| GET | /api/logs/protocol、/api/logs/protocol/tail | `afterId`、`limit`（1–100）、`channel` |
+| GET | /api/logs/protocol/export?date=YYYY-MM-DD | 按 UTC 日期导出，单次上限 10000 条 |
+
+HTTP 写请求（包括登录）要求 JSON 和 `X-Boundary-Request: 1`，跨站页面不开放 CORS。通用每分钟 300 次；登录/改密失败共享每 IP 每 15 分钟 10 次的限流；翻译每分钟 20 次；JSON 请求上限 32KB。错误返回 `{error}`：未登录/会话失效 401、校验失败 422、限流 429、不存在或关联错误 404。所有 API 响应 no-store；未知 API 不回落到 SPA HTML。
+
+设备列表：`q`（100 字符）、`source=sample|import|api`、`a11y=enabled|disabled`、`status=online|offline`、`page`、`direction=asc|desc`。
+排序白名单：`id,name,note,source,brand,android,snapshots,battery,a11y,nodes,windows,last_seen`。
+每页 10 条，切换排序回第 1 页，节点数取最新快照。无已登记 API 设备时在线数为 null；每日统计始终为 null，页面显示“—”。
+
+设备 HTTP 模型增加 `is_blacklisted`。拉黑后停止接入、关闭设备连接、清理内存图片及一次性上传许可；取消拉黑不恢复旧许可，原有有效凭证可再次连接。软删除撤销已登记设备凭证，设备/关联快照/图片/导出均退出正常读取范围（404），列表及统计不计入；历史数据库记录和私有文件保留用于审计，并非物理删除或手机端清除。登记码重试也不能重新激活已删除设备。项目范围检查仍适用，后续新增角色需落实完整租户认证。
+
+## WS /ws/panel
+
+连接：`ws://127.0.0.1:8080/ws/panel?token=PANEL_JWT`，浏览器 Origin 须与工作区匹配。
+最多 32 个面板连接，每连接最多 20 个只读设备订阅。
+
+```json
+{"type":"ping"}
+{"type":"get_bot_list"}
+{"type":"subscribe","sessionId":"PUBLIC_DEVICE_ID"}
+{"type":"unsubscribe","sessionId":"PUBLIC_DEVICE_ID"}
+{"type":"command","sessionId":"PUBLIC_DEVICE_ID","data":{"command":"GET_DEVICE_STATE","params":{}}}
+```
+
+- `connected`：明确公布此版本能力。
+- `pong`：应用心跳回应，附服务端毫秒时间戳。
+- `bot_list`：仅有效在线设备；历史完整列表通过 HTTP 获取。
+- `subscribed` / `unsubscribed`：只读订阅确认。
+- `get_device_state_response`：服务端已知状态，`cached:true`；不代表向设备请求后执行成功。
+- `device_online` / `device_offline` / `device_status_update`：事件驱动广播给有效超管面板，覆盖全部设备；每次广播重新检查会话。
+- `device_removed`：`data:{id,localId}`；面板刷新列表，当前详情返回列表，移除该设备订阅。
+- `forced_logout` 包含 `code` 与可读 `message`，随后关闭码 4001。
+- `ticket_expired`：仅面板连接票据到期；用仍有效的账号登录态换取新票据并重连。
+- `kicked/password_changed/session_expired`：另处登录、改密或账号会话失效；前端停止重连、清除已显示的工作台并返回登录。
+
+设备状态事件 `data` 统一：`{id,localId,name,model,osVersion,status,batteryLevel,accessibilityAlive,isLocked,isScreenOn,lastSeen,remark,source,isBlacklisted}`。
+`id` 是公开设备 ID，`localId` 是本地路由数值 ID；Vue 在连接边界归一化成 HTTP 模型。未知锁屏/屏幕值为 null，绝不推测。订阅只推状态，不启动画面、读取凭据或下发设备操作。
+
+## WS /ws/device（别名 /ws/session）
+
+新登记设备凭证另含可撤销凭证 ID，每次消息验证设备与所有者状态；兼容 ScreenAgent 的 `register`、`device_ping` 和 `status.data.type=device_status` 状态消息，不接受其同名 `screenshot` 元信息作为图片。该接入与下面的旧 CLI 状态凭证相互区分。
+
+本机登记设备并签发 7 天独立 JWT：
+
+```bash
+npm run device:token -- TEST_DEVICE_001
+```
+
+命令仅显示凭证文件路径，Token 写入 `backend/.node-private/device-credentials/TEST_DEVICE_001.json`（0600）。现有合成示例或其他项目 ID 不覆盖。设备用 `Authorization: Bearer DEVICE_JWT` 连接；JWT 角色与项目须匹配，主体就是设备 ID；面板 Token 和设备 Token 不混用。此版尚无管理界面的逐令牌撤销功能，重签不会提前撤销旧令牌；旧令牌到期即失效。
+
+```json
+{"type":"status","sessionId":"TEST_DEVICE_001","data":{"type":"device_heartbeat","batteryLevel":80,"accessibilityAlive":true}}
+{"type":"status","sessionId":"TEST_DEVICE_001","data":{"type":"screen_lock_status","isLocked":false,"isScreenOn":true}}
+```
+
+解析内层 `data.type`；可选字段有界限，额外字段剔除，正文不写库。`sessionId` / `botId` 若存在须与令牌主体相同。
+连接建立后先等待有效状态上报，才计为在线；最近 90 秒有效状态算在线，时间以服务端接收为准。掉线立即移除在线状态，同设备新连接替换旧连接而不产生虚假离线。进程重启清空实时连接状态，不把历史心跳冒充当前连接。
+
+拉黑/删除时主动以 `4001 / device_disabled` 关闭设备连接。所有设备身份解析同时检查设备状态，覆盖旧 CLI 状态凭证与新登记凭证；设备禁用后重连及 HTTP 上报均失败。
+
+服务端每 30 秒 WS ping，未应答则终止；前端每 25 秒应用 ping、65 秒无 pong 重连，指数退避最大约 30 秒并加抖动。面板凭证在 9 分钟主动轮换。单消息最大 16KB、每秒最多 30 条、待处理队列最多 30 条，发送缓冲超过 1MB 关闭慢消费者；不启用压缩。
+
+## 审计与尚未接入的能力
+
+截图会话的下一阶段契约见 [boundary-screen-v1 设计稿](SCREEN_CAPTURE_PROTOCOL.md)。该设计不改变本文件的已实现范围；`capture_*` 消息和 `/api/v1/capture-sessions` 等端点尚未接入。
+
+审计仅保存项目、时间、设备标识、方向、通道、白名单消息类型、字节数，不保存完整载荷、密钥、节点正文或图片。连接保活不逐条写库，状态和业务读取写元数据。启动及每小时清理 7 天前记录。
+
+账号审计另存 `account_audit`，保留登录成功/失败、退出、改密及设备拉黑/取消/删除事件、账号 ID、IP 和时间；设备管理事件包含公开设备 ID，不保存凭证或请求正文。设备管理同时记录真实项目范围的协议审计。
+
+`/ws/bridge`、反向隧道、任意代理、二进制/base64画面流、自动采集、操作指令及原 PHP v1 诊断接口尚未接入。总台/子账号/验证码/设备下发仍待实现；已加入 APK ID 到现有超管的首次登记归属。收到不支持的二进制帧返回 `unsupported_binary`，不透传。原 android-shell 不变；独立 android-screenagent 接入副本仅手机确认后发送一张截图。
+
+## 网页构建参数
+
+`POST /api/builds`：`{templateId,domain,appName,homeUrl,apkId,batch?,packageName?,requestId}`。requestId 为 UUID，相同提交重试幂等，换配置必须换 requestId。batch 和 packageName 默认空，空包名服务端随机生成；模板决定 versionName/versionCode。domain 支持 local、已登记简称、HTTPS origin；homeUrl 只接受不带凭证的 HTTPS URL。
+
+任务持久化 queued/building/succeeded/failed，stage 细分 preparing/compiling/verifying；失败返回经过归一化的 error_message，不泄漏工具输出。成功才返回 downloadUrl/sha256/size/artifactAvailable。最多 10 个未完成任务，单任务 20 分钟；额度/工具链错误返回 429/409/503。保存模板配置快照、提交者和 APK ID 归属，后续新增角色需统一加入租户检查。下载链接不携带 Token，始终要求当前超管登录。详见 [模板与队列](../../android/apk-templates/README.md)。

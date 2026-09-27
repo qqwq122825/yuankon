@@ -1,0 +1,13 @@
+{
+  "java_home": "",
+  "android_sdk": "",
+  "allow_min_sdk_raise": true,
+  "compatibility_profile": "embedded-native",
+  "manifest_debug": {
+    "enabled": true,
+    "input_contains": "5412ce7f",
+    "mode": "remove_all",
+    "permissions": [],
+    "remove_permission_declarations": true
+  }
+}
