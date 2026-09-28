@@ -52,7 +52,13 @@ export async function createApplication(
         server = createServer(app);
     app.disable('x-powered-by');
     app.set('trust proxy', config.trustProxy ? 'loopback' : false);
-    app.use(localOnly(config));
+    const workspaceOnly = localOnly(config);
+    app.use((req, res, next) => {
+        const sharedArtifact =
+            ['GET', 'HEAD'].includes(req.method) &&
+            /^\/api\/builds\/[^/]+\/artifact\/?$/.test(req.path);
+        return sharedArtifact ? next() : workspaceOnly(req, res, next);
+    });
     app.use(
         helmet({
             contentSecurityPolicy: dev
@@ -111,6 +117,7 @@ export async function createApplication(
     app.use('/api', (_req, _res, next) =>
         installation.installed ? next() : next(fail(503, '请先完成初始化安装')),
     );
+    app.use('/api', builds.publicRoutes());
     app.use('/api', ingress.deviceRoutes());
     app.use('/api', (req, _res, next) => {
         if (!['GET', 'HEAD'].includes(req.method) && !req.is('application/json'))

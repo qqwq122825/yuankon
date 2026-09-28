@@ -6,7 +6,7 @@
 
 当前进程仅监听 `127.0.0.1:8080`，所有 HTTP/WS 校验直连本机地址、Host、Origin 和转发头。全新数据库仅开放安装状态、固定构建环境安装与受限的单次账号安装接口；部署者在 `/install` 先安装并验证 Android 构建环境，再设置超管账号和密码。成功后账号安装永久关闭；构建环境接口改为仅登录账号可访问，便于后续检测或补齐工具链，其他 API 同时开放。登录后可跨所有项目查看设备。设备上报的项目归属仍由服务端凭证与数据库确定。
 
-安装完成后，除健康检查、登录与下述设备专用接口外，业务 HTTP API 要求账号 JWT，支持 `Authorization: Bearer ACCOUNT_TOKEN` 或 HttpOnly Cookie。账号 JWT 与设备 JWT、面板 WS 票据互不通用。账号仅保留一个有效会话，JWT 签名有效还需通过 SQLite 当前会话/角色/启用状态校验。详见 [账号方案](ACCOUNT_DESIGN.md)。
+安装完成后，除健康检查、登录、随机 UUID 构建产物下载与下述设备专用接口外，业务 HTTP API 要求账号 JWT，支持 `Authorization: Bearer ACCOUNT_TOKEN` 或 HttpOnly Cookie。构建产物链接用于直接分享，仅开放成功任务的 APK 文件；日志、列表、删除及其他管理接口仍需登录。账号 JWT 与设备 JWT、面板 WS 票据互不通用。账号仅保留一个有效会话，JWT 签名有效还需通过 SQLite 当前会话/角色/启用状态校验。详见 [账号方案](ACCOUNT_DESIGN.md)。
 
 ## HTTP
 
@@ -37,7 +37,7 @@
 | POST | /api/builds | 构建参数与 requestId → 202 `{build}`；校验、归属检查、排队 |
 | GET | /api/builds?page= | 当前/历史构建、真实状态、产物可用性及当前账号 `latestB`，20 条一页 |
 | GET | /api/builds/:uuid | `{build}` 单任务状态 |
-| GET | /api/builds/:uuid/artifact | 超管下载成功产物；磁盘路径检查 |
+| GET | /api/builds/:uuid/artifact | 持有随机 UUID 链接即可下载成功产物；磁盘路径检查，不开放目录浏览 |
 | GET | /api/builds/:uuid/log | 超管下载详细构建日志；包含源码准备、Gradle/Lint、签名、对齐、包信息、摘要及产物保存步骤 |
 | DELETE | /api/builds/:uuid | JSON `{}`；仅完成/失败任务，删除记录及对应 APK、构建日志目录 |
 | GET/PUT/DELETE | /api/settings/translation | 配置状态 / 加密保存 / 清除 |

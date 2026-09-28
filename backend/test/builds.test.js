@@ -162,7 +162,7 @@ test('A package is blocked until a completed B package exists', async () => {
     assert.equal(response.status, 409);
     assert.match(response.body.error, /先完成.*B 包/);
 });
-test('real HTTP queue flow is serial, idempotent, keeps ownership and exposes only authenticated fixture downloads', async () => {
+test('real HTTP queue flow is serial, idempotent, keeps ownership and exposes shareable artifact downloads', async () => {
     const request = input();
     const responses = await Promise.all([
         call('/api/builds', request),
@@ -189,7 +189,7 @@ test('real HTTP queue flow is serial, idempotent, keeps ownership and exposes on
     assert.equal(details.logUrl, `/api/builds/${id}/log`);
     assert.ok(!('template_snapshot' in details));
     assert.ok(!('artifact_path' in details));
-    assert.equal((await call(details.downloadUrl, null, null)).status, 401);
+    assert.match((await call(details.downloadUrl, null, null)).body, /^SYNTHETIC-ARTIFACT-NOT-APK/);
     assert.match((await call(details.downloadUrl)).body, /^SYNTHETIC-ARTIFACT-NOT-APK/);
     assert.equal((await call(details.logUrl, null, null)).status, 401);
     assert.match((await call(details.logUrl)).body, /COMMAND:APKSIGNER_VERIFY.*OK/);

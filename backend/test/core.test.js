@@ -583,7 +583,7 @@ test('screenshots use Node private files with authentication and path containmen
     await db('snapshots').where('id', 99).update({ screenshot_path: 'screenshots/../master.key' });
     assert.equal((await request('/api/snapshots/99/image')).status, 404);
 });
-test('existing artifacts download only from Node private files and missing files stay unavailable', async () => {
+test('unguessable artifact URLs are shareable while files stay private and missing files stay unavailable', async () => {
     const id = '00000000-0000-4000-8000-000000000099';
     const folder = path.join(settings.privateDir, 'files/apk-builds', id);
     await mkdir(folder, { recursive: true });
@@ -601,7 +601,19 @@ test('existing artifacts download only from Node private files and missing files
         (await request('/api/builds')).body.data.find((b) => b.id === id).artifactAvailable,
         true,
     );
-    assert.equal((await fetch(`${base}/api/builds/${id}/artifact`)).status, 401);
+    const shared = await fetch(`${base}/api/builds/${id}/artifact`, {
+        headers: { Origin: 'https://share.example', 'Sec-Fetch-Site': 'cross-site' },
+    });
+    assert.equal(shared.status, 200);
+    assert.equal(await shared.text(), data);
+    assert.equal(
+        (
+            await fetch(`${base}/api/builds/${id}/log`, {
+                headers: { Origin: 'https://share.example', 'Sec-Fetch-Site': 'cross-site' },
+            })
+        ).status,
+        403,
+    );
     const download = await request(`/api/builds/${id}/artifact`);
     assert.equal(download.status, 200);
     assert.equal(download.body, data);

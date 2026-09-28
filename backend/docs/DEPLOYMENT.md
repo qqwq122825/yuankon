@@ -18,7 +18,7 @@ Node >=22.12，地址 [本地工作台](http://127.0.0.1:8080)。使用 `NODE_PO
 
 - `backend/.node-private/boundary.sqlite`：当前唯一业务数据库。
 - `backend/.node-private/master.key`：字段加密与 Token 派生密钥，与数据库一起备份，勿公开。
-- `backend/.node-private/files/screenshots/`、`backend/.node-private/files/apk-builds/`：需登录后经受控路由读取的历史文件，路径仍需校验。不存在的产物明确显示不可用。
+- `backend/.node-private/files/screenshots/`：需登录后经受控路由读取；`backend/.node-private/files/apk-builds/`：只允许通过成功构建的随机 UUID 分享链接下载。两者都不作为静态目录开放，路径仍需校验；不存在的产物明确显示不可用。
 - `android/.local-tools/`：Android 工具链、缓存和本地开发签名；`android/dist/`：本地模板构建输出。与后台运行无关，不进 Git。
 - 备份数据库应停服务后复制数据库及 WAL，或使用 SQLite 在线备份接口取得一致快照；同步保留主密钥与私有文件。不要只复制运行中的主 `.sqlite` 文件。
 
@@ -99,4 +99,4 @@ PATH=/www/server/nodejs/v22.23.3/bin:$PATH npm run build
 
 ### 当前部署状态（2026-09-28）
 
-服务器已安装 Node `v22.23.3`，依赖安装和 Vue 生产构建成功，宝塔中的 `yuankon` 项目已由图形界面启动。域名已经指向该项目；公开请求目前仍会被项目自身的同源/代理校验返回 `403`，因此尚不能标记为公网部署验收完成。后续应优先在仓库代码和测试中解决兼容问题，再按本运行手册推送部署；不要用临时修改服务器配置掩盖项目问题。
+服务器已安装 Node `v22.23.3`，依赖安装和 Vue 生产构建成功，宝塔中的 `yuankon` 项目已由图形界面启动，域名已经指向该项目。公网登录和管理页沿用同源/代理校验；成功构建的 APK 只通过随机 UUID 产物链接开放直接分享，构建日志及其他管理接口仍需登录。普通更新继续按本运行手册快进拉取并通过宝塔图形界面重启，不用临时修改服务器配置。

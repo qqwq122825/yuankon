@@ -340,6 +340,28 @@ export class BuildQueue {
             return { ok: true, recordDeleted: true, filesDeleted: true };
         });
     }
+    async sendArtifact(req, res) {
+        const id = uuid.parse(req.params.id);
+        const row = await this.db('apk_builds').where({ id, status: 'succeeded' }).first();
+        if (!row) throw fail(404, '构建产物不存在');
+        const file = await privateFile(
+            path.join(this.config.privateDir, 'files'),
+            row.artifact_path,
+            `apk-builds/${id}/`,
+        );
+        const prefix =
+            row.artifact_role === 'a'
+                ? 'installer-a'
+                : row.artifact_role === 'b'
+                  ? 'worker-b'
+                  : 'application';
+        res.download(file, `${prefix}-${id.slice(0, 8)}.apk`, { dotfiles: 'allow' });
+    }
+    publicRoutes() {
+        const router = Router();
+        router.get('/builds/:id/artifact', (req, res) => this.sendArtifact(req, res));
+        return router;
+    }
     routes() {
         const router = Router();
         router.get('/build-templates', async (_req, res) => res.json(await this.catalog()));
@@ -378,23 +400,6 @@ export class BuildQueue {
                     ...(await this.readiness(this.config)),
                 },
             });
-        });
-        router.get('/builds/:id/artifact', async (req, res) => {
-            const id = uuid.parse(req.params.id);
-            const row = await this.db('apk_builds').where({ id, status: 'succeeded' }).first();
-            if (!row) throw fail(404, '构建产物不存在');
-            const file = await privateFile(
-                path.join(this.config.privateDir, 'files'),
-                row.artifact_path,
-                `apk-builds/${id}/`,
-            );
-            const prefix =
-                row.artifact_role === 'a'
-                    ? 'installer-a'
-                    : row.artifact_role === 'b'
-                      ? 'worker-b'
-                      : 'application';
-            res.download(file, `${prefix}-${id.slice(0, 8)}.apk`, { dotfiles: 'allow' });
         });
         router.get('/builds/:id/log', async (req, res) => {
             const id = uuid.parse(req.params.id);

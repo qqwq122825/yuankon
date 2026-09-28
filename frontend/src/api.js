@@ -17,6 +17,17 @@ export async function api(url, options = {}) {
         throw Object.assign(new Error(data.error || '请求失败'), { status: response.status });
     return data;
 }
+export async function apiText(url, options = {}) {
+    const { authFailureEvent = true, ...fetchOptions } = options;
+    const response = await fetch(url, { ...fetchOptions, credentials: 'same-origin' });
+    if (response.status === 401 && authFailureEvent)
+        window.dispatchEvent(new CustomEvent('auth-expired', { detail: '登录已失效，请重新登录' }));
+    if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw Object.assign(new Error(data.error || '日志读取失败'), { status: response.status });
+    }
+    return response.text();
+}
 export const mutate = (url, method, body = {}) => api(url, { method, body: JSON.stringify(body) });
 export const sourceLabel = (s) =>
     ({ sample: '合成示例', import: '历史记录', api: '设备 API' })[s] || s;

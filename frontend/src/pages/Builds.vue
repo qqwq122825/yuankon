@@ -1,6 +1,6 @@
 <script setup>
-import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue';
-import { api, mutate, formatDate } from '../api.js';
+import { ref, reactive, computed, nextTick, onMounted, onBeforeUnmount } from 'vue';
+import { api, apiText, mutate, formatDate } from '../api.js';
 import { session } from '../session.js';
 
 const result = ref(null),
@@ -10,7 +10,9 @@ const result = ref(null),
     page = ref(1),
     busyRole = ref(''),
     deletingId = ref(''),
-    copyLink = ref('');
+    copyLink = ref(''),
+    logPre = ref(null);
+const logPanel = reactive({ buildId: '', text: '', status: '', loading: false, error: '' });
 const bForm = reactive({
     templateId: '',
     domain: 'local',
@@ -36,6 +38,25 @@ const statuses = {
     building: '构建中',
 };
 const roleNames = { a: 'A 包', b: 'B 包', standalone: '独立包' };
+const stageProgress = {
+    queued: 4,
+    building: 10,
+    preparing: 14,
+    compiling: 58,
+    verifying: 68,
+    signing: 72,
+    aligning: 82,
+    inspecting: 90,
+    publishing: 96,
+    succeeded: 100,
+    failed: 100,
+};
+function isActive(build) {
+    return ['queued', 'building'].includes(build.status);
+}
+function buildProgress(build) {
+    return stageProgress[build.stage] ?? stageProgress[build.status] ?? 0;
+}
 function recipientLabel(build) {
     const reason = {
         explicit: '指定账号',
@@ -64,6 +85,12 @@ async function refresh() {
 }
 async function poll() {
     await load();
+    const selected = result.value?.data.find((build) => build.id === logPanel.buildId);
+    if (
+        selected?.logAvailable &&
+        (isActive(selected) || logPanel.status !== selected.status || !logPanel.text)
+    )
+        await loadLog(selected, true);
     if (!disposed) timer = setTimeout(poll, result.value?.worker.active ? 2000 : 10000);
 }
 function randomPackage(role) {
@@ -107,10 +134,39 @@ async function copy(build) {
     copyLink.value = new URL(build.downloadUrl, location.origin).href;
     try {
         await navigator.clipboard.writeText(copyLink.value);
-        notice.value = '下载链接已复制（需登录当前后台）';
+        notice.value = '下载链接已复制，可直接分享';
     } catch {
         notice.value = '请选中下方下载链接手动复制';
     }
+}
+async function loadLog(build, quiet = false) {
+    if (!build.logUrl || logPanel.loading) return;
+    logPanel.loading = true;
+    if (!quiet) logPanel.error = '';
+    try {
+        logPanel.text = await apiText(build.logUrl);
+        logPanel.status = build.status;
+        await nextTick();
+        const target = Array.isArray(logPre.value) ? logPre.value[0] : logPre.value;
+        if (target) target.scrollTop = target.scrollHeight;
+    } catch (e) {
+        logPanel.error = e.message;
+    } finally {
+        logPanel.loading = false;
+    }
+}
+async function toggleLog(build) {
+    if (logPanel.buildId === build.id) {
+        Object.assign(logPanel, { buildId: '', text: '', status: '', error: '' });
+        return;
+    }
+    Object.assign(logPanel, {
+        buildId: build.id,
+        text: '',
+        status: build.status,
+        error: '',
+    });
+    await loadLog(build);
 }
 async function removeBuild(build) {
     if (deletingId.value || ['queued', 'building'].includes(build.status)) return;
@@ -125,6 +181,8 @@ async function removeBuild(build) {
     deletingId.value = build.id;
     try {
         await mutate(`/api/builds/${build.id}`, 'DELETE');
+        if (logPanel.buildId === build.id)
+            Object.assign(logPanel, { buildId: '', text: '', status: '', error: '' });
         copyLink.value = '';
         await load();
         if (!result.value?.data.length && page.value > 1) {
@@ -167,7 +225,7 @@ onBeforeUnmount(() => {
         <div v-if="error" role="alert" class="alert alert-danger">{{ error }}</div>
         <p v-if="notice" role="status" class="alert alert-success">{{ notice }}</p>
         <label v-if="copyLink" class="mb-3 d-block"
-            >下载链接（需登录）<input
+            >可分享下载链接<input
                 class="form-control"
                 readonly
                 :value="copyLink"
@@ -381,7 +439,7 @@ onBeforeUnmount(() => {
         <div class="card mb-3">
             <div class="card-header">
                 <h2 class="card-title">构建记录</h2>
-                <small class="ms-auto">自动刷新 · 完成后开放下载 · 链接需登录</small>
+                <small class="ms-auto">自动刷新 · 完成后开放下载 · 链接可直接分享</small>
             </div>
             <table class="table table-vcenter build-table">
                 <thead>
@@ -394,100 +452,173 @@ onBeforeUnmount(() => {
                     </tr>
                 </thead>
                 <tbody>
-                    <tr v-for="build in result?.data" :key="build.id" :data-build-id="build.id">
-                        <td>
-                            <span class="badge bg-azure-lt">{{
-                                roleNames[build.artifact_role] || '历史包'
-                            }}</span>
-                            <strong class="d-block">{{ build.app_name }}</strong>
-                            <small class="d-block text-muted">{{ build.id.slice(0, 8) }}</small>
-                            <code>{{ build.package_name || '历史记录' }}</code>
-                        </td>
-                        <td>
-                            <span>{{ build.template_name || '历史模板' }}</span>
-                            <small class="d-block"
-                                >域名：{{ build.domain || '—' }} · APK ID：{{
-                                    build.apk_id || '—'
-                                }}</small
-                            >
-                            <small class="d-block">批次：{{ build.batch || '无' }}</small>
-                            <small v-if="build.payload_build_id" class="d-block"
-                                >内置 B 包：{{ build.payload_build_id.slice(0, 8) }} ·
-                                {{ build.payload_package_name }}</small
-                            >
-                            <small v-if="build.routing_reason" class="d-block"
-                                >归属：{{ recipientLabel(build) }}</small
-                            >
-                            <small
-                                v-if="build.routing_reason === 'default_unmatched'"
-                                class="d-block text-muted"
-                                >填写值：{{ build.requested_apk_id }}</small
-                            >
-                        </td>
-                        <td>
-                            <span
-                                class="badge"
-                                :class="
-                                    build.status === 'failed'
-                                        ? 'bg-red-lt'
-                                        : build.status === 'succeeded'
-                                          ? 'bg-green-lt'
-                                          : 'bg-blue-lt'
-                                "
-                                >{{ statuses[build.stage || build.status] || build.status }}</span
-                            >
-                            <small v-if="build.error_message" class="build-error">{{
-                                build.error_message
-                            }}</small>
-                            <small
-                                v-if="build.status === 'succeeded' && !build.artifactAvailable"
-                                class="build-error"
-                                >文件缺失</small
-                            >
-                        </td>
-                        <td>
-                            <small>{{ formatDate(build.created_at) }}</small>
-                            <small class="d-block text-muted">{{
-                                build.size ? `${(build.size / 1024 / 1024).toFixed(2)} MB` : '—'
-                            }}</small>
-                        </td>
-                        <td>
-                            <div class="build-actions">
-                                <div v-if="build.artifactAvailable" class="build-artifact-actions">
-                                    <a class="btn btn-sm" :href="build.downloadUrl">下载 APK</a>
-                                    <button class="btn btn-sm" @click="copy(build)">
-                                        复制链接
+                    <template v-for="build in result?.data" :key="build.id">
+                        <tr :data-build-id="build.id">
+                            <td>
+                                <span class="badge bg-azure-lt">{{
+                                    roleNames[build.artifact_role] || '历史包'
+                                }}</span>
+                                <strong class="d-block">{{ build.app_name }}</strong>
+                                <small class="d-block text-muted">{{ build.id.slice(0, 8) }}</small>
+                                <code>{{ build.package_name || '历史记录' }}</code>
+                            </td>
+                            <td>
+                                <span>{{ build.template_name || '历史模板' }}</span>
+                                <small class="d-block"
+                                    >域名：{{ build.domain || '—' }} · APK ID：{{
+                                        build.apk_id || '—'
+                                    }}</small
+                                >
+                                <small class="d-block">批次：{{ build.batch || '无' }}</small>
+                                <small v-if="build.payload_build_id" class="d-block"
+                                    >内置 B 包：{{ build.payload_build_id.slice(0, 8) }} ·
+                                    {{ build.payload_package_name }}</small
+                                >
+                                <small v-if="build.routing_reason" class="d-block"
+                                    >归属：{{ recipientLabel(build) }}</small
+                                >
+                                <small
+                                    v-if="build.routing_reason === 'default_unmatched'"
+                                    class="d-block text-muted"
+                                    >填写值：{{ build.requested_apk_id }}</small
+                                >
+                            </td>
+                            <td>
+                                <span
+                                    class="badge"
+                                    :class="
+                                        build.status === 'failed'
+                                            ? 'bg-red-lt'
+                                            : build.status === 'succeeded'
+                                              ? 'bg-green-lt'
+                                              : 'bg-blue-lt'
+                                    "
+                                    >{{
+                                        statuses[build.stage || build.status] || build.status
+                                    }}</span
+                                >
+                                <div class="build-progress-row">
+                                    <div
+                                        class="build-progress"
+                                        role="progressbar"
+                                        :aria-label="`${build.app_name} 构建进度`"
+                                        aria-valuemin="0"
+                                        aria-valuemax="100"
+                                        :aria-valuenow="buildProgress(build)"
+                                    >
+                                        <span
+                                            :class="{
+                                                failed: build.status === 'failed',
+                                                complete: build.status === 'succeeded',
+                                            }"
+                                            :style="{ width: `${buildProgress(build)}%` }"
+                                        ></span>
+                                    </div>
+                                    <small>{{ buildProgress(build) }}%</small>
+                                </div>
+                                <small v-if="build.error_message" class="build-error">{{
+                                    build.error_message
+                                }}</small>
+                                <small
+                                    v-if="build.status === 'succeeded' && !build.artifactAvailable"
+                                    class="build-error"
+                                    >文件缺失</small
+                                >
+                            </td>
+                            <td>
+                                <small>{{ formatDate(build.created_at) }}</small>
+                                <small class="d-block text-muted">{{
+                                    build.size ? `${(build.size / 1024 / 1024).toFixed(2)} MB` : '—'
+                                }}</small>
+                            </td>
+                            <td>
+                                <div class="build-actions">
+                                    <div
+                                        v-if="build.artifactAvailable"
+                                        class="build-artifact-actions"
+                                    >
+                                        <a class="btn btn-sm" :href="build.downloadUrl">下载 APK</a>
+                                        <button class="btn btn-sm" @click="copy(build)">
+                                            复制链接
+                                        </button>
+                                    </div>
+                                    <span v-else class="text-muted">{{
+                                        build.status === 'failed'
+                                            ? '调整配置后重新构建'
+                                            : '等待产物'
+                                    }}</span>
+                                    <button
+                                        type="button"
+                                        class="btn btn-sm btn-outline-danger"
+                                        :disabled="
+                                            deletingId === build.id ||
+                                            ['queued', 'building'].includes(build.status)
+                                        "
+                                        :title="
+                                            ['queued', 'building'].includes(build.status)
+                                                ? '构建完成后可删除'
+                                                : '删除记录及关联文件'
+                                        "
+                                        @click="removeBuild(build)"
+                                    >
+                                        {{ deletingId === build.id ? '删除中…' : '删除' }}
+                                    </button>
+                                    <button
+                                        v-if="build.logAvailable || isActive(build)"
+                                        type="button"
+                                        class="btn btn-sm"
+                                        @click="toggleLog(build)"
+                                    >
+                                        {{
+                                            logPanel.buildId === build.id ? '收起日志' : '构建日志'
+                                        }}
                                     </button>
                                 </div>
-                                <span v-else class="text-muted">{{
-                                    build.status === 'failed' ? '调整配置后重新构建' : '等待产物'
-                                }}</span>
-                                <button
-                                    type="button"
-                                    class="btn btn-sm btn-outline-danger"
-                                    :disabled="
-                                        deletingId === build.id ||
-                                        ['queued', 'building'].includes(build.status)
-                                    "
-                                    :title="
-                                        ['queued', 'building'].includes(build.status)
-                                            ? '构建完成后可删除'
-                                            : '删除记录及关联文件'
-                                    "
-                                    @click="removeBuild(build)"
+                                <details v-if="build.sha256" class="build-hash">
+                                    <summary>SHA-256</summary>
+                                    <code>{{ build.sha256 }}</code>
+                                </details>
+                            </td>
+                        </tr>
+                        <tr v-if="logPanel.buildId === build.id" class="build-log-row">
+                            <td colspan="5">
+                                <section
+                                    class="build-log-panel"
+                                    :aria-label="`${build.app_name} 构建日志`"
                                 >
-                                    {{ deletingId === build.id ? '删除中…' : '删除' }}
-                                </button>
-                                <a v-if="build.logAvailable" class="btn btn-sm" :href="build.logUrl"
-                                    >构建日志</a
-                                >
-                            </div>
-                            <details v-if="build.sha256" class="build-hash">
-                                <summary>SHA-256</summary>
-                                <code>{{ build.sha256 }}</code>
-                            </details>
-                        </td>
-                    </tr>
+                                    <header>
+                                        <div>
+                                            <strong>实时构建日志</strong>
+                                            <small
+                                                >{{
+                                                    statuses[build.stage || build.status] ||
+                                                    build.status
+                                                }}
+                                                · {{ buildProgress(build) }}%</small
+                                            >
+                                        </div>
+                                        <button
+                                            type="button"
+                                            class="btn btn-sm"
+                                            :disabled="logPanel.loading || !build.logAvailable"
+                                            @click="loadLog(build)"
+                                        >
+                                            {{ logPanel.loading ? '刷新中…' : '刷新日志' }}
+                                        </button>
+                                    </header>
+                                    <p v-if="logPanel.error" role="alert" class="build-log-error">
+                                        {{ logPanel.error }}
+                                    </p>
+                                    <pre ref="logPre" role="log" aria-live="polite">{{
+                                        logPanel.text ||
+                                        (build.logAvailable
+                                            ? '正在读取日志…'
+                                            : '任务已进入队列，日志文件正在创建…')
+                                    }}</pre>
+                                </section>
+                            </td>
+                        </tr>
+                    </template>
                     <tr v-if="!result?.data.length">
                         <td colspan="5" class="empty-state">暂无构建记录</td>
                     </tr>
@@ -623,6 +754,32 @@ onBeforeUnmount(() => {
 .build-table code {
     font-size: 10px;
 }
+.build-progress-row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin-top: 8px;
+}
+.build-progress {
+    width: 118px;
+    height: 6px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: #e7eaf3;
+}
+.build-progress > span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: #4f6bed;
+    transition: width 0.25s ease;
+}
+.build-progress > span.complete {
+    background: #2fb344;
+}
+.build-progress > span.failed {
+    background: #d63939;
+}
 .build-artifact-actions {
     display: flex;
     gap: 6px;
@@ -643,5 +800,46 @@ onBeforeUnmount(() => {
     font-size: 10px;
     max-width: 190px;
     margin-top: 8px;
+}
+.build-log-row td {
+    padding: 0 20px 18px;
+    border-top: 0;
+}
+.build-log-panel {
+    padding: 12px;
+    border: 1px solid #30384a;
+    border-radius: 8px;
+    background: #151a26;
+    color: #dbe3f3;
+}
+.build-log-panel header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 10px;
+}
+.build-log-panel header > div {
+    display: grid;
+    gap: 2px;
+}
+.build-log-panel header small {
+    color: #9ea9bd;
+}
+.build-log-panel pre {
+    max-height: 320px;
+    margin: 0;
+    padding: 10px;
+    overflow: auto;
+    border-radius: 6px;
+    background: #0e121b;
+    color: #dbe3f3;
+    font-size: 10px;
+    line-height: 1.55;
+    white-space: pre-wrap;
+}
+.build-log-error {
+    margin: 0 0 8px;
+    color: #ff9a9a;
 }
 </style>

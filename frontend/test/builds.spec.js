@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
-test('build form, optional fields, failure, polling and authenticated copy/download (synthetic queue fixture)', async ({
+test('build form, optional fields, failure, polling and shareable artifact download (synthetic queue fixture)', async ({
     page,
     context,
 }) => {
@@ -41,11 +41,15 @@ test('build form, optional fields, failure, polling and authenticated copy/downl
     expect(build.routing_reason).toBe('default_empty');
     const row = page.locator(`tr[data-build-id="${build.id}"]`);
     await expect(row).toContainText('已完成', { timeout: 15000 });
+    await expect(row.getByRole('progressbar', { name: 'UI 构建测试 构建进度' })).toHaveAttribute(
+        'aria-valuenow',
+        '100',
+    );
     await expect(row).toContainText('批次：无');
     await expect(row).toContainText(/^.*org\.boundary\.app\.p/s);
     await context.grantPermissions(['clipboard-read', 'clipboard-write']);
     await row.getByRole('button', { name: '复制链接' }).click();
-    const link = await page.getByLabel('下载链接（需登录）').inputValue();
+    const link = await page.getByLabel('可分享下载链接').inputValue();
     expect(link).toContain(`/api/builds/${build.id}/artifact`);
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(link);
     const download = page.waitForEvent('download');
@@ -53,11 +57,13 @@ test('build form, optional fields, failure, polling and authenticated copy/downl
     expect(await readFile(await (await download).path(), 'utf8')).toBe(
         'SYNTHETIC-BROWSER-DOWNLOAD-NOT-APK',
     );
-    const bLogDownload = page.waitForEvent('download');
-    await row.getByRole('link', { name: '构建日志' }).click();
-    const bLog = await readFile(await (await bLogDownload).path(), 'utf8');
-    expect(bLog).toContain('[COMMAND:APKSIGNER_VERIFY] OK');
-    expect(bLog).toContain('[COMMAND:ZIPALIGN_VERIFY] OK');
+    await row.getByRole('button', { name: '构建日志' }).click();
+    const bLog = page.getByRole('log');
+    await expect(bLog).toContainText('[COMMAND:APKSIGNER_VERIFY] OK');
+    await expect(bLog).toContainText('[COMMAND:ZIPALIGN_VERIFY] OK');
+    await expect(page.getByRole('button', { name: '刷新日志' })).toBeVisible();
+    await row.getByRole('button', { name: '收起日志' }).click();
+    await expect(bLog).toHaveCount(0);
     await expect(row).toContainText('未填写，使用默认归属');
     await expect(row).toContainText('B 包');
     await expect(page.getByRole('button', { name: '保存 APK 归属' })).toHaveCount(0);
@@ -78,11 +84,11 @@ test('build form, optional fields, failure, polling and authenticated copy/downl
     await expect(installerRow).toContainText('已完成', { timeout: 15000 });
     await expect(installerRow).toContainText('A 包');
     await expect(installerRow).toContainText(`内置 B 包：${build.id.slice(0, 8)}`);
-    const aLogDownload = page.waitForEvent('download');
-    await installerRow.getByRole('link', { name: '构建日志' }).click();
-    expect(await readFile(await (await aLogDownload).path(), 'utf8')).toContain(
-        '[COMMAND:APKSIGNER_VERIFY] OK',
-    );
+    await installerRow.getByRole('button', { name: '构建日志' }).click();
+    await expect(page.getByRole('log')).toContainText('[COMMAND:APKSIGNER_VERIFY] OK');
+    await expect(
+        installerRow.getByRole('progressbar', { name: 'UI 安装器测试 构建进度' }),
+    ).toHaveAttribute('aria-valuenow', '100');
     await page.screenshot({ path: 'test-results/build-center-desktop.png', fullPage: true });
     await page.setViewportSize({ width: 800, height: 800 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeGreaterThanOrEqual(
