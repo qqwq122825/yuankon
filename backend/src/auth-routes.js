@@ -34,7 +34,7 @@ export function authRoutes(accounts, config) {
         })(req, res, next);
     });
     router.use(accounts.requireLogin());
-    router.get('/me', (req, res) => res.json({ user: accounts.publicUser(req.user) }));
+    router.get('/me', async (req, res) => res.json({ user: await accounts.publicUser(req.user) }));
     router.post('/logout', async (req, res) => {
         await accounts.logout(req.user, req.socket.remoteAddress);
         res.clearCookie(accounts.cookieName(), {

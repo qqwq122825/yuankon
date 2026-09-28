@@ -1,6 +1,6 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, readFile, rm, symlink } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, rm, symlink, access } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { randomUUID, createHash } from 'node:crypto';
@@ -10,15 +10,38 @@ import { createApplication } from '../src/app.js';
 import { BuildQueue } from '../src/build-queue.js';
 import { prepareSource, runTool, copySource } from '../src/apk-builder.js';
 import { loadTemplates, backendOrigin, packageName } from '../src/build-templates.js';
+import { assignAccountApkId } from '../src/account-apk.js';
 
 let app, db, settings, dir, base, token, owner;
 const completed = [],
+    installerPayloads = new Map(),
     readiness = async () => ({ ready: true, message: 'Synthetic queue fixture' });
-async function fixtureRunner(config, job, _template, { signal, stage }) {
+async function fixtureRunner(config, job, template, { signal, stage, payloadFile }) {
+    const logDirectory = path.join(config.privateDir, 'build-work', job.id);
+    await mkdir(logDirectory, { recursive: true });
+    await writeFile(
+        path.join(logDirectory, 'build.log'),
+        [
+            `[BUILD] START id=${job.id} role=${job.artifact_role}`,
+            '[COMMAND:GRADLE_ASSEMBLE_LINT] OK',
+            '[COMMAND:APKSIGNER_VERIFY] OK',
+            '[COMMAND:ZIPALIGN_VERIFY] OK',
+            '[COMMAND:AAPT_BADGING] OK',
+        ].join('\n'),
+    );
     await stage('compiling');
     await new Promise((r) => setTimeout(r, 30));
     if (signal.aborted) throw new Error('aborted');
     if (job.batch === 'FAIL') throw new Error('sensitive-path-or-tool-output');
+    if (template.kind === 'installer') {
+        assert.ok(payloadFile);
+        installerPayloads.set(job.id, {
+            payloadFile,
+            sha256: createHash('sha256')
+                .update(await readFile(payloadFile))
+                .digest('hex'),
+        });
+    }
     const bytes = Buffer.from(`SYNTHETIC-ARTIFACT-NOT-APK:${job.id}`);
     const artifact_path = `apk-builds/${job.id}/application.apk`;
     await mkdir(path.join(config.privateDir, 'files', path.dirname(artifact_path)), {
@@ -52,9 +75,9 @@ after(async () => {
     await db.destroy();
     await rm(dir, { recursive: true, force: true });
 });
-async function call(url, body, credential = token) {
+async function call(url, body, credential = token, method = body ? 'POST' : 'GET') {
     const response = await fetch(base + url, {
-        method: body ? 'POST' : 'GET',
+        method,
         headers: {
             ...(credential ? { Authorization: `Bearer ${credential}` } : {}),
             ...(body ? { 'Content-Type': 'application/json', 'X-Boundary-Request': '1' } : {}),
@@ -67,11 +90,10 @@ async function call(url, body, credential = token) {
     return { status: response.status, body: value };
 }
 const input = (overrides = {}) => ({
-    templateId: 'screenagent-1.0',
+    templateId: 'screenagent-1.2',
     domain: 'local',
     appName: 'Test "Name" & <test>',
-    homeUrl: 'https://example.com/?q=a&b=2',
-    apkId: 'BUILD_FIXTURE',
+    apkId: owner?.apkId,
     batch: '',
     packageName: '',
     requestId: randomUUID(),
@@ -92,7 +114,21 @@ test('catalog/build submission require account authentication and reject device 
         401,
     );
     const catalog = await call('/api/build-templates');
-    assert.equal(catalog.body.templates.length, 2);
+    assert.equal(catalog.body.templates.length, 5);
+    assert.deepEqual(
+        catalog.body.templates.map((template) => template.kind),
+        ['screenagent', 'screenagent', 'screenagent', 'installer', 'browser'],
+    );
+    assert.deepEqual(
+        catalog.body.templates.map((template) => template.sourceDir),
+        [
+            'b-packages/screenagent-1.2',
+            'b-packages/screenagent-1.1',
+            'b-packages/screenagent-1.0',
+            'a-packages/installer-1.0',
+            'standalone/browser-1.0',
+        ],
+    );
     assert.equal(catalog.body.worker.ready, true);
 });
 test('build inputs reject scripts, missing aliases, arbitrary templates, credential URLs and invalid package segments', async () => {
@@ -103,6 +139,7 @@ test('build inputs reject scripts, missing aliases, arbitrary templates, credent
         { domain: 'https://example.com/path' },
         { domain: 'http://example.com' },
         { homeUrl: 'javascript:alert(1)' },
+        { homeUrl: 'https://example.com/' },
         { packageName: 'org.good;echo bad' },
         { packageName: 'org.class.app' },
         { appName: 'name\ncommand' },
@@ -112,6 +149,17 @@ test('build inputs reject scripts, missing aliases, arbitrary templates, credent
         assert.equal((await call('/api/builds', input(patch))).status, 422, JSON.stringify(patch));
     assert.equal(await backendOrigin(settings, 'example.com'), 'https://example.com');
     assert.notEqual(packageName(''), packageName(''));
+});
+test('A package is blocked until a completed B package exists', async () => {
+    const response = await call('/api/builds', {
+        templateId: 'installer-1.0',
+        appName: 'Installer before worker',
+        homeUrl: 'https://example.com/',
+        packageName: 'org.test.installer',
+        requestId: randomUUID(),
+    });
+    assert.equal(response.status, 409);
+    assert.match(response.body.error, /先完成.*B 包/);
 });
 test('real HTTP queue flow is serial, idempotent, keeps ownership and exposes only authenticated fixture downloads', async () => {
     const request = input();
@@ -136,13 +184,115 @@ test('real HTTP queue flow is serial, idempotent, keeps ownership and exposes on
     assert.equal(completed.filter((x) => x === id).length, 1);
     const details = (await call(`/api/builds/${id}`)).body.build;
     assert.equal(details.artifactAvailable, true);
+    assert.equal(details.logAvailable, true);
+    assert.equal(details.logUrl, `/api/builds/${id}/log`);
     assert.ok(!('template_snapshot' in details));
     assert.ok(!('artifact_path' in details));
     assert.equal((await call(details.downloadUrl, null, null)).status, 401);
     assert.match((await call(details.downloadUrl)).body, /^SYNTHETIC-ARTIFACT-NOT-APK/);
+    assert.equal((await call(details.logUrl, null, null)).status, 401);
+    assert.match((await call(details.logUrl)).body, /COMMAND:APKSIGNER_VERIFY.*OK/);
+    assert.match((await call(details.logUrl)).body, /COMMAND:ZIPALIGN_VERIFY.*OK/);
+    const latest = await call('/api/builds');
+    assert.equal(latest.body.latestB.id, id);
+    const installerResponse = await call('/api/builds', {
+        templateId: 'installer-1.0',
+        appName: 'Fixture installer',
+        homeUrl: 'https://example.com/installer',
+        packageName: 'org.test.installer',
+        requestId: randomUUID(),
+    });
+    assert.equal(installerResponse.status, 202);
+    const installer = await terminal(installerResponse.body.build.id);
+    assert.equal(installer.status, 'succeeded');
+    assert.equal(installer.artifact_role, 'a');
+    assert.equal(installer.payload_build_id, id);
+    assert.equal(installer.payload_sha256, row.sha256);
+    assert.equal(installer.payload_package_name, row.package_name);
+    assert.equal(installerPayloads.get(installer.id).sha256, row.sha256);
+    assert.equal(
+        (
+            await call('/api/builds', {
+                templateId: 'installer-1.0',
+                appName: 'Same package rejected',
+                homeUrl: 'https://example.com/installer',
+                packageName: row.package_name,
+                requestId: randomUUID(),
+            })
+        ).status,
+        422,
+    );
     await rm(path.join(dir, 'files', row.artifact_path));
     assert.equal((await call(details.downloadUrl)).status, 404);
     assert.equal((await call(`/api/builds/${id}`)).body.build.artifactAvailable, false);
+});
+test('completed build deletion removes its database record, APK directory and build log directory', async () => {
+    const response = await call('/api/builds', input({ packageName: 'org.test.deletion' }));
+    const row = await terminal(response.body.build.id);
+    const artifactDirectory = path.join(dir, 'files', 'apk-builds', row.id);
+    const workDirectory = path.join(dir, 'build-work', row.id);
+    await mkdir(workDirectory, { recursive: true });
+    await writeFile(path.join(workDirectory, 'build.log'), 'synthetic-build-log');
+    await access(path.join(artifactDirectory, 'application.apk'));
+    assert.equal((await call(`/api/builds/${row.id}`, {}, null, 'DELETE')).status, 401);
+    const deleted = await call(`/api/builds/${row.id}`, {}, token, 'DELETE');
+    assert.equal(deleted.status, 200);
+    assert.deepEqual(deleted.body, { ok: true, recordDeleted: true, filesDeleted: true });
+    assert.equal(await db('apk_builds').where('id', row.id).first(), undefined);
+    await assert.rejects(access(artifactDirectory));
+    await assert.rejects(access(workDirectory));
+    assert.equal((await call(`/api/builds/${row.id}`)).status, 404);
+    assert.equal((await call(`/api/builds/${row.id}/artifact`)).status, 404);
+    assert.equal((await call(`/api/builds/${row.id}/log`)).status, 404);
+    assert.ok(
+        await db('account_audit')
+            .where({
+                actor_id: owner.id,
+                event: `build_deleted:${row.id}`,
+            })
+            .first(),
+    );
+});
+test('active and unknown builds cannot be deleted', async () => {
+    const id = randomUUID();
+    await db('apk_builds').insert({
+        id,
+        project_id: settings.projectId,
+        actor_id: owner.id,
+        status: 'queued',
+        stage: 'queued',
+        created_at: new Date().toISOString(),
+    });
+    assert.equal((await call(`/api/builds/${id}`, {}, token, 'DELETE')).status, 409);
+    assert.ok(await db('apk_builds').where('id', id).first());
+    await db('apk_builds').where('id', id).delete();
+    assert.equal((await call(`/api/builds/${randomUUID()}`, {}, token, 'DELETE')).status, 404);
+    assert.equal((await call('/api/builds/not-a-uuid', {}, token, 'DELETE')).status, 422);
+    const bId = randomUUID(),
+        aId = randomUUID();
+    await db('apk_builds').insert([
+        {
+            id: bId,
+            project_id: settings.projectId,
+            actor_id: owner.id,
+            artifact_role: 'b',
+            status: 'succeeded',
+            stage: 'succeeded',
+            created_at: new Date().toISOString(),
+        },
+        {
+            id: aId,
+            project_id: settings.projectId,
+            actor_id: owner.id,
+            artifact_role: 'a',
+            payload_build_id: bId,
+            status: 'queued',
+            stage: 'queued',
+            created_at: new Date().toISOString(),
+        },
+    ]);
+    assert.equal((await call(`/api/builds/${bId}`, {}, token, 'DELETE')).status, 409);
+    await db('apk_builds').whereIn('id', [aId, bId]).delete();
 });
 test('failed build never gains a download and does not prevent the following job', async () => {
     const bad = await call('/api/builds', input({ batch: 'FAIL' }));
@@ -153,9 +303,105 @@ test('failed build never gains a download and does not prevent the following job
     assert.equal(failed.downloadUrl, null);
     assert.ok(!failed.error_message.includes('sensitive'));
     assert.equal((await call(`/api/builds/${failed.id}/artifact`)).status, 404);
-    await db('apk_routes').where('apk_id', 'BUILD_FIXTURE').update({ enabled: false });
+    await db('apk_routes').where('apk_id', owner.apkId).update({ enabled: false });
     assert.equal((await call('/api/builds', input())).status, 409);
-    await db('apk_routes').where('apk_id', 'BUILD_FIXTURE').update({ enabled: true });
+    await db('apk_routes').where('apk_id', owner.apkId).update({ enabled: true });
+});
+test('blank, omitted and nonexistent APK IDs resolve to the current default without creating routes; device ownership follows the effective ID', async () => {
+    for (const apkId of ['', undefined, 'NONEXISTENT']) {
+        const request = input({ apkId });
+        const response = await call('/api/builds', request);
+        assert.equal(response.status, 202);
+        const job = response.body.build;
+        assert.equal(job.apk_id, owner.apkId);
+        assert.equal(job.owner_account_id, owner.id);
+        assert.equal(job.owner_username, 'mtx');
+        assert.equal(job.requested_apk_id, apkId || '');
+        assert.equal(job.routing_reason, apkId ? 'default_unmatched' : 'default_empty');
+        assert.equal((await terminal(job.id)).apk_id, owner.apkId);
+        assert.equal((await call('/api/builds', request)).body.build.id, job.id);
+    }
+    assert.equal((await db('apk_routes')).length, 1);
+    assert.equal((await call('/api/auth/me')).body.user.apkId, owner.apkId);
+    assert.equal(
+        (
+            await call(
+                '/api/client/register',
+                { apkId: owner.apkId, deviceId: 'NO_ENROLLMENT' },
+                null,
+            )
+        ).status,
+        401,
+    );
+    const ticket = (await call('/api/device-enrollments', { apkId: owner.apkId })).body;
+    const registered = await call(
+        '/api/client/register',
+        { apkId: owner.apkId, deviceId: 'FALLBACK_FIXTURE', ownerAccountId: 999 },
+        ticket.enrollmentToken,
+    );
+    assert.equal(registered.status, 201);
+    assert.equal(registered.body.owner.id, owner.id);
+    assert.equal(registered.body.apkId, owner.apkId);
+});
+test('explicit account routing is pinned per build; disabled, expired, legacy-only and cross-project IDs default without changing mappings', async () => {
+    const root = await db('accounts').where('id', owner.id).first();
+    const other = await db.transaction(async (trx) => {
+        const [id] = await trx('accounts').insert({
+            username: 'routing_fixture',
+            password_hash: root.password_hash,
+            created_at: 1,
+        });
+        const apkId = await assignAccountApkId(trx, { id }, 1);
+        return { id, apkId };
+    });
+    try {
+        const request = input({ apkId: other.apkId });
+        const explicit = (await call('/api/builds', request)).body.build;
+        assert.equal(explicit.owner_account_id, other.id);
+        assert.equal(explicit.apk_id, other.apkId);
+        assert.equal(explicit.routing_reason, 'explicit');
+        await terminal(explicit.id);
+        for (const change of [
+            () => db('apk_routes').where('apk_id', other.apkId).update({ enabled: false }),
+            async () => {
+                await db('apk_routes').where('apk_id', other.apkId).update({ enabled: true });
+                await db('accounts')
+                    .where('id', other.id)
+                    .update({ valid_until: Date.now() - 1 });
+            },
+            async () => {
+                await db('accounts').where('id', other.id).update({ valid_until: null });
+                await db('apk_routes').where('apk_id', other.apkId).update({ project_id: 2 });
+            },
+        ]) {
+            await change();
+            const fallback = (await call('/api/builds', input({ apkId: other.apkId }))).body.build;
+            assert.equal(fallback.owner_account_id, owner.id);
+            assert.equal(fallback.apk_id, owner.apkId);
+            assert.equal(fallback.routing_reason, 'default_unmatched');
+            await terminal(fallback.id);
+        }
+        assert.equal(
+            (await db('apk_routes').where('apk_id', other.apkId).first()).owner_account_id,
+            other.id,
+        );
+        const retry = (await call('/api/builds', request)).body.build;
+        assert.equal(retry.id, explicit.id);
+        assert.equal(retry.apk_id, other.apkId);
+        await db('apk_routes').insert({
+            apk_id: 'OLD_BUILD_ALIAS',
+            owner_account_id: owner.id,
+            project_id: 1,
+            created_at: 1,
+        });
+        const legacy = (await call('/api/builds', input({ apkId: 'OLD_BUILD_ALIAS' }))).body.build;
+        assert.equal(legacy.apk_id, owner.apkId);
+        assert.equal(legacy.routing_reason, 'default_unmatched');
+        await terminal(legacy.id);
+    } finally {
+        await db('apk_routes').whereIn('apk_id', [other.apkId, 'OLD_BUILD_ALIAS']).delete();
+        await db('accounts').where('id', other.id).delete();
+    }
 });
 test('missing toolchain and artifact quota reject submission without creating an APK route', async () => {
     const unavailable = new BuildQueue(db, settings, { readiness: async () => ({ ready: false }) });
@@ -184,7 +430,14 @@ test('source copies encode user values as XML/JSON without editing template code
         batch: '"\\batch',
         package_name: 'org.test.named',
         domain: 'local',
+        payload_build_id: randomUUID(),
+        payload_package_name: 'org.test.worker',
     };
+    const payloadFile = path.join(dir, 'payload.apk');
+    await writeFile(payloadFile, 'synthetic-b-package');
+    job.payload_sha256 = createHash('sha256')
+        .update(await readFile(payloadFile))
+        .digest('hex');
     for (const t of templates) {
         const source = path.join(dir, t.id);
         const original = await readFile(
@@ -196,7 +449,7 @@ test('source copies encode user values as XML/JSON without editing template code
             ),
             'utf8',
         );
-        await prepareSource(settings, job, t, source);
+        await prepareSource(settings, job, t, source, { payloadFile });
         const xml = await readFile(
             path.join(source, 'app/src/main/res/values/strings.xml'),
             'utf8',
@@ -204,20 +457,40 @@ test('source copies encode user values as XML/JSON without editing template code
         assert.ok(xml.includes('&amp;'));
         assert.ok(xml.includes('&lt;TV&gt;'));
         assert.ok(xml.includes('formatted="false"'));
-        const assets = JSON.parse(
-            await readFile(
-                path.join(
-                    source,
-                    'app/src/main/assets',
-                    t.kind === 'browser' ? 'build_config.json' : 'agent_config.json',
+        if (t.kind === 'installer') {
+            const assets = JSON.parse(
+                await readFile(
+                    path.join(source, 'app/src/main/assets/installer_config.json'),
+                    'utf8',
                 ),
-                'utf8',
-            ),
-        );
-        assert.equal(assets.appName, job.app_name);
-        assert.equal(assets.batch, job.batch);
-        assert.equal(assets.buildId, job.id);
-        assert.ok(!assets.token);
+            );
+            assert.equal(assets.payloadBuildId, job.payload_build_id);
+            assert.equal(assets.payloadSha256, job.payload_sha256);
+            assert.equal(assets.payloadPackageName, job.payload_package_name);
+            assert.equal(assets.homeUrl, job.home_url);
+            assert.equal(
+                await readFile(path.join(source, 'app/src/main/assets/payload.apk'), 'utf8'),
+                'synthetic-b-package',
+            );
+        } else {
+            const assets = JSON.parse(
+                await readFile(
+                    path.join(
+                        source,
+                        'app/src/main/assets',
+                        t.kind === 'browser' ? 'build_config.json' : 'agent_config.json',
+                    ),
+                    'utf8',
+                ),
+            );
+            assert.equal(assets.appName, job.app_name);
+            assert.equal(assets.batch, job.batch);
+            assert.equal(assets.apkId, job.apk_id);
+            assert.equal(assets.buildId, job.id);
+            assert.ok(!assets.token);
+            if (t.kind === 'screenagent') assert.ok(!Object.hasOwn(assets, 'webUrl'));
+            else assert.equal(assets.webUrl, job.home_url);
+        }
         assert.equal(
             await readFile(
                 path.join(

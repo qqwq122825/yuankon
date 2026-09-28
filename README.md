@@ -22,8 +22,9 @@ yuankon/
 │   ├── apk-templates/
 │   │   ├── templates.json       # 版本清单，sourceDir 相对此目录
 │   │   ├── domains.json         # 后台域名简称映射
-│   │   ├── screenagent-1.0/     # 单张截图接入模板源码
-│   │   └── browser-1.0/         # 浏览器模板源码
+│   │   ├── b-packages/          # B 包工作端版本（1.0、1.1）
+│   │   ├── a-packages/          # A 包安装器版本
+│   │   └── standalone/          # 独立浏览器模板
 │   ├── scripts/                 # 本地构建入口
 │   ├── installer/               # 既有离线安装器源码
 │   ├── apk-repack/、apk-shield/  # 既有独立工具，未接入网页队列
@@ -57,13 +58,13 @@ npm start          # Node 同域提供页面、API、WS
 
 ## 构建中心与模板
 
-[构建中心](http://127.0.0.1:8080/builds) 支持：选择版本、后台域名、APP 名称、HTTPS 首页、APK ID、可选批次、指定/随机包名；真实编译、Lint、签名/对齐验证后开放下载与复制登录后可用的链接。
+[构建中心](http://127.0.0.1:8080/builds) 分为两个板块：先构建无桌面图标的 B 包工作端，再构建有桌面入口的 A 包安装器。A 包自动锁定同一归属账号最新成功 B 包并将其作为 `assets/payload.apk` 携带；Android 系统安装器仍要求用户确认。真实编译、Lint、签名/对齐验证后开放下载与复制登录后可用的链接。
 
-**模板源码统一放在 `android/apk-templates/`。** 新增版本只需复制一个版本文件夹、修改源码并登记 `templates.json`，刷新页面即可选择；同一类模板无需改 Vue/Node。详见 [APK 开发入口](README_APK.md) 和 [新增模板指南](android/apk-templates/README.md)。
+**模板源码统一放在 `android/apk-templates/`。** `b-packages/` 保存截图、设备通信及后续无障碍视图等工作端版本；`a-packages/` 只保存安装器版本；`standalone/` 保存不参与 A/B 依赖的模板。新增版本复制对应分组内的版本目录、修改源码并登记 `templates.json`，刷新页面即可选择。A/B 构建记录均可下载含 Gradle/Lint、签名、对齐、包信息和摘要步骤的详细日志。详见 [APK 开发入口](README_APK.md) 和 [新增模板指南](android/apk-templates/README.md)。
 
 ```bash
 npm run build:apk          # 独立构建 browser-1.0
-npm run build:screenagent  # 独立构建 screenagent-1.0
+npm run build:screenagent  # 独立构建当前 screenagent-1.2
 ```
 
 CLI 产物在 `android/dist/`；网页构建产物在 `backend/.node-private/files/apk-builds/`。模板源码、临时源码与产物分开维护，不在 dist 中长期改功能。
@@ -71,12 +72,13 @@ CLI 产物在 `android/dist/`；网页构建产物在 `backend/.node-private/fil
 ## 当前能力
 
 - 超管全项目设备访问、Token 鉴权、8 小时单端会话、退出与改密。
+- 顶栏账号卡显示角色、创建账号时自动分配的固定 APK ID 和账号有效期；一个账号一个编号，当前默认超管编号为 `1`。构建填写有效编号归属对应账号，留空或未匹配可用账号时归属默认接收账号（当前为超管）；构建不创建新编号。超管默认长期有效；账号截止时间与登录 Token 到期分开，服务端校验有效期。总台续费流程见 [账号设计](backend/docs/ACCOUNT_DESIGN.md)。
 - 设备列表/详情、筛选排序分页、备注、截图/节点双浮窗、元数据观察、脱敏导出、翻译配置。
 - 整行进入详情；操作仅拉黑/删除，删除为后台软删除，不清除手机数据。
-- 设备首次登记、APK ID 默认归属、独立设备凭证、状态 WS、手机主动确认后的单张 JPEG 临时预览。
+- 设备首次登记、APK ID 默认归属、独立设备凭证、状态 WS、无障碍开启首图、网页租约内实时最新帧 JPEG 与列表临时缩略图。
 - 网页 APK 队列、实际产物下载、固定模板独立 CLI 编译。
-- **待实现**：总台/子账号、设备下发、机器人验证码、Telegram 构建/发送、连续截图租约。没有总台 AppID。
-- 浏览器模板不增加采集能力；ScreenAgent 保留确认/停止和单张发送流程。编译通过与真机通过分别验收。
+- **待实现**：总台/子账号、机器人验证码、Telegram 构建/发送、连续截图会话。没有总台 AppID。
+- 浏览器模板不增加采集能力；ScreenAgent 只在明确网页查看租约有效时运行最新帧循环，Android 11 间隔 1001ms、Android 12+ 间隔 334ms，并串行完成截图、压缩和上传。编译通过与真机通过分别验收。
 
 ## 测试与版本管理
 

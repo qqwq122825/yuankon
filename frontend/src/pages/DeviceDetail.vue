@@ -2,7 +2,16 @@
 import { ref, watch, onUnmounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { api, mutate, sourceLabel, formatDate, normalizeWireDevice } from '../api.js';
-import { subscribe, unsubscribe, onMessage, connection, queryState } from '../connection.js';
+import {
+    subscribe,
+    unsubscribe,
+    onMessage,
+    connection,
+    queryState,
+    captureViewerHeartbeat,
+    captureViewerClose,
+    requestScreenshot,
+} from '../connection.js';
 import FloatingViewer from '../components/FloatingViewer.vue';
 import NodeReader from '../components/NodeReader.vue';
 import DeviceScreenshot from '../components/DeviceScreenshot.vue';
@@ -18,8 +27,10 @@ const route = useRoute(),
     reportedShot = ref(false),
     reader = ref(false),
     front = ref('reader'),
-    resetKey = ref(0);
-let controller, subscribed;
+    resetKey = ref(0),
+    reportedRefresh = ref(0),
+    captureState = ref('');
+let controller, subscribed, viewerId, viewerTimer, activeCommandId;
 const sections = [
     ['info', '设备信息'],
     ['snapshots', '历史快照'],
@@ -35,7 +46,7 @@ async function load() {
     error.value = '';
     notice.value = '';
     shot.value = false;
-    reportedShot.value = false;
+    if (viewerId) closeReportedShot();
     reader.value = false;
     try {
         const result = await api(
@@ -77,12 +88,38 @@ const off = onMessage((message) => {
         message.data?.id === data.value.device.public_id
     ) {
         data.value.device = { ...data.value.device, ...normalizeWireDevice(message.data) };
-        if (data.value.device.is_blacklisted) reportedShot.value = false;
+        if (data.value.device.is_blacklisted) closeReportedShot();
+    }
+    if (!data.value || message.sessionId !== data.value.device.public_id) return;
+    if (message.type === 'capture_viewer_lease' && message.data?.viewerId === viewerId) {
+        captureState.value = message.data.deviceOnline
+            ? '实时查看租约有效'
+            : '查看租约已建立，设备当前离线';
+    }
+    if (message.type === 'command_dispatched' && message.data?.commandId === activeCommandId)
+        captureState.value = '实时截图指令已下发，等待设备上传';
+    if (message.type === 'command_ack' && message.data?.commandId === activeCommandId)
+        captureState.value =
+            message.data.result === 'accepted'
+                ? '设备已接收截图指令'
+                : `设备未执行：${message.data.reasonCode || 'rejected'}`;
+    if (message.type === 'screenshot_result' && message.data?.commandId === activeCommandId)
+        captureState.value =
+            message.data.result === 'uploaded'
+                ? '实时截图已更新'
+                : `截图失败：${message.data.reasonCode || 'capture_failed'}`;
+    if (message.type === 'screenshot_ready') {
+        reportedRefresh.value++;
+        captureState.value =
+            message.data?.reason === 'initial_accessibility'
+                ? '已收到无障碍开启后的首张缩略图'
+                : '实时画面已更新';
     }
 });
 onUnmounted(() => {
     controller?.abort();
     off();
+    closeReportedShot();
     if (subscribed) unsubscribe(subscribed);
 });
 async function save() {
@@ -102,10 +139,39 @@ async function save() {
     }
 }
 function openBoth() {
-    reportedShot.value = false;
+    closeReportedShot();
     shot.value = true;
     reader.value = true;
     front.value = 'reader';
+}
+function openReportedShot(request = true) {
+    reportedShot.value = true;
+    shot.value = false;
+    front.value = 'reported';
+    if (!viewerId) viewerId = crypto.randomUUID();
+    clearInterval(viewerTimer);
+    captureViewerHeartbeat(data.value.device.public_id, viewerId);
+    viewerTimer = setInterval(
+        () => captureViewerHeartbeat(data.value.device.public_id, viewerId),
+        5000,
+    );
+    if (request) {
+        activeCommandId = requestScreenshot(data.value.device.public_id, viewerId);
+        captureState.value = '正在启动实时截图';
+    }
+}
+function closeReportedShot() {
+    clearInterval(viewerTimer);
+    viewerTimer = null;
+    if (viewerId && data.value?.device.public_id)
+        captureViewerClose(data.value.device.public_id, viewerId);
+    viewerId = null;
+    activeCommandId = null;
+    reportedShot.value = false;
+}
+function openPrimary() {
+    if (data.value.device.source === 'api') openReportedShot(true);
+    else openBoth();
 }
 function choose(value) {
     section.value = value;
@@ -159,8 +225,12 @@ function choose(value) {
         </aside>
         <div class="device-canvas">
             <div class="inspection-orbit">
-                <button class="orbit-launch" :disabled="!data.snapshot" @click="openBoth">
-                    <span>BOUNDARY</span><strong>只读查看</strong>
+                <button
+                    class="orbit-launch"
+                    :disabled="data.device.source !== 'api' && !data.snapshot"
+                    @click="openPrimary"
+                >
+                    <span>BOUNDARY</span><strong>开始</strong>
                 </button>
             </div>
             <section class="card research-summary">
@@ -191,7 +261,9 @@ function choose(value) {
                             >窗口</span
                         >
                     </div>
-                    <p>订阅只刷新状态，不启动采集。连续诊断帧、网页租约尚未迁入 Node。</p>
+                    <p>
+                        无障碍开启后自动上报一张临时缩略图；点击开始后在有效网页租约内连续更新最新截图，关闭查看或租约失效后停止。
+                    </p>
                 </div>
             </section>
             <template v-if="section === 'info' || section === 'note'"
@@ -331,17 +403,13 @@ function choose(value) {
         </div>
         <aside class="device-tools">
             <div class="tool-group">
-                <h2>只读查看</h2>
+                <h2>截图查看</h2>
                 <button
                     v-if="data.device.apk_id"
                     class="tool-button"
-                    @click="
-                        reportedShot = true;
-                        shot = false;
-                        front = 'reported';
-                    "
+                    @click="openReportedShot(true)"
                 >
-                    设备上报截图
+                    实时查看截图
                 </button>
                 <button class="tool-button primary" :disabled="!data.snapshot" @click="openBoth">
                     截图 + 阅读器</button
@@ -369,7 +437,7 @@ function choose(value) {
                     class="tool-button muted"
                     @click="
                         shot = false;
-                        reportedShot = false;
+                        closeReportedShot();
                         reader = false;
                     "
                 >
@@ -403,7 +471,7 @@ function choose(value) {
             </div>
             <div class="tool-help">
                 <p>截图为历史文件或合成示例。节点坐标仅用于查看属性。</p>
-                <p>新登记设备可查看手机主动上报的单张截图；连续截图仍待接入。</p>
+                <p>只保留最新截图且最多暂存 5 分钟；关闭浮窗或网页会结束实时查看租约。</p>
             </div>
         </aside>
     </div>
@@ -415,11 +483,15 @@ function choose(value) {
         :active="front === 'reported'"
         @activate="front = 'reported'"
         @close="
-            reportedShot = false;
+            closeReportedShot();
             front = 'reader';
         "
     >
-        <DeviceScreenshot :device-id="data.device.id" />
+        <DeviceScreenshot
+            :device-id="data.device.id"
+            :refresh-key="reportedRefresh"
+            :status="captureState"
+        />
     </FloatingViewer>
     <FloatingViewer
         v-if="shot && data?.snapshot"

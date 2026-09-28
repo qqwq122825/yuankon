@@ -9,19 +9,16 @@ test('row navigation, keyboard and checkboxes are independent of blacklist/delet
     await page.getByRole('button', { name: '登录', exact: true }).click();
     await expect(page).toHaveURL('/');
     const headers = { 'X-Boundary-Request': '1' };
-    expect(
-        (
-            await page.request.post('/api/apk-routes', { headers, data: { apkId: 'ROW_ACTIONS' } })
-        ).status(),
-    ).toBe(201);
+    const { user } = await (await page.request.get('/api/auth/me')).json();
+    const apkId = user.apkId;
     const enrollment = await page.request.post('/api/device-enrollments', {
         headers,
-        data: { apkId: 'ROW_ACTIONS' },
+        data: { apkId },
     });
     const { enrollmentToken } = await enrollment.json();
     const response = await page.request.post('/api/client/register', {
         headers: { ...headers, Authorization: `Bearer ${enrollmentToken}` },
-        data: { apkId: 'ROW_ACTIONS', deviceId: 'ROW_ACTIONS_DEVICE', model: '列表操作测试设备' },
+        data: { apkId, deviceId: 'ROW_ACTIONS_DEVICE', model: '列表操作测试设备' },
     });
     const device = await response.json();
     expect(response.status()).toBe(201);

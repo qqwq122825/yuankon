@@ -44,6 +44,8 @@ test('detail saves notes and viewers resize, drag, switch tabs and close with Es
     const errors = [];
     page.on('pageerror', (e) => errors.push(e.message));
     await page.goto('/devices/1');
+    await expect(page.getByRole('button', { name: /^BOUNDARY\s*开始$/ })).toBeVisible();
+    await expect(page.getByText('只读查看', { exact: true })).toHaveCount(0);
     await page.getByRole('textbox', { name: '设备备注' }).fill('Vue 自动化备注');
     await page.getByRole('button', { name: '保存备注' }).click();
     await expect(page.getByRole('status')).toHaveText('备注已保存');
@@ -97,6 +99,47 @@ test('narrow viewport keeps 1280 desktop canvas and parallel independent viewers
         1280,
     );
     await page.screenshot({ path: 'test-results/narrow-desktop.png', fullPage: true });
+});
+test('left navigation stays anchored during vertical and horizontal scrolling and remains usable', async ({
+    page,
+}) => {
+    await page.setViewportSize({ width: 1440, height: 500 });
+    const rail = page.locator('.console-rail');
+    const initial = await rail.boundingBox();
+    expect(initial.x).toBe(0);
+    expect(initial.y).toBe(46);
+    expect(initial.width).toBe(56);
+    expect(initial.height).toBe(454);
+    expect((await page.locator('main').boundingBox()).x).toBe(initial.width);
+    await page.evaluate(() => window.scrollTo(0, 350));
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+    expect(await rail.boundingBox()).toEqual(initial);
+    await page.screenshot({ path: 'test-results/fixed-rail-vertical.png' });
+
+    await page.setViewportSize({ width: 800, height: 500 });
+    await page.evaluate(() => window.scrollTo(400, 250));
+    await expect.poll(() => page.evaluate(() => window.scrollX)).toBeGreaterThan(0);
+    expect(await rail.boundingBox()).toEqual(initial);
+    expect(
+        await page.evaluate(
+            () => document.elementFromPoint(28, 80)?.closest('.console-rail') !== null,
+        ),
+    ).toBe(true);
+    await page.screenshot({ path: 'test-results/fixed-rail-narrow.png' });
+    const nav = page.getByRole('navigation', { name: '主导航' });
+    await nav.getByRole('link', { name: '构建', exact: true }).click();
+    await expect(page).toHaveURL('/builds');
+    await expect(nav.getByRole('link', { name: '构建', exact: true })).toHaveClass(/active/);
+    await nav.getByRole('link', { name: '翻译', exact: true }).focus();
+    await nav.getByRole('link', { name: '翻译', exact: true }).press('Enter');
+    await expect(page).toHaveURL('/settings/translation');
+    await expect(nav.getByRole('link', { name: '翻译', exact: true })).toHaveClass(/active/);
+    await page.goto('/devices/1');
+    await expect(rail).toHaveCount(0);
+    await page.goto('/');
+    await page.setViewportSize({ width: 1920, height: 900 });
+    const large = await rail.boundingBox();
+    expect(large).toEqual({ x: 0, y: 50, width: 64, height: 850 });
 });
 test('translation validation, build center and protocol audit', async ({ page }) => {
     await page.goto('/settings/translation');

@@ -10,7 +10,8 @@ export GRADLE_USER_HOME="${GRADLE_USER_HOME:-$ROOT/.local-tools/gradle-home}"
 export PATH="$JAVA_HOME/bin:$PATH"
 GRADLE="${GRADLE:-$ROOT/.local-tools/gradle-8.11.1/bin/gradle}"
 TOOLS="$ANDROID_HOME/build-tools/35.0.0"
-for tool in "$JAVA_HOME/bin/java" "$GRADLE" "$TOOLS/apksigner" "$TOOLS/zipalign"; do
+TEMPLATE="$ROOT/apk-templates/standalone/browser-1.0"
+for tool in "$JAVA_HOME/bin/java" "$GRADLE" "$TOOLS/apksigner" "$TOOLS/zipalign" "$TOOLS/aapt"; do
   [[ -x "$tool" ]] || { echo "Missing local build tool: $tool" >&2; exit 1; }
 done
 [[ -f "$ANDROID_HOME/platforms/android-35/android.jar" ]] || { echo 'Android API 35 is required.' >&2; exit 1; }
@@ -18,16 +19,23 @@ umask 077
 mkdir -p "$ROOT/dist"
 WORK="$(mktemp -d "$ROOT/dist/browser-template-XXXXXX")"
 mkdir -p "$WORK/source"
+exec > >(tee "$WORK/build.log") 2>&1
 # Copy only fixed source; never reuse a previous build directory or local.properties.
-cp "$ROOT/apk-templates/browser-1.0/"*.gradle "$ROOT/apk-templates/browser-1.0/gradle.properties" "$WORK/source/"
+cp "$TEMPLATE/"*.gradle "$TEMPLATE/gradle.properties" "$WORK/source/"
 mkdir -p "$WORK/source/app"
-cp "$ROOT/apk-templates/browser-1.0/app/build.gradle" "$WORK/source/app/"
-cp -R "$ROOT/apk-templates/browser-1.0/app/src" "$WORK/source/app/src"
+cp "$TEMPLATE/app/build.gradle" "$WORK/source/app/"
+cp -R "$TEMPLATE/app/src" "$WORK/source/app/src"
 echo "Build directory: $WORK"
-"$GRADLE" -p "$WORK/source" --offline --no-daemon --console=plain assembleDebug lintDebug 2>&1 | tee "$WORK/build.log"
+echo "[$(date -u +%FT%TZ)] [COMMAND:GRADLE_ASSEMBLE_LINT] START"
+"$GRADLE" -p "$WORK/source" --offline --no-daemon --console=plain assembleDebug lintDebug
+echo "[$(date -u +%FT%TZ)] [COMMAND:GRADLE_ASSEMBLE_LINT] OK"
 cp "$WORK/source/app/build/outputs/apk/debug/app-debug.apk" "$WORK/browser.apk"
+echo "[$(date -u +%FT%TZ)] [STAGE:signing] verify APK development signature"
 "$TOOLS/apksigner" verify --verbose "$WORK/browser.apk" | tee "$WORK/signature.txt"
-"$TOOLS/zipalign" -c -P 16 4 "$WORK/browser.apk"
+echo "[$(date -u +%FT%TZ)] [COMMAND:APKSIGNER_VERIFY] OK"
+"$TOOLS/zipalign" -c -P 16 -v 4 "$WORK/browser.apk"
+echo "[$(date -u +%FT%TZ)] [COMMAND:ZIPALIGN_VERIFY] OK"
+"$TOOLS/aapt" dump badging "$WORK/browser.apk" | tee "$WORK/badging.txt"
 shasum -a 256 "$WORK/browser.apk" | tee "$WORK/SHA256SUMS"
 echo "APK: $WORK/browser.apk"
 echo 'Development build verified. Device runtime and Telegram delivery are not tested by this command.'

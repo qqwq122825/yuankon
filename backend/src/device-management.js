@@ -46,6 +46,8 @@ export class DeviceManagement {
         if (!changed) return device;
         this.ingress.frames.delete(id);
         this.ingress.grants.delete(id);
+        this.ingress.pendingCaptures.delete(id);
+        this.ingress.autoCaptureAt.delete(id);
         this.store.live.delete(device.public_id);
         this.disconnect?.(device.public_id, Boolean(device.deleted_at));
         await this.notify?.(device);

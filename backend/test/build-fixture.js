@@ -5,6 +5,22 @@ import path from 'node:path';
 export const buildFixture = {
     readiness: async () => ({ ready: true, message: '本地队列 UI 测试夹具 · Telegram 发送待接入' }),
     runner: async (config, job, _template, { stage }) => {
+        const logDirectory = path.join(config.privateDir, 'build-work', job.id);
+        await mkdir(logDirectory, { recursive: true });
+        await writeFile(
+            path.join(logDirectory, 'build.log'),
+            [
+                `[BUILD] START id=${job.id} role=${job.artifact_role}`,
+                '[STAGE:preparing] synthetic source copy',
+                '[COMMAND:GRADLE_ASSEMBLE_LINT] OK',
+                '[STAGE:signing] verify APK development signature',
+                '[COMMAND:APKSIGNER_VERIFY] OK',
+                '[STAGE:aligning] verify APK alignment',
+                '[COMMAND:ZIPALIGN_VERIFY] OK',
+                '[COMMAND:AAPT_BADGING] OK',
+                '[BUILD] SUCCEEDED',
+            ].join('\n'),
+        );
         await stage('compiling');
         await new Promise((r) => setTimeout(r, 200));
         if (job.batch === 'FAIL') throw new Error('Intentional test failure');

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { rm } from 'node:fs/promises';
 import { z } from 'zod';
 import { fail } from './protocol.js';
 import { privateFile } from './files.js';
@@ -13,6 +14,7 @@ import {
     backendOrigin,
 } from './build-templates.js';
 import { buildApk, checkTools } from './apk-builder.js';
+import { resolveBuildRecipient } from './account-apk.js';
 
 const uuid = z.string().uuid();
 const activeStates = ['queued', 'building'];
@@ -56,7 +58,19 @@ export class BuildQueue {
         );
         if (!template) throw fail(422, '请选择已登记的模板版本');
         await templateSource(this.config.root, template);
-        const backend = await backendOrigin(this.config, parsed.domain);
+        const role =
+            template.kind === 'screenagent'
+                ? 'b'
+                : template.kind === 'installer'
+                  ? 'a'
+                  : 'standalone';
+        if (role === 'b' && !parsed.domain) throw fail(422, 'B 包必须填写后台域名');
+        if (role === 'b' && parsed.homeUrl) throw fail(422, 'B 包不接收首页地址');
+        if (role === 'a' && parsed.domain) throw fail(422, 'A 包不接收后台域名');
+        if (role === 'a' && !parsed.homeUrl) throw fail(422, 'A 包必须填写 HTTPS 首页地址');
+        if (role === 'standalone' && (!parsed.domain || !parsed.homeUrl))
+            throw fail(422, '浏览器模板必须填写后台域名与 HTTPS 首页地址');
+        const backend = role === 'a' ? '' : await backendOrigin(this.config, parsed.domain);
         const pkg = packageName(parsed.packageName);
         if (!(await this.readiness(this.config)).ready)
             throw fail(503, '本地 Android 构建工具未就绪');
@@ -73,9 +87,9 @@ export class BuildQueue {
             template_name: template.name,
             template_version: template.versionName,
             template_snapshot: JSON.stringify(template),
+            artifact_role: role,
             domain: parsed.domain,
             backend_url: backend,
-            apk_id: parsed.apkId,
             batch: parsed.batch,
             package_name: pkg,
             status: 'queued',
@@ -105,22 +119,20 @@ export class BuildQueue {
                 .first();
             if (Number(size) + (Number(n) + 1) * 150 * 1024 ** 2 > 2 * 1024 ** 3)
                 throw fail(409, '构建产物配额不足（含排队预留），请管理员归档清理后重试');
-            const route = await trx('apk_routes').where('apk_id', parsed.apkId).first();
-            if (
-                route &&
-                (!route.enabled ||
-                    route.owner_account_id !== actor.id ||
-                    route.project_id !== this.config.projectId)
-            )
-                throw fail(409, 'APK ID 已有其他归属或已停用，请选择另一个 ID');
-            if (!route)
-                await trx('apk_routes').insert({
-                    apk_id: parsed.apkId,
-                    owner_account_id: actor.id,
-                    project_id: this.config.projectId,
-                    enabled: true,
-                    created_at: Date.now(),
+            Object.assign(
+                job,
+                await resolveBuildRecipient(trx, parsed.apkId, owner, this.config.projectId),
+            );
+            if (role === 'a') {
+                const payload = await this.latestB(job.owner_account_id, trx);
+                if (!payload) throw fail(409, '请先完成同一归属账号的 B 包构建，再构建 A 包');
+                if (payload.package_name === pkg) throw fail(422, 'A 包与 B 包必须使用不同包名');
+                Object.assign(job, {
+                    payload_build_id: payload.id,
+                    payload_sha256: payload.sha256,
+                    payload_package_name: payload.package_name,
                 });
+            }
             await trx('apk_builds').insert(job);
             await trx('account_audit').insert({
                 ts: Date.now(),
@@ -132,6 +144,31 @@ export class BuildQueue {
         });
         this.kick();
         return this.dto(saved);
+    }
+    async latestB(ownerId, connection = this.db) {
+        const rows = await connection('apk_builds')
+            .where({
+                project_id: this.config.projectId,
+                owner_account_id: ownerId,
+                artifact_role: 'b',
+                status: 'succeeded',
+            })
+            .orderBy('finished_at', 'desc')
+            .orderBy('created_at', 'desc')
+            .orderBy('id', 'desc')
+            .limit(20);
+        for (const row of rows) {
+            try {
+                if (!/^[a-f0-9]{64}$/.test(row.sha256 || '') || !row.package_name) continue;
+                await privateFile(
+                    path.join(this.config.privateDir, 'files'),
+                    row.artifact_path,
+                    `apk-builds/${row.id}/`,
+                );
+                return row;
+            } catch {}
+        }
+        return null;
     }
     kick() {
         if (this.stopping) return;
@@ -173,7 +210,34 @@ export class BuildQueue {
             });
             try {
                 const template = templateSchema.parse(JSON.parse(job.template_snapshot));
-                const result = await this.runner(this.config, job, template, { signal, stage });
+                let payloadFile;
+                if (job.artifact_role === 'a') {
+                    const payload = await this.db('apk_builds')
+                        .where({
+                            id: job.payload_build_id,
+                            project_id: job.project_id,
+                            owner_account_id: job.owner_account_id,
+                            artifact_role: 'b',
+                            status: 'succeeded',
+                        })
+                        .first();
+                    if (
+                        !payload ||
+                        payload.sha256 !== job.payload_sha256 ||
+                        payload.package_name !== job.payload_package_name
+                    )
+                        throw new Error('B package reference changed');
+                    payloadFile = await privateFile(
+                        path.join(this.config.privateDir, 'files'),
+                        payload.artifact_path,
+                        `apk-builds/${payload.id}/`,
+                    );
+                }
+                const result = await this.runner(this.config, job, template, {
+                    signal,
+                    stage,
+                    payloadFile,
+                });
                 if (signal.aborted) throw new Error('Interrupted');
                 await privateFile(
                     path.join(this.config.privateDir, 'files'),
@@ -212,6 +276,7 @@ export class BuildQueue {
     }
     async dto(row) {
         let artifactAvailable = false;
+        let logAvailable = false;
         if (row.status === 'succeeded' && uuid.safeParse(row.id).success) {
             try {
                 await privateFile(
@@ -222,12 +287,58 @@ export class BuildQueue {
                 artifactAvailable = true;
             } catch {}
         }
+        if (uuid.safeParse(row.id).success) {
+            try {
+                await privateFile(
+                    path.join(this.config.privateDir, 'build-work'),
+                    `${row.id}/build.log`,
+                    `${row.id}/`,
+                );
+                logAvailable = true;
+            } catch {}
+        }
         const { artifact_path, template_snapshot, request_body, request_id, ...data } = row;
         return {
             ...data,
             artifactAvailable,
             downloadUrl: artifactAvailable ? `/api/builds/${row.id}/artifact` : null,
+            logAvailable,
+            logUrl: logAvailable ? `/api/builds/${row.id}/log` : null,
         };
+    }
+    async remove(id, actor) {
+        const buildId = uuid.parse(id);
+        return this.db.transaction(async (trx) => {
+            const row = await trx('apk_builds').where('id', buildId).first();
+            if (!row) throw fail(404, '构建任务不存在');
+            if (activeStates.includes(row.status)) throw fail(409, '构建进行中，完成后再删除');
+            if (
+                row.artifact_role === 'b' &&
+                (await trx('apk_builds')
+                    .where('payload_build_id', buildId)
+                    .whereIn('status', activeStates)
+                    .first())
+            )
+                throw fail(409, '该 B 包正被 A 包构建使用，完成后再删除');
+            await rm(path.join(this.config.privateDir, 'files', 'apk-builds', buildId), {
+                recursive: true,
+                force: true,
+                maxRetries: 2,
+            });
+            await rm(path.join(this.config.privateDir, 'build-work', buildId), {
+                recursive: true,
+                force: true,
+                maxRetries: 2,
+            });
+            await trx('apk_builds').where('id', buildId).delete();
+            await trx('account_audit').insert({
+                ts: Date.now(),
+                actor_id: actor.id,
+                event: `build_deleted:${buildId}`,
+                ip: null,
+            });
+            return { ok: true, recordDeleted: true, filesDeleted: true };
+        });
     }
     routes() {
         const router = Router();
@@ -255,6 +366,10 @@ export class BuildQueue {
                 .first();
             res.json({
                 data: await Promise.all(rows.map((r) => this.dto(r))),
+                latestB: await (async () => {
+                    const row = await this.latestB(req.user.id);
+                    return row ? this.dto(row) : null;
+                })(),
                 total,
                 page,
                 worker: {
@@ -273,7 +388,34 @@ export class BuildQueue {
                 row.artifact_path,
                 `apk-builds/${id}/`,
             );
-            res.download(file, `application-${id.slice(0, 8)}.apk`, { dotfiles: 'allow' });
+            const prefix =
+                row.artifact_role === 'a'
+                    ? 'installer-a'
+                    : row.artifact_role === 'b'
+                      ? 'worker-b'
+                      : 'application';
+            res.download(file, `${prefix}-${id.slice(0, 8)}.apk`, { dotfiles: 'allow' });
+        });
+        router.get('/builds/:id/log', async (req, res) => {
+            const id = uuid.parse(req.params.id);
+            const row = await this.db('apk_builds').where('id', id).first();
+            if (!row) throw fail(404, '构建日志不存在');
+            const file = await privateFile(
+                path.join(this.config.privateDir, 'build-work'),
+                `${id}/build.log`,
+                `${id}/`,
+            );
+            const prefix =
+                row.artifact_role === 'a'
+                    ? 'installer-a'
+                    : row.artifact_role === 'b'
+                      ? 'worker-b'
+                      : 'application';
+            res.download(file, `${prefix}-${id.slice(0, 8)}.log`, { dotfiles: 'allow' });
+        });
+        router.delete('/builds/:id', async (req, res) => {
+            z.object({}).strict().parse(req.body);
+            res.json(await this.remove(req.params.id, req.user));
         });
         router.get('/builds/:id', async (req, res) => {
             const row = await this.db('apk_builds').where('id', uuid.parse(req.params.id)).first();

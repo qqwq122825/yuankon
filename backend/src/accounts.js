@@ -8,6 +8,7 @@ import jwtPackage from 'passport-jwt';
 import { parseCookie } from 'cookie';
 import { z } from 'zod';
 import { fail } from './protocol.js';
+import { assignAccountApkId } from './account-apk.js';
 
 const { Strategy: JwtStrategy, ExtractJwt } = jwtPackage;
 export const loginSchema = z
@@ -22,6 +23,11 @@ export const loginSchema = z
 const hashPassword = (value) =>
     argon2.hash(value, { type: argon2.argon2id, memoryCost: 19456, timeCost: 2, parallelism: 1 });
 const SESSION_SECONDS = 8 * 3600;
+const validAccount = (user) =>
+    user.valid_until === null ||
+    (Number.isSafeInteger(user.valid_until) &&
+        user.valid_until <= 8640000000000000 &&
+        user.valid_until > Date.now());
 
 export class Accounts extends EventEmitter {
     constructor(db, config, masterKey) {
@@ -69,12 +75,14 @@ export class Accounts extends EventEmitter {
             maxAge: SESSION_SECONDS * 1000,
         };
     }
-    publicUser(row) {
+    async publicUser(row) {
         return {
             id: row.id,
             username: row.username,
             role: row.role,
             expiresAt: row.session_expires_at,
+            validUntil: row.valid_until,
+            apkId: row.apk_id,
         };
     }
     async initialize() {
@@ -83,20 +91,27 @@ export class Accounts extends EventEmitter {
             await this.db.transaction(async (trx) => {
                 if (await trx('node_migrations').where('name', '003_superadmin_seed').first())
                     return;
-                if (!(await trx('accounts').first()))
-                    await trx('accounts').insert({
+                if (!(await trx('accounts').first())) {
+                    const [id] = await trx('accounts').insert({
                         username: 'mtx',
                         password_hash,
                         role: 'superadmin',
                         enabled: true,
                         created_at: Date.now(),
                     });
+                    await assignAccountApkId(trx, { id }, this.config.projectId);
+                }
                 await trx('node_migrations').insert({
                     name: '003_superadmin_seed',
                     created_at: new Date().toISOString(),
                 });
             });
         }
+        // Preserve old APK routes for installed artifacts; expose one canonical ID per account.
+        await this.db.transaction(async (trx) => {
+            for (const account of await trx('accounts').whereNull('apk_id').orderBy('id'))
+                await assignAccountApkId(trx, account, this.config.projectId);
+        });
         // A fixed-cost verification is still performed for unknown usernames.
         this.dummyHash = await hashPassword(randomUUID());
     }
@@ -118,7 +133,8 @@ export class Accounts extends EventEmitter {
             !user?.enabled ||
             user.role !== 'superadmin' ||
             user.session_id !== payload.sid ||
-            user.session_expires_at <= Date.now()
+            user.session_expires_at <= Date.now() ||
+            !validAccount(user)
         )
             throw fail(401, '登录状态已失效，请重新登录');
         return user;
@@ -147,8 +163,12 @@ export class Accounts extends EventEmitter {
                 current.password_hash !== verified.password_hash
             )
                 throw fail(401, '账号或密码错误');
+            if (!validAccount(current)) throw fail(401, '账号已到期，请联系管理员续费');
             const session_id = randomUUID(),
-                session_expires_at = Date.now() + SESSION_SECONDS * 1000;
+                session_expires_at = Math.min(
+                    Date.now() + SESSION_SECONDS * 1000,
+                    current.valid_until ?? Infinity,
+                );
             await trx('accounts')
                 .where('id', current.id)
                 .update({ session_id, session_expires_at });
@@ -162,8 +182,8 @@ export class Accounts extends EventEmitter {
         });
         return {
             token: await this.sign(user, 'boundary-http'),
-            expiresIn: SESSION_SECONDS,
-            user: this.publicUser(user),
+            expiresIn: Math.max(0, Math.floor((user.session_expires_at - Date.now()) / 1000)),
+            user: await this.publicUser(user),
         };
     }
     async logout(user, ip) {

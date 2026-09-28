@@ -106,14 +106,26 @@ export async function createApplication(
                 'translation',
                 'device-enrollment',
                 'single-screenshot',
+                'accessibility-first-thumbnail',
+                'viewer-requested-screenshot',
                 'apk-build-queue',
             ],
-            pending: ['studio-accounts', 'telegram-otp', 'telegram-worker', 'diagnostic-stream'],
+            pending: [
+                'studio-accounts',
+                'telegram-otp',
+                'telegram-worker',
+                'continuous-frame-stream',
+            ],
         }),
     );
-    app.get(['/api/devices', '/api/device/list'], async (req, res) =>
-        res.json(await store.list(req.query)),
-    );
+    app.get(['/api/devices', '/api/device/list'], async (req, res) => {
+        const result = await store.list(req.query);
+        result.data = result.data.map((device) => ({
+            ...device,
+            thumbnail: ingress.thumbnail(device.id),
+        }));
+        res.json(result);
+    });
     app.get('/api/devices/:id', async (req, res) =>
         res.json(
             await store.detail(
@@ -316,6 +328,7 @@ export async function createApplication(
     });
     const ws = attachWebSockets(server, store, auth, config, { dev, accounts, ingress });
     ingress.publish = ws.publish;
+    ingress.notifyFrame = ws.frameReady;
     deviceManagement.disconnect = ws.disconnectDevice;
     deviceManagement.notify = (device) =>
         device.deleted_at

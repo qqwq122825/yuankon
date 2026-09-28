@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { api } from './api.js';
 import { connection, startConnection, stopConnection, onMessage } from './connection.js';
 import FleetStats from './components/FleetStats.vue';
+import AccountBadge from './components/AccountBadge.vue';
 import { session } from './session.js';
 const route = useRoute(),
     router = useRouter(),
@@ -95,13 +96,7 @@ function search() {
                 </form>
                 <FleetStats :stats="stats" />
             </div>
-            <RouterLink to="/settings/account" class="console-account" aria-label="账号设置">
-                <span class="account-avatar">M</span
-                ><span
-                    ><strong>{{ session.user.username }}</strong
-                    ><small>超管 · 全部设备</small></span
-                ><span class="local-mode">账号设置</span>
-            </RouterLink>
+            <AccountBadge />
             <button class="btn console-theme" @click="dark = !dark" aria-label="切换明暗主题">
                 {{ dark ? '浅色' : '深色' }}主题</button
             ><RouterLink

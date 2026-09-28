@@ -10,7 +10,7 @@
 
 ## HTTP
 
-新增的 APK 归属、设备登记、单张截图专用 HTTP 接口详见 [ScreenAgent 接入](SCREENAGENT_INGRESS.md)。`/api/client/register` 使用 10 分钟登记码；`/api/sync/status`、`/api/device/screenshot-session`、`/api/device/screenshot` 使用独立设备 Bearer Token，最后一个端点为受限 multipart，其余写入仍是 JSON。所有写入继续要求 `X-Boundary-Request: 1`。
+新增的 APK 归属、设备登记、实时最新帧专用 HTTP 接口详见 [ScreenAgent 接入](SCREENAGENT_INGRESS.md) 与已实现的 [boundary-screenshot-v2](SCREENSHOT_COMMAND_PROTOCOL.md)。`/api/client/register` 使用 10 分钟登记码；`/api/sync/status`、`/api/device/screenshot-session`、`/api/device/screenshot` 使用独立设备 Bearer Token，最后一个端点为受限 multipart，其余写入仍是 JSON。所有写入继续要求 `X-Boundary-Request: 1`。
 
 | 方法 | 路由 | 行为 |
 |---|---|---|
@@ -21,7 +21,7 @@
 | POST | /api/auth/change-password | `{oldPassword,newPassword}`；新密码 6–128 字符，成功撤销会话 |
 | GET | /api/session | 需登录；10 分钟专用面板 JWT，绑定当前账号会话；只在内存持有 |
 | GET | /api/system/info | 真实能力与待迁移项 |
-| GET | /api/devices、/api/device/list | `{data,total,page,perPage,filters,stats}` |
+| GET | /api/devices、/api/device/list | `{data,total,page,perPage,filters,stats}`；有效单帧附 `thumbnail` |
 | GET | /api/devices/:id?snapshot= | 数值数据库 ID；设备、快照、固定样例标签及事件元数据 |
 | PATCH | /api/devices/:id/note | `{note}`，200 字符上限 |
 | PATCH | /api/devices/:id/blacklist | `{blacklisted:boolean}` → `{device}`；拉黑或取消拉黑，当前超管访问 |
@@ -31,9 +31,11 @@
 | GET | /api/snapshots/:id/image | 登录、设备/快照关联、路径检查、PNG 解码；合成样例走固定 SVG |
 | GET | /api/build-templates | 固定模板清单、源码相对目录、工具链就绪状态 |
 | POST | /api/builds | 构建参数与 requestId → 202 `{build}`；校验、归属检查、排队 |
-| GET | /api/builds?page= | 当前/历史构建、真实状态与产物可用性，20 条一页 |
+| GET | /api/builds?page= | 当前/历史构建、真实状态、产物可用性及当前账号 `latestB`，20 条一页 |
 | GET | /api/builds/:uuid | `{build}` 单任务状态 |
 | GET | /api/builds/:uuid/artifact | 超管下载成功产物；磁盘路径检查 |
+| GET | /api/builds/:uuid/log | 超管下载详细构建日志；包含源码准备、Gradle/Lint、签名、对齐、包信息、摘要及产物保存步骤 |
+| DELETE | /api/builds/:uuid | JSON `{}`；仅完成/失败任务，删除记录及对应 APK、构建日志目录 |
 | GET/PUT/DELETE | /api/settings/translation | 配置状态 / 加密保存 / 清除 |
 | POST | /api/settings/translation/verify | 真实调用固定 Google v2 地址验证已保存密钥 |
 | POST | /api/snapshots/:id/translate | 请求体 `{}`；仅固定合成标签 |
@@ -59,12 +61,17 @@ HTTP 写请求（包括登录）要求 JSON 和 `X-Boundary-Request: 1`，跨站
 {"type":"subscribe","sessionId":"PUBLIC_DEVICE_ID"}
 {"type":"unsubscribe","sessionId":"PUBLIC_DEVICE_ID"}
 {"type":"command","sessionId":"PUBLIC_DEVICE_ID","data":{"command":"GET_DEVICE_STATE","params":{}}}
+{"type":"capture_viewer_heartbeat","sessionId":"PUBLIC_DEVICE_ID","data":{"viewerId":"UUID"}}
+{"type":"command","sessionId":"PUBLIC_DEVICE_ID","data":{"command":"SCREENSHOT_NOW","commandId":"UUID","params":{"viewerId":"UUID"}}}
+{"type":"capture_viewer_close","sessionId":"PUBLIC_DEVICE_ID","data":{"viewerId":"UUID"}}
 ```
 
 - `connected`：明确公布此版本能力。
 - `pong`：应用心跳回应，附服务端毫秒时间戳。
 - `bot_list`：仅有效在线设备；历史完整列表通过 HTTP 获取。
-- `subscribed` / `unsubscribed`：只读订阅确认。
+- `subscribed` / `unsubscribed`：状态订阅确认；本身不启动截图。
+- `capture_viewer_lease / capture_viewer_closed`：实时最新帧查看页的 12 秒租约状态。
+- `command_dispatched / command_ack / screenshot_result / screenshot_ready`：分别表示已下发、设备已接收、设备执行结果、服务端已校验并缓存图片；只有最后一个表示网页可以读取图片。
 - `get_device_state_response`：服务端已知状态，`cached:true`；不代表向设备请求后执行成功。
 - `device_online` / `device_offline` / `device_status_update`：事件驱动广播给有效超管面板，覆盖全部设备；每次广播重新检查会话。
 - `device_removed`：`data:{id,localId}`；面板刷新列表，当前详情返回列表，移除该设备订阅。
@@ -75,9 +82,11 @@ HTTP 写请求（包括登录）要求 JSON 和 `X-Boundary-Request: 1`，跨站
 设备状态事件 `data` 统一：`{id,localId,name,model,osVersion,status,batteryLevel,accessibilityAlive,isLocked,isScreenOn,lastSeen,remark,source,isBlacklisted}`。
 `id` 是公开设备 ID，`localId` 是本地路由数值 ID；Vue 在连接边界归一化成 HTTP 模型。未知锁屏/屏幕值为 null，绝不推测。订阅只推状态，不启动画面、读取凭据或下发设备操作。
 
+截图浮窗每 5 秒续一次查看租约。浮窗关闭、页面卸载或面板 WS 关闭时，Node 撤销待执行项和未使用许可并发 `SCREENSHOT_VIEWER_CLOSE`；设备 12 秒收不到续租也自行停止最新帧循环。完整字段见 `boundary-screenshot-v2`。
+
 ## WS /ws/device（别名 /ws/session）
 
-新登记设备凭证另含可撤销凭证 ID，每次消息验证设备与所有者状态；兼容 ScreenAgent 的 `register`、`device_ping` 和 `status.data.type=device_status` 状态消息，不接受其同名 `screenshot` 元信息作为图片。该接入与下面的旧 CLI 状态凭证相互区分。
+新登记设备凭证另含可撤销凭证 ID，每次消息验证设备与所有者状态；兼容 ScreenAgent 的 `register`、`device_ping` 和 `status.data.type=device_status`，并支持 `boundary-screenshot-v2` 白名单截图指令/逐帧回执，同时接受旧 B 包的 v1 回执。不接受同名 `screenshot` 元信息作为图片。该接入与下面的旧 CLI 状态凭证相互区分。
 
 本机登记设备并签发 7 天独立 JWT：
 
@@ -101,16 +110,16 @@ npm run device:token -- TEST_DEVICE_001
 
 ## 审计与尚未接入的能力
 
-截图会话的下一阶段契约见 [boundary-screen-v1 设计稿](SCREEN_CAPTURE_PROTOCOL.md)。该设计不改变本文件的已实现范围；`capture_*` 消息和 `/api/v1/capture-sessions` 等端点尚未接入。
+完整截图会话的下一阶段契约见 [boundary-screen-v1 设计稿](SCREEN_CAPTURE_PROTOCOL.md)。其 `/api/v1/capture-sessions`、暂停/恢复、质量切换和历史帧端点尚未接入；不要与已实现的 `boundary-screenshot-v2` 最新帧租约混用。
 
 审计仅保存项目、时间、设备标识、方向、通道、白名单消息类型、字节数，不保存完整载荷、密钥、节点正文或图片。连接保活不逐条写库，状态和业务读取写元数据。启动及每小时清理 7 天前记录。
 
 账号审计另存 `account_audit`，保留登录成功/失败、退出、改密及设备拉黑/取消/删除事件、账号 ID、IP 和时间；设备管理事件包含公开设备 ID，不保存凭证或请求正文。设备管理同时记录真实项目范围的协议审计。
 
-`/ws/bridge`、反向隧道、任意代理、二进制/base64画面流、自动采集、操作指令及原 PHP v1 诊断接口尚未接入。总台/子账号/验证码/设备下发仍待实现；已加入 APK ID 到现有超管的首次登记归属。收到不支持的二进制帧返回 `unsupported_binary`，不透传。原 android-shell 不变；独立 android-screenagent 接入副本仅手机确认后发送一张截图。
+`/ws/bridge`、反向隧道、任意代理、二进制/base64 画面流、输入操作及原 PHP v1 诊断接口尚未接入。总台/子账号/验证码仍待实现；已加入 APK ID 到现有超管的首次登记归属。收到不支持的二进制帧返回 `unsupported_binary`，不透传。原 android-shell 不变；B 包只实现无障碍首图和有效网页租约内的串行最新帧。
 
 ## 网页构建参数
 
-`POST /api/builds`：`{templateId,domain,appName,homeUrl,apkId,batch?,packageName?,requestId}`。requestId 为 UUID，相同提交重试幂等，换配置必须换 requestId。batch 和 packageName 默认空，空包名服务端随机生成；模板决定 versionName/versionCode。domain 支持 local、已登记简称、HTTPS origin；homeUrl 只接受不带凭证的 HTTPS URL。
+`POST /api/builds`：B 包使用 `{templateId,domain,appName,apkId?,batch?,packageName?,requestId}`，只接收后台域名；A 包使用 `{templateId:"installer-1.0",appName,homeUrl,packageName?,requestId}`，只接收 HTTPS 首页地址。给 B 包传 `homeUrl` 或给 A 包传 `domain` 均返回 422。requestId 为 UUID，相同提交重试幂等，换配置必须换 requestId。apkId 可空或省略：有效账号固定编号指定归属，未匹配可用账号或留空归默认接收账号（当前为超管），不创建新编号。响应 build 的 apk_id 为实际编号，requested_apk_id 保留输入，owner_account_id / owner_username / routing_reason 表示构建时归属快照；原因取 explicit / default_empty / default_unmatched。A 包必须存在同项目、同归属账号的最新成功 B 包，任务创建时固定 `payload_build_id/payload_sha256/payload_package_name`；缺少 B 返回 409，A/B 包名相同返回 422。batch 和 packageName 默认空，空包名服务端随机生成；模板决定 versionName/versionCode。B 包 domain 支持 local、已登记简称、HTTPS origin；A 包 homeUrl 只接受不带凭证的 HTTPS URL。构建后的 B 包必须没有 MAIN/LAUNCHER，A 包必须有桌面入口，否则包信息校验失败。
 
-任务持久化 queued/building/succeeded/failed，stage 细分 preparing/compiling/verifying；失败返回经过归一化的 error_message，不泄漏工具输出。成功才返回 downloadUrl/sha256/size/artifactAvailable。最多 10 个未完成任务，单任务 20 分钟；额度/工具链错误返回 429/409/503。保存模板配置快照、提交者和 APK ID 归属，后续新增角色需统一加入租户检查。下载链接不携带 Token，始终要求当前超管登录。详见 [模板与队列](../../android/apk-templates/README.md)。
+任务持久化 queued/building/succeeded/failed，stage 细分 preparing/compiling/signing/aligning/inspecting/publishing；失败返回经过归一化的 error_message，不泄漏工具输出。成功才返回 downloadUrl/sha256/size/artifactAvailable；日志文件存在时返回 logAvailable/logUrl，日志下载同样要求当前超管登录。最多 10 个未完成任务，单任务 20 分钟；额度/工具链错误返回 429/409/503。完成或失败的任务可确认删除，服务端按已校验 UUID 同时删除数据库记录、`files/apk-builds/<UUID>` 产物目录和 `build-work/<UUID>` 日志目录，并写入账号审计；排队中或构建中的任务返回 409。保存模板配置快照、提交者和 APK ID 归属，后续新增角色需统一加入租户检查。下载链接不携带 Token。详见 [模板与队列](../../android/apk-templates/README.md)。

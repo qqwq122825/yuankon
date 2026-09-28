@@ -1,16 +1,16 @@
-# ScreenAgent 首次登记与单张截图接入
+# ScreenAgent 首次登记与实时最新帧接入
 
-2026-09-28：按用户确认，本阶段只做 **设备归属 + 手机主动发送一张截图**。连续截图、网页发起共享与 10 秒查看租约仍按 [截图会话设计](SCREEN_CAPTURE_PROTOCOL.md) 留待下一阶段。
+2026-09-28：已完成 **设备归属 + 无障碍开启首图 + 网页租约内实时最新帧**。已上线的消息、12 秒查看租约、Android 版本调度间隔和关闭语义见 [boundary-screenshot-v2](SCREENSHOT_COMMAND_PROTOCOL.md)。带暂停/恢复、质量切换和历史帧的完整诊断会话仍按 [截图会话设计](SCREEN_CAPTURE_PROTOCOL.md) 留待后续。
 
 ## 现在怎么用
 
-1. 启动本机 Node，登录超管，进入「构建」页面中的「设备接入 · APK ID 归属」。
-2. 保存 APK ID，例如接入模板默认的 `10074`，归属当前超管 `mtx`。当前仅支持已有启用的超管账户，总台/子账号尚未加入。
-3. 选该 APK ID，生成 10 分钟设备登记码。一个码登记一台设备；短效码只在生成时返回，不保存到网页 localStorage 或日志。
+1. 启动本机 Node，登录超管。账号创建时已有固定 APK ID，在顶栏或账号设置查看，不手动创建归属。
+2. 从网页构建 APK：编号可选；留空或未匹配可用账号时使用默认接收账号（当前为超管）。构建记录显示最终写入 APK 的实际编号；总台/子账号尚未加入。
+3. 进入「账号设置 → 设备接入调试」，选构建记录中的实际 APK ID，生成 10 分钟设备登记码。一个码登记一台设备；短效码只在生成时返回，不保存到网页 localStorage 或日志。
 4. 使用 `android-screenagent` 的接入版 APK，在手机填 **后台 origin** 和登记码，点「登记设备」。首页网址不再用于上报。
 5. 手机登记成功得到独立设备 Token；WS 使用该 Token 上线，后台列表展示设备。详情的「APK ID / 归属」显示真实服务端分配。
-6. 手机点击「确认并发送一张截图」，确认系统共享对话框。应用持续显示通知及停止按钮；后台接受一张图片后释放共享资源。单次最多运行 15 秒；取消、失败、退出 Activity、系统结束共享也释放资源。截图仅使用测试内容。
-7. 网页打开设备详情 →「设备上报截图」。此浮窗查看最近一次接收的图片，不是实时视频；最新图最多暂存 5 分钟，新图替换旧图。历史节点/快照仍是独立入口。
+6. 手机打开系统无障碍设置并启用「Boundary 只读截图」。Android 11+ 自动取一帧作为列表临时缩略图；服务不读取窗口正文。Android 10 及以下可使用设置页的 MediaProjection 兼容单次按钮。
+7. 网页打开设备详情，点击圆形「开始」或右侧「实时查看截图」。页面每 5 秒续 12 秒查看租约，Node 下发一次 `SCREENSHOT_NOW`；`screenagent-1.2` 随后按 Android 11 1001ms、Android 12+ 334ms 的最短安全调度间隔串行上传最新帧。浮窗/网页关闭、WS 断线或租约失效均停止循环。最新图最多暂存 5 分钟，新图替换旧图。
 
 ### 本机真机连接
 
@@ -28,7 +28,8 @@ HTTPS 外部部署仍需另行完成 Host/Origin、TLS、代理信任、设备�
 ## 首次归属规则
 
 ```text
-后台保存：APK ID → project_id + owner_account_id
+创建账号：自动分配固定 APK ID → project_id + owner_account_id
+构建解析：有效账号编号 → 指定归属；空/未匹配 → 默认账号编号写入 APK
 后台签发：10 分钟登记码 → 一条登记许可
 手机登记：登记码 + deviceId + apkId + 基础设备画像
 服务端事务：核对许可和 APK 归属 → 创建设备 → 固定归属 → 签发设备 Token
@@ -49,14 +50,13 @@ HTTPS 外部部署仍需另行完成 Host/Origin、TLS、代理信任、设备�
 | 主体 | 接口 | 行为 |
 |---|---|---|
 | 超管 | `GET /api/apk-routes` | 查看 APK ID 与归属用户名 |
-| 超管 | `POST /api/apk-routes` | `{apkId,ownerAccountId?}`；默认当前账号，已有 APK ID 返回 409 |
 | 超管 | `POST /api/device-enrollments` | `{apkId}` → `{enrollmentId,enrollmentToken,expiresAt}`；10 分钟 |
 | 登记码 | `POST /api/client/register` | 下面的原 ScreenAgent 设备画像 → 设备凭证与归属 |
 | 设备 | `POST /api/sync/status` | `{deviceId,apkId?,batteryLevel?,accessibilityAlive?,...}`；仅白名单状态更新 |
-| 设备 | `POST /api/device/screenshot-session` | `{deviceId,consent:true}` → `{uploadId,expiresAt}`；60 秒、一张图 |
+| 设备 | `POST /api/device/screenshot-session` | `manual_user / initial_accessibility / viewer_request` 三种严格原因 → 60 秒一次性许可 |
 | 设备 | `POST /api/device/screenshot` | 原 multipart 字段 + `X-Capture-Upload: uploadId`；接收成功后返回 201 |
 | 超管 | `GET /api/devices/:id/ownership` | `id` 为数值设备记录 ID，返回 APK ID 和归属账号 |
-| 超管 | `GET /api/devices/:id/screenshot` | `{frame,mode:"single-frame",retentionSeconds:300}`；无图 frame 为 null |
+| 超管 | `GET /api/devices/:id/screenshot` | `{frame,mode:"leased-latest-frame",retentionSeconds:300}`；无图 frame 为 null |
 | 超管 | `GET /api/devices/:id/screenshot/:frameId` | 校验当前登录态后读取临时 JPEG；替换/过期返回 410 |
 | 超管 | `POST /api/devices/:id/revoke` | `{}` 撤销本阶段登记的设备凭证并清理图片/上传许可；旧 CLI 设备不适用 |
 
@@ -65,11 +65,11 @@ HTTPS 外部部署仍需另行完成 Host/Origin、TLS、代理信任、设备�
 ```json
 {
   "deviceId": "TEST_SCREEN_DEVICE",
-  "apkId": "10074",
+  "apkId": "1",
   "brand": "Synthetic",
   "model": "Test device",
   "osVersion": "14",
-  "appVersion": "1.0.0",
+  "appVersion": "1.1.0",
   "appName": "ScreenAgent",
   "batch": "",
   "buildId": "test-build",
@@ -81,14 +81,14 @@ HTTPS 外部部署仍需另行完成 Host/Origin、TLS、代理信任、设备�
 
 图片 multipart 保留 `deviceId/apkId/batch/buildId/ts/file`。`ts` 为采样端毫秒时间，仅作报告；服务端 `receivedAt` 才是接收时间。图片文件名忽略，单幅 JPEG 最大 2MiB、最多 400 万像素、最长边 4096px；真实解码并剥除元数据后重新编码。新增请求头 `X-Capture-Upload` 绑定一次性上传许可，旧许可、换设备、改归属、撤销、过期或重复使用都失败。
 
-成功响应为 `{frameId,receivedAt,capturedAt,expiresAt,width,height,imageUrl}`。只有完成校验且写入临时缓存后才返回成功，不把 WS 截图元信息当成图片上传成功。对上传失败不重试旧帧；需要时由手机用户再次发起。
+成功响应为 `{frameId,receivedAt,capturedAt,expiresAt,width,height,imageUrl,reason,commandId,viewerId}`。只有完成校验且写入临时缓存后才返回成功，不把 WS 回执当成图片上传成功。列表仅把仍在 5 分钟有效期内的图片作为临时缩略图。
 
-WS 仍使用 `/ws/device` 和 Bearer 设备凭证。本阶段登记的设备兼容原 ScreenAgent 的 `register`、`device_ping`、`status/data.type=device_status`，转成已有状态模型；`register` 只返回既有归属，不二次登记。原 `screenshot` 元信息没有图片内容，继续不作为图片帧接收。没有启用 START_CAPTURE 或其他远程采集命令。
+WS 仍使用 `/ws/device` 和 Bearer 设备凭证。登记设备兼容 `register`、`device_ping`、`status/data.type=device_status`，并实现 `boundary-screenshot-v2` 的 `SCREENSHOT_VIEWER_LEASE / SCREENSHOT_NOW / SCREENSHOT_VIEWER_CLOSE`、`command_ack` 与逐帧 `screenshot_result`；Node 继续接受 1.1 B 包的 v1 回执。原 `screenshot` 元信息不作为图片帧接收；没有启用输入或其他远程操作。
 
 ## 数据、限额与兼容
 
 - SQLite 新增 `apk_routes/device_enrollments/device_credentials`；devices 新增 APK ID、归属账户列；事务迁移，不重建旧设备或旧快照。
-- 一次性截图许可仅内存保存；同设备新请求作废旧请求，成功接收后消费。临时图片也仅在内存，进程重启即清空。
+- 每帧上传许可仅内存保存且成功接收后消费；查看命令由 5 秒心跳延续，关闭或 12 秒租约失效时撤销。临时图片也仅在内存，进程重启即清空。
 - 全局最多 64 个有效上传许可、2 个在途上传/解码任务；单请求 10 秒；临时编码图总量最多 16MiB。超限返回 429；该限制不是整个进程的内存上限。
 - 无图片永久归档、无 Base64 入库、无 multipart/Token 正文审计；只记录登记、许可签发、接收/撤销等白名单元数据。
 - 首次上线归属和设备截图均走专用接口，未恢复手动导入页面或任意文件上传接口。
@@ -97,10 +97,12 @@ WS 仍使用 `/ws/device` 和 Bearer 设备凭证。本阶段登记的设备兼�
 
 ## APK 源码与构建
 
-- `android/apk-templates/screenagent-1.0/`：从用户 ScreenAgent 提取的接入副本，未执行 `server_patch`，未复制该补丁或注入脚本。
-- 原 `/Users/xxx/Downloads/ScreenAgent/` 与 `android/apk-templates/browser-1.0/` 均保留原样。
+- `screenagent-1.2` 是当前 B 包工作端，只写入后台域名，不保存首页，也不声明桌面 MAIN/LAUNCHER；系统安装完成页只提供“完成”。A 包安装器通过显式包名和 `org.boundarylab.screenagent.SETUP` 打开设置页。无障碍服务声明截图能力，但 `canRetrieveWindowContent=false`，事件回调为空。`screenagent-1.1` 保留按需单张行为，`screenagent-1.0` 保留旧手动单次行为。
+- `installer-1.0` 是 A 包桌面安装器，单独写入 HTTPS 首页。Node 只从同一归属账号的成功 B 包产物复制 `payload.apk`，固定写入构建 ID/摘要/包名；手机端再次校验摘要后调用系统安装器，不使用静默安装。
+- `android/apk-templates/b-packages/screenagent-1.2/`：当前 B 包接入源码；以后截图、无障碍视图等工作能力均通过新增 B 包版本演进。
+- `android/apk-templates/standalone/browser-1.0/` 保留为独立浏览器模板。
 - `CaptureController.kt` 与附件同文件 SHA-256 一致：`58a0838b79f384f60403abacb08553415b3911f163416b8126beed5bd858739a`。
-- 外围调整：后端地址与 Token、登记 UI、请求回执、单次采集服务生命周期；新增可见停止按钮/通知。本接入副本取消开机采集入口，不运行循环采集，不使用 START_STICKY。
+- 外围调整：后端地址与 Token、登记 UI、无障碍设置入口、设备 WS 心跳、首图与租约实时查看回执；MediaProjection 兼容入口仍有通知和停止按钮。本接入副本没有开机采集入口，不使用 START_STICKY；实时最新帧只在查看租约有效时运行。
 - 使用本项目已安装的 API 35 / AGP 8.9.2 / Gradle 8.11.1 工具链编译，APK targetSdk 仍为 34；Kotlin 为原 1.9.22。原浏览器构建命令不变。
 
 ```bash
@@ -109,19 +111,19 @@ npm run build:screenagent
 SCREENAGENT_GRADLE_ONLINE=1 npm run build:screenagent
 ```
 
-脚本复制固定源码到 `android/dist/screenagent-*/source`，编译、Lint、签名校验、对齐校验后输出 `screenagent.apk`。默认 APK ID 为 10074；登记码不打包进 APK。
+脚本复制固定源码到 `android/dist/screenagent-*/source`，编译、Lint、签名校验、对齐校验后输出 `screenagent.apk`。独立 CLI 的模板默认 APK ID 为当前超管编号 `1`，不经过 Node 归属解析；实际接入应优先使用网页构建，它会写入真实账号编号。登记码不打包进 APK。
 
 ## 验证范围
 
-Node 测试覆盖首次/重试/并发登记、身份混用、设备标识伪造、原 WS 心跳、真实 JPEG 解码与读回、非法格式/像素/大小、跨设备许可、撤销及到期。浏览器测试使用生成的纯色 JPEG，验证构建页登记码、设备归属、受控取图、浮窗和窄窗口布局；该图片不是手机截图。
+Node 测试覆盖首次/重试/并发登记、身份混用、设备标识伪造、WS 心跳、首图限频、查看租约续期、同一命令连续多帧许可、关闭、真实 JPEG 解码与读回、非法格式/像素/大小、跨设备许可、撤销及到期。浏览器测试使用生成的纯色 JPEG，验证列表缩略图、设备归属、实时查看浮窗和窄窗口布局；该图片不是手机截图。
 
-真机需另验：通知提示/停止按钮、系统共享确认、USB 本机登记、一次上传后结束、取消/旋转/断网/退出/锁屏清理。当前没有真机运行结果。
+真机需另验：系统无障碍启停、Android 11+ `takeScreenshot`、安全窗口失败、USB 本机登记、网页直接关闭后的 12 秒失效、Android 10 兼容按钮及旋转/断网/锁屏清理。当前没有真机运行结果。
 
 ### 本次本地验证记录
 
-- `npm run check`：格式、前端编译、45 项 Node 测试通过。
-- `npm run test:e2e`：9 项 Chromium 测试通过；单张图片验证使用生成的合成 JPEG。
-- `npm run build:screenagent`：Gradle 编译、Lint（0 错误 / 16 警告）、开发签名与 zipalign 通过。
-- APK：`android/dist/screenagent-NhlMMt/screenagent.apk`；SHA-256 `13cc046a9590ca8f874b7c1026bc54f493295f8dbbaf6e8463920864b8e2f2f4`。
+- `npm run check`：格式、前端编译、71 项 Node 测试通过。
+- `npm run test:e2e`：14 项 Chromium 测试通过；图片验证使用生成的合成 JPEG。
+- `npm run build:screenagent`：`screenagent-1.2` Gradle 编译、Lint、开发签名与 zipalign 通过，确认 `versionName=1.2.0`、`versionCode=3` 且无桌面入口。
+- APK：`android/dist/screenagent-kytMC6/screenagent.apk`；3,748,854 字节；SHA-256 `fe4064e1ec415bbc74d58f0f3e4e5b9f9ddbe77c2d6a54dc50a8ed2717bcfb83`。
 - 本机 SQLite 升级前已在线备份；已验证带旧快照外键的原地加列迁移，旧 6 台设备、5 条快照保留，`foreign_key_check` 为 0 条错误。
-- 本机服务健康检查通过；未创建提交、推送、安装 APK 或做外部部署。
+- 本机服务已在 `127.0.0.1:8080` 启动且健康检查返回 200；ADB 没有连接设备，因此未安装 APK，真实 Android 11/12+ 帧率与厂商差异仍需真机验收。未创建提交、推送或做外部部署。

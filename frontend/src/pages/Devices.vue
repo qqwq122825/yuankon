@@ -244,8 +244,17 @@ function value(row, key) {
                         />
                     </td>
                     <td>
-                        <span class="phone-preview" :class="`preview-${row.id % 4}`"
-                            ><span>{{ row.source === 'sample' ? '示例' : '记录' }}</span></span
+                        <span
+                            class="phone-preview"
+                            :class="[`preview-${row.id % 4}`, { 'has-thumbnail': row.thumbnail }]"
+                            ><img
+                                v-if="row.thumbnail"
+                                :src="row.thumbnail.imageUrl"
+                                :alt="`${row.name} 临时首图缩略图`"
+                                @error="row.thumbnail = null"
+                            /><span v-else>{{
+                                row.source === 'sample' ? '示例' : '记录'
+                            }}</span></span
                         >
                     </td>
                     <td v-for="[key] in columns" :key="key">

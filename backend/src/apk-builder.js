@@ -78,7 +78,13 @@ export function androidString(value) {
         '"'
     );
 }
-export async function prepareSource(config, job, template, destination) {
+export async function fileSha256(file) {
+    const hash = createHash('sha256');
+    for await (const chunk of createReadStream(file)) hash.update(chunk);
+    return hash.digest('hex');
+}
+
+export async function prepareSource(config, job, template, destination, { payloadFile } = {}) {
     const source = await templateSource(config.root, template);
     await mkdir(path.join(destination, 'app'), { recursive: true, mode: 0o700 });
     for (const name of await readdir(source)) {
@@ -106,9 +112,35 @@ export async function prepareSource(config, job, template, destination) {
     await writeFile(resources, xml);
     const assets = path.join(destination, 'app/src/main/assets');
     await mkdir(assets, { recursive: true });
+    if (template.kind === 'installer') {
+        if (
+            !payloadFile ||
+            !job.payload_build_id ||
+            !job.payload_sha256 ||
+            !job.payload_package_name
+        )
+            throw new Error('Installer payload is missing');
+        if ((await fileSha256(payloadFile)) !== job.payload_sha256)
+            throw new Error('Installer payload digest mismatch');
+        await copyFile(payloadFile, path.join(assets, 'payload.apk'));
+        await writeFile(
+            path.join(assets, 'installer_config.json'),
+            JSON.stringify(
+                {
+                    payloadBuildId: job.payload_build_id,
+                    payloadSha256: job.payload_sha256,
+                    payloadPackageName: job.payload_package_name,
+                    homeUrl: job.home_url,
+                },
+                null,
+                2,
+            ),
+        );
+        return;
+    }
     const values = {
         serverUrl: job.backend_url.replace(/^http/, 'ws'),
-        webUrl: job.home_url,
+        ...(template.kind === 'browser' ? { webUrl: job.home_url } : {}),
         apkId: job.apk_id,
         batch: job.batch,
         buildId: job.id,
@@ -171,7 +203,22 @@ export function runTool(file, args, { cwd, env, signal, log = () => {} }) {
         });
     });
 }
-export async function buildApk(config, job, template, { signal, stage }) {
+
+export async function runLoggedTool(label, file, args, options) {
+    options.log(
+        `[${new Date().toISOString()}] [COMMAND:${label}] START ${JSON.stringify([file, ...args])}\n`,
+    );
+    try {
+        const output = await runTool(file, args, options);
+        options.log(`[${new Date().toISOString()}] [COMMAND:${label}] OK\n`);
+        return output;
+    } catch (error) {
+        options.log(`[${new Date().toISOString()}] [COMMAND:${label}] FAILED\n`);
+        throw error;
+    }
+}
+
+export async function buildApk(config, job, template, { signal, stage, payloadFile }) {
     const folder = path.join(config.privateDir, 'build-work', job.id),
         source = path.join(folder, 'source');
     await mkdir(folder, { recursive: true, mode: 0o700 });
@@ -188,13 +235,28 @@ export async function buildApk(config, job, template, { signal, stage }) {
             logBytes += size;
         }
     };
+    const logLine = (message) => log(`[${new Date().toISOString()}] ${message}\n`);
+    const setStage = async (value, detail) => {
+        logLine(`[STAGE:${value}] ${detail}`);
+        await stage(value);
+    };
     const t = toolchain(config),
         options = { cwd: folder, env: t.env, signal, log };
     try {
+        logLine(
+            `[BUILD] START id=${job.id} role=${job.artifact_role || 'standalone'} template=${template.id} sourceDir=${template.sourceDir}`,
+        );
+        logLine(
+            `[IDENTITY] package=${job.package_name} versionName=${template.versionName} versionCode=${template.versionCode}`,
+        );
+        if (template.kind === 'installer')
+            logLine(
+                `[PAYLOAD] buildId=${job.payload_build_id} package=${job.payload_package_name} sha256=${job.payload_sha256}`,
+            );
         if (!(await checkTools(config)).ready) throw new Error('Missing build tools');
-        await stage('preparing');
-        await prepareSource(config, job, template, source);
-        await stage('compiling');
+        await setStage('preparing', 'copy registered template and inject validated configuration');
+        await prepareSource(config, job, template, source, { payloadFile });
+        await setStage('compiling', 'assemble debug APK and run Android Lint');
         const prefix = template.kind === 'browser' ? 'shell' : '';
         const props =
             template.kind === 'browser'
@@ -208,7 +270,8 @@ export async function buildApk(config, job, template, { signal, stage }) {
                       `-PversionName=${template.versionName}`,
                       `-PversionCode=${template.versionCode}`,
                   ];
-        await runTool(
+        await runLoggedTool(
+            'GRADLE_ASSEMBLE_LINT',
             t.gradle,
             [
                 '-p',
@@ -223,29 +286,50 @@ export async function buildApk(config, job, template, { signal, stage }) {
             ],
             options,
         );
-        await stage('verifying');
         const apk = path.join(source, 'app/build/outputs/apk/debug/app-debug.apk');
         const size = (await stat(apk)).size;
         if (size < 1000 || size > 150 * 1024 * 1024) throw new Error('Invalid APK size');
-        await runTool(t.signer, ['verify', '--verbose', apk], options);
-        await runTool(t.align, ['-c', '-P', '16', '4', apk], options);
-        const metadata = await runTool(t.aapt, ['dump', 'badging', apk], options);
+        logLine(`[APK] compiled size=${size}`);
+        await setStage('signing', 'verify APK development signature');
+        await runLoggedTool('APKSIGNER_VERIFY', t.signer, ['verify', '--verbose', apk], options);
+        await setStage('aligning', 'verify 4-byte and 16 KiB page alignment');
+        await runLoggedTool('ZIPALIGN_VERIFY', t.align, ['-c', '-P', '16', '4', apk], options);
+        await setStage('inspecting', 'read package, version and launcher metadata');
+        const metadata = await runLoggedTool(
+            'AAPT_BADGING',
+            t.aapt,
+            ['dump', 'badging', apk],
+            options,
+        );
         if (
             !metadata.includes(`package: name='${job.package_name}'`) ||
             !metadata.includes(`versionName='${template.versionName}'`) ||
             !metadata.includes(`versionCode='${template.versionCode}'`)
         )
             throw new Error('APK identity mismatch');
-        const hash = createHash('sha256');
-        for await (const chunk of createReadStream(apk)) hash.update(chunk);
-        const sha256 = hash.digest('hex');
+        const hasLauncher = metadata.includes('launchable-activity:');
+        if (template.kind === 'screenagent' && hasLauncher)
+            throw new Error('B package unexpectedly exposes a launcher activity');
+        if (template.kind !== 'screenagent' && !hasLauncher)
+            throw new Error('Visible package is missing its launcher activity');
+        logLine(
+            `[ROLE] launcher=${hasLauncher} expected=${template.kind === 'screenagent' ? 'absent' : 'present'}`,
+        );
+        const sha256 = await fileSha256(apk);
+        logLine(`[APK] sha256=${sha256}`);
         const artifact_path = `apk-builds/${job.id}/application.apk`;
         const output = path.join(config.privateDir, 'files', artifact_path);
+        await setStage('publishing', 'copy verified APK to authenticated artifact storage');
         await mkdir(path.dirname(output), { recursive: true, mode: 0o700 });
         if (signal.aborted) throw new Error('Build interrupted');
         await copyFile(apk, output);
+        logLine(`[BUILD] SUCCEEDED artifact=${artifact_path} size=${size} sha256=${sha256}`);
         return { artifact_path, size, sha256 };
+    } catch (error) {
+        logLine(`[BUILD] FAILED name=${error.name} message=${error.message}`);
+        throw error;
     } finally {
+        logLine('[CLEANUP] remove private source copy');
         logStream.end();
         await finished(logStream);
         await rm(source, { recursive: true, force: true });

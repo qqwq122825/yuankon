@@ -32,13 +32,72 @@ test('repository has three source folders, nested dependencies and correctly loc
         const source = await templateSource(ROOT, t);
         assert.ok(source.startsWith(path.join(ROOT, 'android/apk-templates') + path.sep));
         await access(path.join(source, 'app/src/main/AndroidManifest.xml'));
+        assert.equal(
+            t.sourceDir.split('/')[0],
+            t.kind === 'installer'
+                ? 'a-packages'
+                : t.kind === 'screenagent'
+                  ? 'b-packages'
+                  : 'standalone',
+        );
     }
+    const screenagent = path.join(
+        ROOT,
+        'android/apk-templates/b-packages/screenagent-1.2/app/src/main',
+    );
+    const manifest = await readFile(path.join(screenagent, 'AndroidManifest.xml'), 'utf8');
+    const screenagentConfig = await readFile(
+        path.join(screenagent, 'assets/agent_config.json'),
+        'utf8',
+    );
+    const installer = path.join(
+        ROOT,
+        'android/apk-templates/a-packages/installer-1.0/app/src/main',
+    );
+    const installerManifest = await readFile(path.join(installer, 'AndroidManifest.xml'), 'utf8');
+    const installerActivity = await readFile(
+        path.join(installer, 'java/org/boundarylab/installer/MainActivity.java'),
+        'utf8',
+    );
+    const service = await readFile(
+        path.join(
+            screenagent,
+            'java/com/zaka/screenagent/accessibility/BoundaryAccessibilityService.kt',
+        ),
+        'utf8',
+    );
+    const socket = await readFile(
+        path.join(screenagent, 'java/com/zaka/screenagent/net/AgentSocket.kt'),
+        'utf8',
+    );
+    const metadata = await readFile(
+        path.join(screenagent, 'res/xml/boundary_accessibility_service.xml'),
+        'utf8',
+    );
+    assert.match(manifest, /BIND_ACCESSIBILITY_SERVICE/);
+    assert.doesNotMatch(manifest, /android\.intent\.action\.MAIN/);
+    assert.doesNotMatch(manifest, /android\.intent\.category\.LAUNCHER/);
+    assert.doesNotMatch(screenagentConfig, /webUrl/);
+    assert.match(installerManifest, /android\.intent\.action\.MAIN/);
+    assert.match(installerManifest, /android\.intent\.category\.LAUNCHER/);
+    assert.match(installerActivity, /config\.getString\("homeUrl"\)/);
+    assert.match(metadata, /canTakeScreenshot="true"/);
+    assert.match(metadata, /canRetrieveWindowContent="false"/);
+    assert.match(service, /CMD_VIEWER_LEASE/);
+    assert.match(service, /initial_accessibility/);
+    assert.match(service, /Build\.VERSION_CODES\.R\) 1001L else 334L/);
+    assert.match(service, /scheduleViewerFrame/);
+    assert.match(service, /onServiceConnected[\s\S]*connect\(\)/);
+    assert.match(service, /accessibilityAlive", true/);
+    assert.match(socket, /send\(Protocol\.UP_STATUS/);
+    assert.match(socket, /send\(Protocol\.UP_PING/);
+    assert.match(socket, /main\.postDelayed\(this, 20_000\)/);
 });
 test('template sourceDir accepts version folders but stays inside the unified template root', async () => {
     const base = (await loadTemplates(ROOT))[0];
     assert.equal(
-        templateSchema.parse({ ...base, sourceDir: 'screenagent-1.1' }).sourceDir,
-        'screenagent-1.1',
+        templateSchema.parse({ ...base, sourceDir: 'b-packages/screenagent-1.2' }).sourceDir,
+        'b-packages/screenagent-1.2',
     );
     for (const sourceDir of ['../backend', '/tmp/code', 'safe/../../other', 'safe/../code'])
         assert.equal(templateSchema.safeParse({ ...base, sourceDir }).success, false);

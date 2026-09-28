@@ -28,3 +28,27 @@ export async function migrateBuilds(db) {
         });
     });
 }
+
+export async function migrateAbPackageBuilds(db) {
+    if (await db('node_migrations').where('name', '010_ab_package_builds').first()) return;
+    await db.transaction(async (trx) => {
+        await trx.schema.alterTable('apk_builds', (t) => {
+            t.string('artifact_role').nullable().index();
+            t.string('payload_build_id').nullable().index();
+            t.string('payload_sha256').nullable();
+            t.string('payload_package_name').nullable();
+        });
+        await trx('apk_builds')
+            .where('template_id', 'screenagent-1.0')
+            .whereNull('artifact_role')
+            .update({ artifact_role: 'b' });
+        await trx('apk_builds')
+            .whereNotNull('template_id')
+            .whereNull('artifact_role')
+            .update({ artifact_role: 'standalone' });
+        await trx('node_migrations').insert({
+            name: '010_ab_package_builds',
+            created_at: new Date().toISOString(),
+        });
+    });
+}

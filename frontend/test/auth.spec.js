@@ -26,7 +26,12 @@ test('deep links require login; errors, cookie restoration and logout work', asy
     expect(await page.evaluate(() => document.cookie)).not.toContain('boundary_session');
     expect(await page.evaluate(() => Object.keys(localStorage))).toEqual(['boundary-theme']);
     await page.reload();
-    await expect(page.getByText('超管 · 全部设备')).toBeVisible();
+    await expect(page.getByRole('link', { name: '账号设置', exact: true })).toContainText(
+        '超管 · APK',
+    );
+    await expect(page.getByRole('link', { name: '账号设置', exact: true })).toContainText(
+        '长期有效',
+    );
     await page.goto('/settings/account');
     await expect(page.getByRole('heading', { name: 'mtx · 超级管理员' })).toBeVisible();
     await page.getByRole('button', { name: '退出登录', exact: true }).click();

@@ -6,7 +6,7 @@
 
 已实现：列表/详情、排序分页、备注、私有图片查看、节点双浮窗、脱敏导出、翻译、状态 WS、协议审计、超管登录与单端会话。具体以 [通信契约](NODE_PROTOCOL.md) 和 [账号设计](ACCOUNT_DESIGN.md) 为准。
 
-截至本轮：新增网页 APK 构建队列、APK ID 首次归属、单张截图接入，见模板指南和 ScreenAgent 接入。尚未实现：Telegram 配对/构建/回传、连续诊断租约/帧、工作室/子账号/机器人验证码/设备下发。旧 PHP 对应实现已移除，不再以“仍可运行旧 Worker”描述这些能力。Android 模板保持原有可见浏览器与无采集的状态引导功能。
+截至本轮：新增网页 APK 构建队列、APK ID 首次归属、无障碍首图与网页租约内实时最新帧，见模板指南和 ScreenAgent 接入。尚未实现：Telegram 配对/构建/回传、带暂停/恢复和质量控制的完整诊断会话、工作室/子账号/机器人验证码/设备下发。旧 PHP 对应实现已移除，不再以“仍可运行旧 Worker”描述这些能力。Android 浏览器模板保持原有可见界面与无采集的状态引导功能。
 
 ## 已移除
 
@@ -23,7 +23,7 @@
 - 原有 `backend/.node-private/boundary.sqlite`、`master.key`、超管密码和设备数据保持不变。
 - 本机已有 6 台合成示例设备、5 份快照、12 条事件、4 条历史构建记录；不把样例当成真实手机连接。
 - 原 `storage/app/private` 的 652 个文件已复制到 `backend/.node-private/files` 并逐一核对 SHA-256；Node 图片和 APK 路由仅从新路径读取。数据库中的相对文件路径不用重写。
-- `android/apk-templates/browser-1.0/` 的 12 个模板文件校验和保持一致；`android/.local-tools/`、既有 APK 输入、独立工具与开发签名保留。
+- `android/apk-templates/standalone/browser-1.0/` 的模板内容保持一致；`android/.local-tools/`、既有 APK 输入、独立工具与开发签名保留。
 - 根目录 `.gitignore` 忽略依赖、私有库/文件、工具链、APK/AAB、签名和生成目录；源码、npm 锁文件、固定模板及许可证保留为版本管理内容。
 
 为保留旧配置、私有数据和未提交文档，清理前建立了**项目外的本机私有恢复目录**。本机路径记录在 `backend/.node-private/cleanup-backup.json`（Git 忽略）；其中也有清理前 Node 数据副本、旧源文件与 Git 差异。该备份不参与服务运行，也不会随仓库上传。不要把备份放回项目静态目录或用旧库覆盖现有 Node 库。

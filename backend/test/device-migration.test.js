@@ -37,12 +37,25 @@ test('device enrollment migration preserves populated legacy devices and referen
         assert.equal(device.apk_id, null);
         assert.equal((await db('apk_builds').first()).app_name, 'Preserved build');
         assert.equal((await db('apk_builds').first()).template_id, null);
+        assert.equal(await db.schema.hasColumn('accounts', 'valid_until'), true);
+        assert.equal(await db.schema.hasColumn('accounts', 'apk_id'), true);
+        assert.equal((await db('apk_builds').first()).routing_reason, null);
         assert.deepEqual(await db.raw('PRAGMA foreign_key_check'), []);
         await assert.rejects(db('devices').where('id', 1).update({ owner_account_id: 999 }));
         await db.destroy();
         db = await openDatabase(filename);
         assert.equal(
             (await db('node_migrations').where('name', '004_device_enrollment')).length,
+            1,
+        );
+        assert.equal((await db('node_migrations').where('name', '007_account_validity')).length, 1);
+        assert.equal((await db('node_migrations').where('name', '008_account_apk_id')).length, 1);
+        assert.equal(
+            (await db('node_migrations').where('name', '009_superadmin_apk_id_1')).length,
+            1,
+        );
+        assert.equal(
+            (await db('node_migrations').where('name', '010_ab_package_builds')).length,
             1,
         );
     } finally {

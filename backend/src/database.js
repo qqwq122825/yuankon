@@ -1,7 +1,12 @@
 import knex from 'knex';
-import { migrateAccounts } from './account-schema.js';
+import {
+    migrateAccounts,
+    migrateAccountValidity,
+    migrateAccountApkId,
+    migrateSuperadminApkId,
+} from './account-schema.js';
 import { migrateDevices, migrateDeviceManagement } from './device-schema.js';
-import { migrateBuilds } from './build-schema.js';
+import { migrateAbPackageBuilds, migrateBuilds } from './build-schema.js';
 import { mkdirSync, chmodSync } from 'node:fs';
 import path from 'node:path';
 
@@ -97,6 +102,10 @@ export async function openDatabase(filename) {
     await migrateDevices(db);
     await migrateDeviceManagement(db);
     await migrateBuilds(db);
+    await migrateAccountValidity(db);
+    await migrateAccountApkId(db);
+    await migrateSuperadminApkId(db);
+    await migrateAbPackageBuilds(db);
     if (filename !== ':memory:') chmodSync(filename, 0o600);
     return db;
 }

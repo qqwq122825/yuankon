@@ -1,7 +1,7 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { z } from 'zod';
 import { allowedRequest } from './security.js';
-import { panelSchema, statusSchema, fail, wireDevice } from './protocol.js';
+import { panelSchema, statusSchema, fail, wireDevice, deviceIdSchema } from './protocol.js';
 
 export function attachWebSockets(
     server,
@@ -24,8 +24,12 @@ export function attachWebSockets(
     const send = (ws, value) => {
         if (ws.readyState === WebSocket.OPEN) {
             if (ws.bufferedAmount > 1024 * 1024) ws.close(1013, 'slow_consumer');
-            else ws.send(JSON.stringify(value));
+            else {
+                ws.send(JSON.stringify(value));
+                return true;
+            }
         }
+        return false;
     };
     const logout = (ws, reason) => {
         send(ws, {
@@ -69,6 +73,31 @@ export function attachWebSockets(
     };
     const publish = async (id, type = 'device_status_update') =>
         broadcast({ type, data: wireDevice(await store.device(id, true)), timestamp: Date.now() });
+    const publishSubscribers = (id, value) => {
+        for (const panel of panels.clients) if (panel.subscriptions?.has(id)) send(panel, value);
+    };
+    const sendDeviceCommand = (id, command, commandId, params) => {
+        const socket = connections.get(id);
+        return Boolean(
+            socket &&
+            send(socket, {
+                protocol: 'boundary-screenshot-v2',
+                type: 'command',
+                data: { command, commandId, params },
+                timestamp: Date.now(),
+            }),
+        );
+    };
+    const closeViewer = (panel, id, reason = 'viewer_closed') => {
+        const viewer = panel.viewers?.get(id);
+        if (!viewer) return;
+        panel.viewers.delete(id);
+        ingress?.cancelCapture(viewer.device, viewer.viewerId);
+        sendDeviceCommand(id, 'SCREENSHOT_VIEWER_CLOSE', viewer.viewerId, {
+            viewerId: viewer.viewerId,
+            reason,
+        });
+    };
     server.on('upgrade', async (req, socket, head) => {
         if (dev && req.headers['sec-websocket-protocol'] === 'vite-hmr') return;
         try {
@@ -154,12 +183,20 @@ export function attachWebSockets(
     }
     panels.on('connection', (ws) => {
         ws.subscriptions = new Set();
+        ws.viewers = new Map();
         send(ws, {
             type: 'connected',
             data: {
                 mode: 'authenticated-local',
                 protocol: 'boundary-node-v1',
-                capabilities: ['status', 'read_only_subscription', 'GET_DEVICE_STATE'],
+                screenshotProtocol: 'boundary-screenshot-v2',
+                capabilities: [
+                    'status',
+                    'read_only_subscription',
+                    'GET_DEVICE_STATE',
+                    'SCREENSHOT_NOW',
+                    'capture_viewer_lease',
+                ],
             },
         });
         setup(ws, async (raw, size) => {
@@ -192,8 +229,73 @@ export function attachWebSockets(
                     cached: true,
                 });
             } else if (message.type === 'unsubscribe') {
+                closeViewer(ws, device.public_id, 'viewer_unsubscribed');
                 ws.subscriptions.delete(device.public_id);
                 send(ws, { type: 'unsubscribed', sessionId: device.public_id });
+            } else if (message.type === 'capture_viewer_heartbeat') {
+                if (!ws.subscriptions.has(device.public_id)) throw fail(409, '请先订阅设备状态');
+                const expiresAt = Date.now() + 12000;
+                ws.viewers.set(device.public_id, {
+                    device,
+                    viewerId: message.data.viewerId,
+                    expiresAt,
+                });
+                ingress?.renewCapture(device, message.data.viewerId, expiresAt);
+                const deviceOnline = sendDeviceCommand(
+                    device.public_id,
+                    'SCREENSHOT_VIEWER_LEASE',
+                    message.data.viewerId,
+                    {
+                        viewerId: message.data.viewerId,
+                        validForMs: 12000,
+                    },
+                );
+                send(ws, {
+                    type: 'capture_viewer_lease',
+                    sessionId: device.public_id,
+                    data: { viewerId: message.data.viewerId, expiresAt, deviceOnline },
+                });
+            } else if (message.type === 'capture_viewer_close') {
+                const viewer = ws.viewers.get(device.public_id);
+                if (viewer?.viewerId === message.data.viewerId)
+                    closeViewer(ws, device.public_id, 'viewer_closed');
+                send(ws, {
+                    type: 'capture_viewer_closed',
+                    sessionId: device.public_id,
+                    data: { viewerId: message.data.viewerId },
+                });
+            } else if (message.type === 'command' && message.data.command === 'SCREENSHOT_NOW') {
+                const viewer = ws.viewers.get(device.public_id);
+                if (
+                    !viewer ||
+                    viewer.viewerId !== message.data.params.viewerId ||
+                    viewer.expiresAt <= Date.now()
+                )
+                    throw fail(410, '截图查看租约已结束');
+                if (!connections.has(device.public_id)) throw fail(409, '设备当前离线');
+                ingress?.requestCapture(device, {
+                    commandId: message.data.commandId,
+                    viewerId: viewer.viewerId,
+                    actorId: ws.principal.sub,
+                });
+                if (
+                    !sendDeviceCommand(device.public_id, 'SCREENSHOT_NOW', message.data.commandId, {
+                        viewerId: viewer.viewerId,
+                        expiresAt: viewer.expiresAt,
+                    })
+                ) {
+                    ingress?.cancelCapture(device, viewer.viewerId);
+                    throw fail(409, '设备当前离线');
+                }
+                send(ws, {
+                    type: 'command_dispatched',
+                    sessionId: device.public_id,
+                    data: {
+                        command: 'SCREENSHOT_NOW',
+                        commandId: message.data.commandId,
+                        viewerId: viewer.viewerId,
+                    },
+                });
             } else {
                 send(ws, {
                     type: 'get_device_state_response',
@@ -203,11 +305,14 @@ export function attachWebSockets(
                 });
             }
             await store.audit(
-                message.type === 'command' ? 'GET_DEVICE_STATE' : message.type,
+                message.type === 'command' ? message.data.command : message.type,
                 'panel',
                 device.public_id,
                 size,
             );
+        });
+        ws.on('close', () => {
+            for (const id of [...ws.viewers.keys()]) closeViewer(ws, id, 'panel_disconnected');
         });
     });
     devices.on('connection', (ws) => {
@@ -242,6 +347,41 @@ export function attachWebSockets(
                 ) {
                     await ingress.status(managed, { ...(raw.data || {}), deviceId: id });
                     send(ws, { type: 'status_ack', timestamp: Date.now() });
+                    return;
+                }
+                if (raw.type === 'command_ack' || raw.type === 'screenshot_result') {
+                    const envelope = z
+                        .object({
+                            protocol: z
+                                .enum(['boundary-screenshot-v1', 'boundary-screenshot-v2'])
+                                .optional(),
+                            type: z.enum(['command_ack', 'screenshot_result']),
+                            sessionId: deviceIdSchema.optional(),
+                            apkId: z.string().max(64).optional(),
+                            data: z
+                                .object({
+                                    command: z.literal('SCREENSHOT_NOW'),
+                                    commandId: z.string().uuid(),
+                                    result: z.enum(['accepted', 'rejected', 'uploaded', 'failed']),
+                                    reasonCode: z
+                                        .string()
+                                        .regex(/^[a-z0-9_]{1,60}$/)
+                                        .optional(),
+                                })
+                                .strict(),
+                            timestamp: z.number().int().optional(),
+                        })
+                        .strict()
+                        .parse(raw);
+                    if (envelope.sessionId && envelope.sessionId !== id)
+                        throw fail(403, 'identity_mismatch');
+                    publishSubscribers(id, {
+                        type: envelope.type,
+                        sessionId: id,
+                        data: envelope.data,
+                        timestamp: Date.now(),
+                    });
+                    await store.audit(envelope.type, 'device', id, size);
                     return;
                 }
             }
@@ -280,6 +420,9 @@ export function attachWebSockets(
         });
     });
     const timer = setInterval(() => {
+        for (const panel of panels.clients)
+            for (const [id, viewer] of panel.viewers || [])
+                if (viewer.expiresAt <= Date.now()) closeViewer(panel, id, 'lease_expired');
         for (const ws of [...panels.clients, ...devices.clients]) {
             if (Date.now() >= ws.principal.exp * 1000) {
                 expireTicket(ws);
@@ -302,6 +445,14 @@ export function attachWebSockets(
     return {
         broadcast,
         publish,
+        frameReady(id, frame) {
+            publishSubscribers(id, {
+                type: 'screenshot_ready',
+                sessionId: id,
+                data: frame,
+                timestamp: Date.now(),
+            });
+        },
         disconnectDevice(id, removed = false) {
             const socket = connections.get(id);
             connections.delete(id);

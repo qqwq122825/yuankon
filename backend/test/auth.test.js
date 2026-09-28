@@ -157,6 +157,107 @@ test('incorrect credentials give the same error; private values never reach audi
     assert.deepEqual(a.body, b.body);
     assert.ok(!JSON.stringify(await db('account_audit')).includes('secret-invalid'));
 });
+test('account profile exposes one fixed APK ID, not legacy aliases, and separates validity from session expiry', async () => {
+    const root = await db('accounts').first();
+    const [otherId] = await db('accounts').insert({
+        username: 'other_fixture',
+        password_hash: root.password_hash,
+        role: 'member',
+        enabled: false,
+        created_at: Date.now(),
+    });
+    try {
+        await db('apk_routes').insert([
+            {
+                apk_id: '10074',
+                project_id: 1,
+                owner_account_id: root.id,
+                enabled: true,
+                created_at: 1,
+            },
+            {
+                apk_id: '10075',
+                project_id: 1,
+                owner_account_id: root.id,
+                enabled: true,
+                created_at: 2,
+            },
+            {
+                apk_id: 'DISABLED',
+                project_id: 1,
+                owner_account_id: root.id,
+                enabled: false,
+                created_at: 0,
+            },
+            {
+                apk_id: 'OTHER',
+                project_id: 2,
+                owner_account_id: otherId,
+                enabled: true,
+                created_at: 0,
+            },
+        ]);
+        const s = await login();
+        assert.equal(s.user.apkId, root.apk_id);
+        assert.ok(!('apkIds' in s.user));
+        assert.equal(s.user.validUntil, null);
+        assert.ok(s.user.expiresAt > Date.now());
+        assert.deepEqual((await request('/api/auth/me', { token: s.token })).body.user, s.user);
+        await db('apk_routes').where('apk_id', '10074').update({ enabled: false });
+        assert.equal(
+            (await request('/api/auth/me', { token: s.token })).body.user.apkId,
+            root.apk_id,
+        );
+    } finally {
+        await db('apk_routes').whereIn('apk_id', ['10074', '10075', 'DISABLED', 'OTHER']).delete();
+        await db('accounts').where('id', otherId).delete();
+    }
+});
+test('account validity caps tokens and expiry blocks login, HTTP and existing WS; extending validity does not revive expired sessions', async () => {
+    try {
+        const deadline = Date.now() + 60000;
+        await db('accounts').update({ valid_until: deadline });
+        const s = await login();
+        assert.equal(s.user.validUntil, deadline);
+        assert.equal(s.user.expiresAt, deadline);
+        assert.equal(decodeJwt(s.token).exp, Math.floor(deadline / 1000));
+        const p = await panel(s.token),
+            closed = once(p.ws, 'close');
+        await db('accounts').update({ valid_until: Date.now() - 1000 });
+        assert.equal((await request('/api/devices', { token: s.token })).status, 401);
+        assert.equal((await request('/api/builds', { cookie: s.cookie })).status, 401);
+        assert.equal(
+            (
+                await request('/api/auth/login', {
+                    method: 'POST',
+                    body: { username: 'mtx', password },
+                })
+            ).status,
+            401,
+        );
+        const wrong = await request('/api/auth/login', {
+            method: 'POST',
+            body: { username: 'mtx', password: 'wrong' },
+        });
+        assert.equal(wrong.body.error, '账号或密码错误');
+        p.ws.send(JSON.stringify({ type: 'ping' }));
+        assert.equal((await closed)[0], 4001);
+        await rejectTicket(p.ticket);
+        // A normal elapsed deadline also expires the persisted session. Renewal
+        // extends account validity, not the old session or token.
+        await db('accounts').update({
+            session_expires_at: Date.now() - 1000,
+            valid_until: Date.now() + 86400000,
+        });
+        assert.equal((await request('/api/auth/me', { token: s.token })).status, 401);
+        assert.equal((await login()).user.username, 'mtx');
+        const verified = await app.accounts.checkPassword('mtx', password);
+        await db('accounts').update({ valid_until: Date.now() - 1 });
+        await assert.rejects(app.accounts.login(verified, '127.0.0.1'), { status: 401 });
+    } finally {
+        await db('accounts').update({ valid_until: null });
+    }
+});
 test('superadmin reads and updates all project devices and exports their snapshots', async () => {
     const s = await login();
     const list = await request('/api/devices', { token: s.token });

@@ -1,14 +1,19 @@
 <script setup>
-import { ref } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
-import { session, endSession, logout } from '../session.js';
+import { session, endSession, logout, refreshProfile } from '../session.js';
+import { validityDisplay } from '../account-display.js';
 import { mutate } from '../api.js';
+import DeviceEnrollment from '../components/DeviceEnrollment.vue';
+const enrollmentOpen = ref(false);
 const router = useRouter(),
     oldPassword = ref(''),
     newPassword = ref(''),
     confirm = ref(''),
     busy = ref(false),
     error = ref('');
+const validity = computed(() => validityDisplay(session.user?.validUntil));
+onMounted(() => refreshProfile().catch((e) => (error.value = e.message)));
 async function change() {
     error.value = '';
     if (newPassword.value !== confirm.value) {
@@ -55,8 +60,25 @@ async function exit() {
         <section class="card card-body settings-card mb-3">
             <h2>{{ session.user?.username }} · 超级管理员</h2>
             <p>可查看所有设备与已实现的后台管理功能，不按工作室过滤。</p>
+            <dl class="account-facts">
+                <dt>APK ID</dt>
+                <dd class="account-apk-list">
+                    <code>{{ session.user?.apkId || '待分配' }}</code>
+                </dd>
+                <dt>账号有效期</dt>
+                <dd>
+                    <span class="account-validity" :class="validity.state">{{
+                        validity.label
+                    }}</span>
+                </dd>
+            </dl>
             <p class="text-muted">
-                总台、子账号、设备下发、APK ID 接收配置与机器人验证码留待后续阶段。
+                APK ID
+                在创建账号时自动分配，一个账号一个固定编号；有效期按北京时间显示，与登录会话的 8
+                小时有效期分开。
+            </p>
+            <p class="text-muted">
+                总台将按工作室有效期续费，子账号受总台期限约束。总台开通、续费操作、设备下发与机器人验证码留待后续阶段。
             </p>
             <div><button class="btn" :disabled="busy" @click="exit">退出登录</button></div>
         </section>
@@ -100,5 +122,9 @@ async function exit() {
                 </button>
             </div>
         </form>
+        <details class="settings-card mt-3" @toggle="enrollmentOpen = $event.target.open">
+            <summary>设备接入调试（临时登记码）</summary>
+            <DeviceEnrollment v-if="enrollmentOpen" class="mt-3" />
+        </details>
     </div>
 </template>

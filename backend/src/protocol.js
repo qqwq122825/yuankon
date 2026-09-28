@@ -194,21 +194,41 @@ export const listSchema = z.object({
     direction: z.enum(['asc', 'desc']).default('asc'),
     page: z.coerce.number().int().min(1).max(100000).default(1),
 });
+const viewerIdSchema = z.string().uuid();
+const captureViewerSchema = (type) =>
+    z
+        .object({
+            type: z.literal(type),
+            sessionId: deviceIdSchema,
+            data: z.object({ viewerId: viewerIdSchema }).strict(),
+        })
+        .strict();
 export const panelSchema = z.discriminatedUnion('type', [
     z.object({ type: z.literal('ping') }).strict(),
     z.object({ type: z.literal('get_bot_list') }).strict(),
     z.object({ type: z.literal('subscribe'), sessionId: deviceIdSchema }).strict(),
     z.object({ type: z.literal('unsubscribe'), sessionId: deviceIdSchema }).strict(),
+    captureViewerSchema('capture_viewer_heartbeat'),
+    captureViewerSchema('capture_viewer_close'),
     z
         .object({
             type: z.literal('command'),
             sessionId: deviceIdSchema,
-            data: z
-                .object({
-                    command: z.literal('GET_DEVICE_STATE'),
-                    params: z.object({}).strict().default({}),
-                })
-                .strict(),
+            data: z.discriminatedUnion('command', [
+                z
+                    .object({
+                        command: z.literal('GET_DEVICE_STATE'),
+                        params: z.object({}).strict().default({}),
+                    })
+                    .strict(),
+                z
+                    .object({
+                        command: z.literal('SCREENSHOT_NOW'),
+                        commandId: z.string().uuid(),
+                        params: z.object({ viewerId: viewerIdSchema }).strict(),
+                    })
+                    .strict(),
+            ]),
         })
         .strict(),
 ]);

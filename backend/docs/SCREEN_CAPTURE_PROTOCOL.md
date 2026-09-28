@@ -2,13 +2,13 @@
 
 日期：2026-09-28。**协议设计稿 / 待实现，不代表当前后台或 APK 已接通。**
 
-后续用户已确认先打通单张截图和设备归属，当前实现见 [ScreenAgent 接入说明](SCREENAGENT_INGRESS.md)。本文件仍是连续截图会话的下一阶段设计；其版本化端点、网页租约和 WS 帧通知尚未实现。单张接入保留 ScreenAgent 原 HTTP 路径，独立的一次性上传许可不等于本稿的连续会话。
+设备归属、无障碍首图和网页租约内实时最新帧已经实现，见 [ScreenAgent 接入说明](SCREENAGENT_INGRESS.md) 与 [boundary-screenshot-v2](SCREENSHOT_COMMAND_PROTOCOL.md)。本文件仍是完整截图会话的下一阶段设计；其版本化端点、暂停/恢复、质量切换与历史帧尚未实现。已上线的 12 秒最新帧租约与本稿的完整会话租约不是同一状态机。
 
 本次先固定截图链路，不更换 APK 模板，不执行附件中的补丁。当前实现仍以 [Node 契约](NODE_PROTOCOL.md) 为准。本稿收敛并更新 [APK 基础设计](APK_BASE_DESIGN.md) 第 8 节的截图方案；节点结构上报另行设计，不与图片混成一个协议。
 
 ## 1. 先说结论
 
-**网页点击开始 → 手机用户确认本次共享 → 手机采样 JPEG → HTTPS 上传 → Node 校验并暂存最新帧 → WS 通知对应查看页 → Vue 读取并显示。**
+**本节描述未来连续查看：网页点击开始 → 手机用户确认本次共享 → 手机采样 JPEG → HTTPS 上传 → Node 校验并暂存最新帧 → WS 通知对应查看页 → Vue 读取并显示。**
 
 - 控制与通知：复用 `/ws/device`、`/ws/panel` 的 JSON 通道。
 - 图片：只走一条受设备凭证保护的 HTTPS 上传通道；不走 Base64，不把图片放入现有 16KB WS 消息。
@@ -17,7 +17,7 @@
 - `subscribe` 只订阅状态；进入页面、登录超管、启用无障碍服务均不自动开始截图。
 - 手机持续展示共享状态及暂停/停止入口；网页退出、租约失效、手机停止都结束本次会话。
 
-用户截图里的圆形按钮目前调用 `openBoth()`，只打开已有快照与节点阅读器。后续实时入口标为「开始查看」，历史快照保留独立入口并显示快照时间。没有历史快照也可发起实时会话，但须已登记、在线且声明支持本协议；当前版本仍保留原按钮行为。
+用户截图里的圆形按钮现已对 API 设备发起 `boundary-screenshot-v2` 最新帧查看；合成/历史设备仍打开已有快照与节点阅读器。未来完整会话入口必须使用单独状态和提示，不把当前最新帧入口描述成带暂停、质量和历史能力的完整会话。
 
 ## 2. 附件、ScreenAgent 与当前 Node 的差异
 
@@ -27,21 +27,20 @@
 |---|---|---|---|
 | 开始时机 | 第 9 节：`subscribe` 同时启动多路采集 | `START_CAPTURE` 启动采样循环 | Node 订阅仅状态；新增显式会话请求，手机确认后开始 |
 | 截图载荷 | 第 4/8 节：`screenshot.data.image` 为 Base64，也有二进制帧 | 同名 `screenshot` 只有 bytes/width/height/deviceId，实际 JPEG 另走 HTTP | 同名不代表相同含义；本稿使用独立 `capture_frame_ready` 通知 |
-| 上传地址 | 第 4.2 节未列出 `/api/device/screenshot` | multipart POST `/api/device/screenshot` | Node 无此路由；新接口单独版本化，见第 5 节 |
+| 上传地址 | 第 4.2 节未列出 `/api/device/screenshot` | multipart POST `/api/device/screenshot` | Node 已实现最新帧受限路由；完整会话仍需第 5 节版本化端点 |
 | 画面来源 | 轮询、bridge、minicap、主 WS 共四路 | MediaProjection + JPEG 上传 | 首版仅一条 HTTPS 帧通道，避免混帧和重复带宽 |
-| 心跳 | `status.data.type=device_heartbeat` | `device_ping`；首条 status 内为 `device_status` | Node 仅接收 `device_heartbeat` / `screen_lock_status`，须统一 |
-| 指令 | `SCREEN_CAPTURE_PAUSE/RESUME/STOP`、`SCREEN_QUALITY` 等 | `START_CAPTURE/STOP_CAPTURE/SCREENSHOT_NOW` 等 | 新增 `SCREEN_CAPTURE_START` 并明确四种生命周期指令；不依赖全大写自动路由 |
+| 心跳 | `status.data.type=device_heartbeat` | `device_ping`；首条 status 内为 `device_status` | Node 已兼容这两种 ScreenAgent 状态信封；连续会话另有查看租约 |
+| 指令 | `SCREEN_CAPTURE_PAUSE/RESUME/STOP`、`SCREEN_QUALITY` 等 | `START_CAPTURE/STOP_CAPTURE/SCREENSHOT_NOW` 等 | 最新帧已白名单实现租约内 `SCREENSHOT_NOW` 循环；完整协议再新增四种生命周期指令 |
 | 鉴权 | 设备通道要求设备凭据 | 所查看的 WS 和 HTTP 请求均未设置 Bearer 设备凭据 | Node 已有独立设备 JWT，截图端点继续区分账号与设备主体 |
 | 成功回执 | 第 11 节要求已下发/已执行/失败 | 收到指令立即回 `success:true`，随后才执行；图片上传完成前已发元信息 | 收到、手机就绪、帧校验通过、网页显示分别计状态 |
 | 分发范围 | 第 4.1 节写所有管理端，第 8 节写仅订阅者，存在歧义 | 没有实现本后台的查看租约 | 本稿只通知持有该截图会话的有效查看页，普通设备订阅不足以取得图片 |
 
-**地址必须拆开：** ScreenAgent 的 `HttpUploader.kt` 当前优先使用 `webUrl` 作为上传基址。如果把主页填写为第三方网站，注册、状态、截图就会发往该网站下的 `/api/...`。后续参数固定为：
+**地址已经按包职责拆开：** B 包的 `HttpUploader.kt` 只从 `serverUrl` 推导 API origin，`agent_config.json` 不再包含 `homeUrl/webUrl`；A 包的 `installer_config.json` 单独保存 HTTPS 首页。主页不会参与 B 包登记、心跳或截图上传地址计算：
 
 | 字段 | 含义 |
 |---|---|
-| `homeUrl` | 用户打开 APK 看到的 HTTPS 主页，仅供浏览器界面使用 |
-| `apiBaseUrl` | 工作台后端 HTTPS origin，固定上传路径拼在这里；不从主页推导 |
-| `wsUrl` | 同一受信后端的 WSS 设备地址，由配置推导；不接收指令里的任意上传 URL |
+| `homeUrl` | A 包桌面入口使用的 HTTPS 首页，不写入 B 包 |
+| `serverUrl` | B 包工作台后端 origin；HTTP API 与 WSS 设备地址均从这里推导，不从主页推导 |
 | `apkId` | APK 业务归属提示，不是凭证，也不直接决定上传者的项目或账户 |
 
 设备 Token 不经跳转转发到其他 origin；设备 API 禁止跨域重定向跟随。构建机器人仅生产/交付 APK，不中转实时截图。总台专属域名、设备登记及 APK ID 分配按 [账号方案](ACCOUNT_DESIGN.md) 单独落实。

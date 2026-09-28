@@ -51,13 +51,36 @@ async function register(extra = {}) {
     assert.equal(result.status, 201, JSON.stringify(result.body));
     return { ...result.body, ticket, profile };
 }
-async function grant(device) {
+async function grant(device, input = { consent: true }) {
     const r = await call('/api/device/screenshot-session', device.deviceToken, {
         deviceId: device.deviceId,
-        consent: true,
+        ...input,
     });
     assert.equal(r.status, 201);
     return r.body;
+}
+function listen(ws) {
+    const queue = [],
+        waiters = [];
+    ws.on('message', (raw) => {
+        const value = JSON.parse(raw.toString());
+        const index = waiters.findIndex((waiter) => waiter.type === value.type);
+        if (index >= 0) waiters.splice(index, 1)[0].resolve(value);
+        else queue.push(value);
+    });
+    return (type) => {
+        const index = queue.findIndex((value) => value.type === type);
+        if (index >= 0) return Promise.resolve(queue.splice(index, 1)[0]);
+        return new Promise((resolve, reject) => {
+            const waiter = { type, resolve };
+            waiters.push(waiter);
+            setTimeout(() => {
+                const position = waiters.indexOf(waiter);
+                if (position >= 0) waiters.splice(position, 1);
+                reject(new Error(`Timed out: ${type}`));
+            }, 2000).unref();
+        });
+    };
 }
 async function upload(
     device,
@@ -100,7 +123,14 @@ before(async () => {
     const login = await call('/api/auth/login', '', { username: 'mtx', password: 'mtx123' });
     account = login.body.token;
     owner = login.body.user;
-    assert.equal((await call('/api/apk-routes', account, { apkId: 'TESTAPK' })).status, 201);
+    // Legacy aliases remain valid for existing APKs, but are not created through the UI/API.
+    await db('apk_routes').insert({
+        apk_id: 'TESTAPK',
+        project_id: 1,
+        owner_account_id: owner.id,
+        enabled: true,
+        created_at: Date.now(),
+    });
     jpeg = await sharp({ create: { width: 32, height: 48, channels: 3, background: '#3388aa' } })
         .jpeg()
         .toBuffer();
@@ -111,13 +141,13 @@ after(async () => {
     await rm(dir, { recursive: true, force: true });
 });
 
-test('APK routes require superadmin, validate ownership and never overwrite an existing mapping', async () => {
+test('APK routes are read-only; enrollment requires an existing route', async () => {
     assert.equal((await call('/api/apk-routes', 'bad', { apkId: 'X' })).status, 401);
     assert.equal(
         (await call('/api/apk-routes', account, { apkId: 'X', ownerAccountId: 99999 })).status,
-        422,
+        404,
     );
-    assert.equal((await call('/api/apk-routes', account, { apkId: 'TESTAPK' })).status, 409);
+    assert.equal((await call('/api/apk-routes', account, { apkId: 'TESTAPK' })).status, 404);
     assert.equal(
         (await call('/api/device-enrollments', account, { apkId: 'missing' })).status,
         404,
@@ -240,6 +270,129 @@ test('single JPEG upload is decoded, acknowledged after receipt, viewable with l
         ).status,
         410,
     );
+});
+test('accessibility first thumbnail and leased panel screenshot use the same bounded upload path', async () => {
+    const d = await register();
+    assert.equal(
+        (
+            await call('/api/sync/status', d.deviceToken, {
+                deviceId: d.deviceId,
+                accessibilityAlive: true,
+            })
+        ).status,
+        200,
+    );
+    const initial = await grant(d, { reason: 'initial_accessibility' });
+    const first = await upload(d, initial);
+    assert.equal(first.status, 201);
+    assert.equal(first.body.reason, 'initial_accessibility');
+    const list = await call(`/api/devices?q=${d.deviceId}`, account, undefined, 'GET');
+    assert.equal(
+        list.body.data.find((row) => row.id === d.localId).thumbnail.frameId,
+        first.body.frameId,
+    );
+    assert.equal(
+        (
+            await call('/api/device/screenshot-session', d.deviceToken, {
+                deviceId: d.deviceId,
+                reason: 'initial_accessibility',
+            })
+        ).status,
+        429,
+    );
+
+    const ticket = await call('/api/session', account, undefined, 'GET');
+    const panel = new WebSocket(
+        `${base.replace('http', 'ws')}/ws/panel?token=${ticket.body.token}`,
+        { origin: base },
+    );
+    const device = new WebSocket(base.replace('http', 'ws') + '/ws/device', {
+        headers: { Authorization: `Bearer ${d.deviceToken}` },
+    });
+    const panelNext = listen(panel),
+        deviceNext = listen(device);
+    await Promise.all([once(panel, 'open'), once(device, 'open')]);
+    await panelNext('connected');
+    panel.send(JSON.stringify({ type: 'subscribe', sessionId: d.deviceId }));
+    await panelNext('subscribed');
+    await panelNext('get_device_state_response');
+    const viewerId = '00000000-0000-4000-8000-000000000111';
+    const commandId = '00000000-0000-4000-8000-000000000222';
+    panel.send(
+        JSON.stringify({
+            type: 'capture_viewer_heartbeat',
+            sessionId: d.deviceId,
+            data: { viewerId },
+        }),
+    );
+    assert.equal((await panelNext('capture_viewer_lease')).data.deviceOnline, true);
+    assert.equal((await deviceNext('command')).data.command, 'SCREENSHOT_VIEWER_LEASE');
+    panel.send(
+        JSON.stringify({
+            type: 'command',
+            sessionId: d.deviceId,
+            data: { command: 'SCREENSHOT_NOW', commandId, params: { viewerId } },
+        }),
+    );
+    assert.equal((await deviceNext('command')).data.command, 'SCREENSHOT_NOW');
+    assert.equal((await panelNext('command_dispatched')).data.commandId, commandId);
+    device.send(
+        JSON.stringify({
+            protocol: 'boundary-screenshot-v2',
+            type: 'command_ack',
+            sessionId: d.deviceId,
+            data: { command: 'SCREENSHOT_NOW', commandId, result: 'accepted' },
+        }),
+    );
+    assert.equal((await panelNext('command_ack')).data.result, 'accepted');
+    const requested = await grant(d, { reason: 'viewer_request', commandId, viewerId });
+    const ready = panelNext('screenshot_ready');
+    const second = await upload(d, requested);
+    assert.equal(second.status, 201);
+    assert.equal(second.body.reason, 'viewer_request');
+    assert.equal(second.body.commandId, commandId);
+    assert.equal((await ready).data.frameId, second.body.frameId);
+
+    panel.send(
+        JSON.stringify({
+            type: 'capture_viewer_heartbeat',
+            sessionId: d.deviceId,
+            data: { viewerId },
+        }),
+    );
+    assert.equal((await panelNext('capture_viewer_lease')).data.deviceOnline, true);
+    assert.equal((await deviceNext('command')).data.command, 'SCREENSHOT_VIEWER_LEASE');
+    const nextRequested = await grant(d, { reason: 'viewer_request', commandId, viewerId });
+    const nextReady = panelNext('screenshot_ready');
+    const third = await upload(d, nextRequested);
+    assert.equal(third.status, 201);
+    assert.equal(third.body.commandId, commandId);
+    assert.notEqual(third.body.frameId, second.body.frameId);
+    assert.equal((await nextReady).data.frameId, third.body.frameId);
+
+    panel.send(
+        JSON.stringify({
+            type: 'capture_viewer_close',
+            sessionId: d.deviceId,
+            data: { viewerId },
+        }),
+    );
+    assert.equal((await panelNext('capture_viewer_closed')).data.viewerId, viewerId);
+    assert.equal((await deviceNext('command')).data.command, 'SCREENSHOT_VIEWER_CLOSE');
+    assert.equal(
+        (
+            await call('/api/device/screenshot-session', d.deviceToken, {
+                deviceId: d.deviceId,
+                reason: 'viewer_request',
+                commandId,
+                viewerId,
+            })
+        ).status,
+        410,
+    );
+    panel.close();
+    device.close();
+    await Promise.all([once(panel, 'close'), once(device, 'close')]);
 });
 test('invalid images, extra fields, oversize files and cross-device upload grants fail without publishing', async () => {
     const a = await register(),

@@ -2,30 +2,31 @@
 
 ## 当前源码
 
-- `android/apk-templates/screenagent-1.0/`：单张截图接入模板，清单 ID `screenagent-1.0`。用户在手机确认共享后发送一张截图；登记码、Token 不打进 APK。
-- `android/apk-templates/browser-1.0/`：浏览器基础模板，清单 ID `browser-1.0`。只打开可见 WebView；APK ID/后台地址作为构建元数据保存，不让该模板产生设备接入能力。
+- `android/apk-templates/b-packages/`：工作端版本区。`screenagent-1.0/` 保留旧的手动单张版，`screenagent-1.1/` 保留按需单张版；当前 `screenagent-1.2/` 只写入后台域名，无 MAIN/LAUNCHER 桌面入口、无首页。A 包可用 `org.boundarylab.screenagent.SETUP` 显式打开设置；无障碍开启后 B 包负责首图、查看租约内实时最新帧、登记和设备心跳。
+- `android/apk-templates/a-packages/`：安装器版本区。当前 `installer-1.0/` 清单 ID 为 `installer-1.0`，有桌面入口和 HTTPS 首页；构建副本写入首页、最新成功 B 包和摘要配置。A 包不复制 B 包工作逻辑。
+- `android/apk-templates/standalone/`：不参与 A/B 依赖的独立模板。当前 `browser-1.0/` 只打开可见 WebView。
 - `android/apk-templates/templates.json`：后台模板选择框的数据源。显示名和实际 Android 版本分开；当前没有名为 v4.0 的源码，勿只改标题就描述为新增功能。
 - `android/apk-templates/domains.json`：可选域名简称映射，不包含凭证。
 - `backend/src/apk-builder.js`：复制源码、注入配置、启动 Gradle、检查真实产物。
 - `backend/src/build-queue.js`：SQLite 队列、归属检查、构建记录与下载。
 
-## 新增 1.1 模板：复制、改源码、登记
+## 新增后续模板：复制、改源码、登记
 
 以下命令在项目根目录执行。先确认新目录尚不存在：
 
 ```bash
-cp -R android/apk-templates/screenagent-1.0 android/apk-templates/screenagent-1.1
+cp -R android/apk-templates/b-packages/screenagent-1.2 android/apk-templates/b-packages/screenagent-1.3
 ```
 
 在新目录修改 Android 源码，保留旧 1.0 目录。向 `android/apk-templates/templates.json` 的数组追加：
 
 ```json
 {
-  "id": "screenagent-1.1",
-  "name": "v1.1 · ScreenAgent 单张截图",
-  "versionName": "1.1.0",
-  "versionCode": 2,
-  "sourceDir": "screenagent-1.1",
+  "id": "screenagent-1.3",
+  "name": "v1.3 · ScreenAgent 新能力",
+  "versionName": "1.3.0",
+  "versionCode": 4,
+  "sourceDir": "b-packages/screenagent-1.3",
   "kind": "screenagent",
   "description": "在这里写真实新增能力；保留手机确认与停止入口。"
 }
@@ -35,10 +36,13 @@ cp -R android/apk-templates/screenagent-1.0 android/apk-templates/screenagent-1.
 
 **同一类模板的约定：**
 
-- `kind` 仅支持 `screenagent` 或 `browser`。新的 Android 架构需要先新增构建适配和测试，不能仅填目录。
+- A/B 目录表达职责，不表达构建顺序缓存：`b-packages` 是无桌面工作应用，所有设备侧能力进入新的 B 包版本；`a-packages` 处理首页、安装、摘要校验和打开 B 包设置。A 包构建任务仍从数据库选择同账号最新成功 B 包产物。
+- 新增 B 功能时复制 B 版本目录，提高 `versionName/versionCode`，登记新的 `sourceDir`；不要把截图、无障碍视图或设备通信代码加入 A 包。
+- `kind` 支持 `screenagent`、`installer` 或 `browser`。新的 Android 架构需要先新增构建适配和测试，不能仅填目录。
 - 复制范围为根目录 `build.gradle[.kts]`、`settings.gradle[.kts]`、`gradle.properties`，以及 `app/build.gradle[.kts]`、`app/proguard-rules.pro`、`app/src/`。不复制缓存、签名、local.properties、任意额外模块或符号链接。
 - 保留 `app/src/main/res/values/strings.xml` 的 `app_name`；浏览器还需 `home_url`。名称与网址经过 XML/Android 字符串转义，原模板不改。
-- ScreenAgent 从 `app/src/main/assets/agent_config.json` 读取运行时参数，Gradle 不应再次覆盖这个文件。支持属性 `appId`、`versionName`、`versionCode`。
+- ScreenAgent 从 `app/src/main/assets/agent_config.json` 读取后台 `serverUrl` 等运行时参数，不包含 `homeUrl/webUrl`；Gradle 不应再次覆盖这个文件。支持属性 `appId`、`versionName`、`versionCode`。
+- Installer 从 `app/src/main/assets/installer_config.json` 读取 A 包 HTTPS 首页，以及被锁定的 B 包构建 ID、摘要与包名，并携带 `payload.apk`；这些文件只能由 Node 从已完成构建复制，不接受网页上传或任意路径。
 - 浏览器支持 `shellApplicationId`、`shellVersionName`、`shellVersionCode`，元数据写入 `assets/build_config.json`，主页写入 `home_url`。
 - 输出约定 `app/build/outputs/apk/debug/app-debug.apk`；固定执行 `assembleDebug lintDebug`。保持 JDK 17、AGP 8.9.2 / Gradle 8.11.1 与 API 35 工具链兼容。
 - 参数不写入 Java/Kotlin/Gradle 源代码；包名、版本是白名单属性。包名是 applicationId，不全局替换 namespace 或 Java/Kotlin 包路径。
@@ -57,15 +61,15 @@ cp -R android/apk-templates/screenagent-1.0 android/apk-templates/screenagent-1.
 { "cohuducox": "https://console.example.com" }
 ```
 
-把示例替换为实际部署地址。别名解析只写入 APK，不创建域名、DNS、证书或服务器；当前 Node 仍只监听本机。主页 HTTPS URL 与后台域名是两项独立参数。
+把示例替换为实际部署地址。别名解析只写入 APK，不创建域名、DNS、证书或服务器；当前 Node 仍只监听本机。后台域名只写入 B 包，主页 HTTPS URL 只写入 A 包，两者不互相推导。
 
-首次提交会把新的 APK ID 绑定到当前超管；已有 APK ID 的归属不能被构建参数改写。没有总台 AppID。工作室/子账号、设备下发、专属域名管理仍是后续阶段。
+APK ID 在创建账号时自动分配，一个账号一个固定编号。构建时可不填：填写有效编号归属对应账号，留空或未匹配可用账号时归属默认接收账号（当前为超管）。后端把实际编号写入安装包，记录显示接收账号和匹配结果；构建不创建新编号或改写旧设备归属。没有总台 AppID。工作室/子账号、设备下发、专属域名管理仍是后续阶段。
 
 ## 产物与限制
 
 网页构建产物：`backend/.node-private/files/apk-builds/<构建 UUID>/application.apk`。
 
-构建日志：`backend/.node-private/build-work/<UUID>/build.log`，最多 1 MiB，不通过 API 公开。每次源码副本在成功或失败后清理；异常断电留下的 source 可在确认队列空闲、服务停止后由维护者清理。模板原目录保留。
+构建日志：`backend/.node-private/build-work/<UUID>/build.log`，最多 1 MiB。构建记录的“构建日志”按钮通过登录鉴权下载。A/B 两类日志均记录模板路径、包身份、B 包摘要（A 包）、源码准备、Gradle assemble/Lint、`apksigner verify`、`zipalign`、`aapt badging`、桌面入口断言、SHA-256、产物保存、失败和源码清理步骤。B 包若出现 MAIN/LAUNCHER，或 A 包缺少桌面入口，构建直接失败。每次源码副本在成功或失败后清理；异常断电留下的 source 可在确认队列空闲、服务停止后由维护者清理。模板原目录保留。
 
 单实例、单任务执行，最多 10 个未完成任务，每任务 20 分钟；工具链缺失直接报错，执行失败不显示下载按钮。重启将执行中任务标记失败，排队任务继续；提交 requestId 防止网络重试重复建包。不要让两个 Node 实例共用同一数据库和构建目录。
 

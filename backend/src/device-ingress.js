@@ -22,24 +22,29 @@ const bearer = (req) => req.headers.authorization?.match(/^Bearer (\S+)$/)?.[1];
 const MAX_FILE = 2 * 1024 * 1024;
 const CACHE_TTL = 5 * 60000;
 
-// ScreenAgent compatibility is limited to registration, state, and one user-requested JPEG.
+// ScreenAgent accepts one JPEG per explicit grant. Grants are either local-user initiated,
+// the first accessibility-service thumbnail, or tied to a short-lived panel viewer command.
 export class DeviceIngress {
     constructor(db, auth, store, config) {
         Object.assign(this, { db, auth, store, config });
         this.grants = new Map();
         this.frames = new Map();
+        this.pendingCaptures = new Map();
+        this.autoCaptureAt = new Map();
         this.inflight = new Set();
         this.timer = setInterval(() => this.prune(), 5000);
         this.timer.unref();
     }
     prune() {
-        for (const map of [this.grants, this.frames])
+        for (const map of [this.grants, this.frames, this.pendingCaptures])
             for (const [key, value] of map) if (value.expiresAt <= Date.now()) map.delete(key);
     }
     close() {
         clearInterval(this.timer);
         this.grants.clear();
         this.frames.clear();
+        this.pendingCaptures.clear();
+        this.autoCaptureAt.clear();
     }
     async owner(id, db = this.db) {
         const row = await db('accounts').where({ id, enabled: true, role: 'superadmin' }).first();
@@ -163,14 +168,65 @@ export class DeviceIngress {
         await this.publish?.(device.public_id, previous ? 'device_status_update' : 'device_online');
         return { ok: true, deviceId: device.public_id, ownerAccountId: device.owner_account_id };
     }
-    grant(device) {
+    requestCapture(device, { commandId, viewerId, actorId }) {
+        this.prune();
+        const pending = {
+            commandId,
+            viewerId,
+            actorId,
+            ownerId: device.owner_account_id,
+            expiresAt: Date.now() + 15000,
+        };
+        this.pendingCaptures.set(device.id, pending);
+        return pending;
+    }
+    renewCapture(device, viewerId, expiresAt) {
+        const pending = this.pendingCaptures.get(device.id);
+        if (pending?.viewerId === viewerId)
+            pending.expiresAt = Math.max(pending.expiresAt, expiresAt + 3000);
+    }
+    cancelCapture(device, viewerId) {
+        const pending = this.pendingCaptures.get(device.id);
+        if (pending?.viewerId === viewerId) this.pendingCaptures.delete(device.id);
+        const grant = this.grants.get(device.id);
+        if (grant?.reason === 'viewer_request' && grant.viewerId === viewerId)
+            this.grants.delete(device.id);
+    }
+    async grant(device, input = { consent: true }) {
         this.prune();
         if (this.grants.size >= 64 && !this.grants.has(device.id))
             throw fail(429, '截图请求已达上限');
+        const reason = input.reason || 'manual_user';
+        let commandId = null,
+            viewerId = null;
+        if (reason === 'viewer_request') {
+            const pending = this.pendingCaptures.get(device.id);
+            if (
+                !pending ||
+                pending.commandId !== input.commandId ||
+                pending.viewerId !== input.viewerId ||
+                pending.expiresAt <= Date.now() ||
+                pending.ownerId !== device.owner_account_id
+            )
+                throw fail(410, '网页截图指令已结束或不匹配');
+            commandId = pending.commandId;
+            viewerId = pending.viewerId;
+        } else if (reason === 'initial_accessibility') {
+            const fresh = await this.db('devices').where('id', device.id).first();
+            if (!fresh?.accessibility_enabled) throw fail(409, '无障碍状态尚未同步');
+            const previous = this.autoCaptureAt.get(device.id) || 0;
+            if (Date.now() - previous < 60000) throw fail(429, '首图已在最近一分钟上报');
+            this.autoCaptureAt.set(device.id, Date.now());
+        } else if (input.consent !== true) {
+            throw fail(422, '手机主动截图需要本次确认');
+        }
         const grant = {
             uploadId: randomUUID(),
             expiresAt: Date.now() + 60000,
             ownerId: device.owner_account_id,
+            reason,
+            commandId,
+            viewerId,
         };
         this.grants.set(device.id, grant);
         return grant;
@@ -222,7 +278,7 @@ export class DeviceIngress {
         }
         if (output.data.length > MAX_FILE) throw fail(413, '图片体积超限');
         const fresh = await this.resolve(req.deviceIdentity.principal, true);
-        this.validGrant(fresh, req.headers['x-capture-upload']);
+        const grant = this.validGrant(fresh, req.headers['x-capture-upload']);
         this.prune();
         const used = [...this.frames.entries()].reduce(
             (sum, [id, f]) => sum + (id === device.id ? 0 : f.buffer.length),
@@ -237,6 +293,9 @@ export class DeviceIngress {
             width: output.info.width,
             height: output.info.height,
             ownerId: fresh.owner_account_id,
+            reason: grant.reason,
+            commandId: grant.commandId,
+            viewerId: grant.viewerId,
             buffer: output.data,
         };
         this.grants.delete(device.id);
@@ -250,7 +309,9 @@ export class DeviceIngress {
             device.public_id,
             req.file.size,
         );
-        return this.frameMeta(device.id, frame);
+        const meta = this.frameMeta(device.id, frame);
+        await this.notifyFrame?.(device.public_id, meta);
+        return meta;
     }
     frameMeta(id, frame) {
         if (!frame) return null;
@@ -271,6 +332,10 @@ export class DeviceIngress {
             this.frames.delete(id);
         return this.frames.get(id);
     }
+    thumbnail(id) {
+        this.prune();
+        return this.frameMeta(id, this.frames.get(id));
+    }
     deviceRoutes() {
         const router = Router();
         router.post('/client/register', async (req, res) =>
@@ -283,14 +348,32 @@ export class DeviceIngress {
         router.post('/sync/status', requireDevice, async (req, res) =>
             res.json(await this.status(req.deviceIdentity.device, req.body)),
         );
-        router.post('/device/screenshot-session', requireDevice, (req, res) => {
+        router.post('/device/screenshot-session', requireDevice, async (req, res) => {
             const body = z
-                .object({ deviceId: deviceIdSchema, consent: z.literal(true) })
+                .object({
+                    deviceId: deviceIdSchema,
+                    consent: z.literal(true).optional(),
+                    reason: z
+                        .enum(['manual_user', 'initial_accessibility', 'viewer_request'])
+                        .optional(),
+                    commandId: z.string().uuid().optional(),
+                    viewerId: z.string().uuid().optional(),
+                })
                 .strict()
                 .parse(req.body);
             if (body.deviceId !== req.deviceIdentity.device.public_id)
                 throw fail(403, '设备标识不匹配');
-            res.status(201).json(this.grant(req.deviceIdentity.device));
+            if (
+                body.reason === 'viewer_request' &&
+                (!body.commandId || !body.viewerId || body.consent !== undefined)
+            )
+                throw fail(422, '网页截图请求缺少指令关联');
+            if (
+                body.reason === 'initial_accessibility' &&
+                (body.commandId || body.viewerId || body.consent !== undefined)
+            )
+                throw fail(422, '首图请求字段不符合协议');
+            res.status(201).json(await this.grant(req.deviceIdentity.device, body));
         });
         const parser = multer({
             storage: multer.memoryStorage(),
@@ -341,32 +424,12 @@ export class DeviceIngress {
                     .select('apk_routes.*', 'accounts.username'),
             }),
         );
-        router.post('/apk-routes', async (req, res) => {
-            const body = z
-                .object({ apkId: apkIdSchema, ownerAccountId: idSchema.optional() })
-                .strict()
-                .parse(req.body);
-            const owner = await this.owner(body.ownerAccountId ?? req.user.id);
-            const existing = await this.db('apk_routes').where('apk_id', body.apkId).first();
-            if (existing) throw fail(409, 'APK ID 已配置，不覆盖已有归属');
-            await this.db('apk_routes').insert({
-                apk_id: body.apkId,
-                project_id: this.config.projectId,
-                owner_account_id: owner.id,
-                created_at: Date.now(),
-            });
-            await this.store.audit('apk_route_created', 'http');
-            res.status(201).json({
-                apkId: body.apkId,
-                owner: { id: owner.id, username: owner.username },
-            });
-        });
         router.post('/device-enrollments', async (req, res) => {
             const { apkId } = z.object({ apkId: apkIdSchema }).strict().parse(req.body);
             const route = await this.db('apk_routes')
                 .where({ apk_id: apkId, enabled: true })
                 .first();
-            if (!route) throw fail(404, '请先配置 APK ID 归属');
+            if (!route) throw fail(404, 'APK ID 不存在或已停用');
             await this.owner(route.owner_account_id);
             const id = randomUUID(),
                 expiresAt = Date.now() + 10 * 60000;
@@ -409,6 +472,8 @@ export class DeviceIngress {
                 .update({ revoked: true });
             this.frames.delete(device.id);
             this.grants.delete(device.id);
+            this.pendingCaptures.delete(device.id);
+            this.autoCaptureAt.delete(device.id);
             this.store.live.delete(device.public_id);
             await this.publish?.(device.public_id, 'device_offline');
             await this.store.audit('device_revoked', 'http', device.public_id);
@@ -418,7 +483,7 @@ export class DeviceIngress {
             const id = idSchema.parse(req.params.id);
             res.json({
                 frame: this.frameMeta(id, await this.frame(id)),
-                mode: 'single-frame',
+                mode: 'leased-latest-frame',
                 retentionSeconds: 300,
             });
         });

@@ -254,19 +254,21 @@
 .console-account {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
     margin-left: auto;
-    padding: 4px 6px;
-    border-radius: 9px;
+    padding: 4px 7px;
+    border-radius: 10px;
     background: #f8f9fb;
     flex-shrink: 0;
-    min-width: clamp(170px, 11.7vw, 235px);
+    min-width: 218px;
+    max-width: 320px;
 }
 .account-avatar {
     background: #4c57e6;
     color: white;
-    width: 24px;
-    height: 24px;
+    width: 28px;
+    height: 28px;
+    flex-shrink: 0;
     border-radius: 7px;
     display: grid;
     place-items: center;
@@ -283,13 +285,66 @@
     color: var(--lab-muted);
     letter-spacing: 0.5px;
 }
-.local-mode {
+.account-identity {
+    min-width: 0;
+}
+.account-identity strong,
+.account-identity small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.account-validity {
     color: #2fa280;
     background: #e7f9f1;
-    font-size: 8px;
-    border-radius: 5px;
+    font-size: 9px;
+    font-weight: 650;
+    border-radius: 6px;
     padding: 3px 5px;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+.console-account .account-validity {
     margin-left: auto;
+    flex-shrink: 0;
+}
+.account-validity.expiring {
+    color: #986000;
+    background: #fff2d9;
+}
+.account-validity.expired,
+.account-validity.unknown {
+    color: #b82d3b;
+    background: #ffebed;
+}
+.account-facts {
+    display: grid;
+    grid-template-columns: 88px minmax(0, 1fr);
+    gap: 10px;
+    margin: 12px 0;
+}
+.account-facts dt,
+.account-facts dd {
+    margin: 0;
+}
+.account-apk-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    overflow-wrap: anywhere;
+}
+[data-bs-theme='dark'] .account-validity {
+    color: #7cddb7;
+    background: #173a32;
+}
+[data-bs-theme='dark'] .account-validity.expiring {
+    color: #ffd080;
+    background: #473722;
+}
+[data-bs-theme='dark'] .account-validity.expired,
+[data-bs-theme='dark'] .account-validity.unknown {
+    color: #ffacb4;
+    background: #452833;
 }
 .console-topbar .btn {
     height: 29px;
@@ -301,7 +356,8 @@
     width: var(--console-rail-width);
     background: var(--lab-surface);
     border-right: 1px solid var(--lab-line);
-    position: absolute;
+    /* Anchor navigation to the viewport, not the scrollable desktop canvas. */
+    position: fixed;
     top: var(--console-header-height);
     left: 0;
     bottom: 0;
@@ -309,6 +365,9 @@
     flex-direction: column;
     padding: 6px 5px;
     z-index: 40;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    scrollbar-width: thin;
 }
 .rail-link {
     position: relative;
@@ -519,6 +578,14 @@
     color: white;
     padding-bottom: 4px;
     z-index: 1;
+}
+.phone-preview.has-thumbnail:before {
+    display: none;
+}
+.phone-preview img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
 }
 .preview-0 {
     background: linear-gradient(150deg, #aa88ff, #80d4df 65%, #c692ff);
@@ -1243,6 +1310,14 @@
 }
 .console-detail .viewer-empty p {
     font-size: 10px;
+}
+.viewer-capture-status {
+    margin: 0;
+    padding: 6px 9px;
+    border-top: 1px solid var(--lab-line);
+    color: #546078;
+    background: #f5f7ff;
+    font-size: 9px;
 }
 /* Translation configuration reuses Tabler fields and cards. */
 .translation-settings {

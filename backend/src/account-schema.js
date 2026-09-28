@@ -25,3 +25,72 @@ export async function migrateAccounts(db) {
         });
     });
 }
+
+export async function migrateAccountValidity(db) {
+    if (await db('node_migrations').where('name', '007_account_validity').first()) return;
+    await db.transaction(async (trx) => {
+        await trx.schema.alterTable('accounts', (t) => {
+            // Exclusive UTC millisecond deadline; null preserves the existing superadmin.
+            t.bigInteger('valid_until').nullable();
+        });
+        await trx('node_migrations').insert({
+            name: '007_account_validity',
+            created_at: new Date().toISOString(),
+        });
+    });
+}
+
+export async function migrateAccountApkId(db) {
+    if (await db('node_migrations').where('name', '008_account_apk_id').first()) return;
+    await db.transaction(async (trx) => {
+        await trx.schema.alterTable('accounts', (t) => {
+            t.string('apk_id').nullable().unique();
+        });
+        await trx.schema.alterTable('apk_builds', (t) => {
+            t.string('requested_apk_id').nullable();
+            t.integer('owner_account_id').nullable();
+            t.string('owner_username').nullable();
+            t.string('routing_reason').nullable();
+        });
+        await trx('node_migrations').insert({
+            name: '008_account_apk_id',
+            created_at: new Date().toISOString(),
+        });
+    });
+}
+
+export async function migrateSuperadminApkId(db) {
+    if (await db('node_migrations').where('name', '009_superadmin_apk_id_1').first()) return;
+    await db.transaction(async (trx) => {
+        const rootQuery = trx('accounts').orderBy('id');
+        if (await trx.schema.hasColumn('accounts', 'role')) rootQuery.where('role', 'superadmin');
+        const root = await rootQuery.first();
+        if (root && root.apk_id !== '1') {
+            const conflictingAccount = await trx('accounts')
+                .where('apk_id', '1')
+                .whereNot('id', root.id)
+                .first();
+            const desiredRoute = await trx('apk_routes').where('apk_id', '1').first();
+            if (conflictingAccount || (desiredRoute && desiredRoute.owner_account_id !== root.id))
+                throw new Error('APK ID 1 已被其他账号占用');
+            const currentRoute = root.apk_id
+                ? await trx('apk_routes')
+                      .where({ apk_id: root.apk_id, owner_account_id: root.id })
+                      .first()
+                : null;
+            if (!desiredRoute)
+                await trx('apk_routes').insert({
+                    apk_id: '1',
+                    owner_account_id: root.id,
+                    project_id: currentRoute?.project_id ?? 1,
+                    enabled: currentRoute?.enabled ?? true,
+                    created_at: currentRoute?.created_at ?? Date.now(),
+                });
+            await trx('accounts').where('id', root.id).update({ apk_id: '1' });
+        }
+        await trx('node_migrations').insert({
+            name: '009_superadmin_apk_id_1',
+            created_at: new Date().toISOString(),
+        });
+    });
+}

@@ -12,8 +12,8 @@
 | `server/` | `backend/`，新增独立清单/锁文件/依赖 |
 | 根目录 `docs/`、`.node-private/` | `backend/` 下对应位置 |
 | `apk-templates/` | `android/apk-templates/` |
-| `android-screenagent/` | `android/apk-templates/screenagent-1.0/` |
-| `android-shell/` | `android/apk-templates/browser-1.0/` |
+| `android-screenagent/` | `android/apk-templates/b-packages/screenagent-1.0/`（迁移基线；当前功能版为并列的 1.1） |
+| `android-shell/` | `android/apk-templates/standalone/browser-1.0/` |
 | `android-installer/` | `android/installer/` |
 | `apk-repack/`、`apk-shield/` | `android/` 下对应位置，仍保持同级关系 |
 | `scripts/`、`.local-tools/`、`dist/` | `android/` 下对应位置 |
@@ -32,7 +32,7 @@
 
 ## 模板约定
 
-模板版本与源码目录统一在 android/apk-templates。清单中 sourceDir **相对该目录**，例如 `screenagent-1.0`，不再相对项目根。读取时同时校验路径与真实路径，阻止跨目录或符号链接越界。
+模板版本与源码目录统一在 `android/apk-templates`：`a-packages/` 放安装器，`b-packages/` 放实际工作端，`standalone/` 放不参与 A/B 依赖的模板。清单中 sourceDir **相对该目录**，例如 `b-packages/screenagent-1.1`，不再相对项目根。读取时同时校验路径与真实路径，阻止跨目录或符号链接越界。
 
 新增 1.1 复制一个版本目录，再追加 templates.json 条目；刷新页面即可选择。新版本命名、Gradle 属性、资源注入与输出格式见 [模板指南](../../android/apk-templates/README.md)。历史构建的模板快照保留原记录，不重写已成功任务，也不更改已有产物 URL。
 

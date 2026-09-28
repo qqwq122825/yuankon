@@ -27,6 +27,18 @@ export const unsubscribe = (id) => {
 };
 export const queryState = (id) =>
     send({ type: 'command', sessionId: id, data: { command: 'GET_DEVICE_STATE', params: {} } });
+export const captureViewerHeartbeat = (id, viewerId) =>
+    send({ type: 'capture_viewer_heartbeat', sessionId: id, data: { viewerId } });
+export const captureViewerClose = (id, viewerId) =>
+    send({ type: 'capture_viewer_close', sessionId: id, data: { viewerId } });
+export const requestScreenshot = (id, viewerId, commandId = crypto.randomUUID()) => {
+    send({
+        type: 'command',
+        sessionId: id,
+        data: { command: 'SCREENSHOT_NOW', commandId, params: { viewerId } },
+    });
+    return commandId;
+};
 function schedule() {
     if (stopped) return;
     connection.status = '重连中';

@@ -29,6 +29,13 @@ export async function login(username, password) {
     session.message = '';
     return result.user;
 }
+export async function refreshProfile() {
+    const current = session.user;
+    if (!current) return;
+    const result = await api('/api/auth/me');
+    // A late response must not restore a logged-out or replaced session.
+    if (session.user === current) session.user = result.user;
+}
 export function endSession(message = '请登录') {
     session.user = null;
     session.ready = true;

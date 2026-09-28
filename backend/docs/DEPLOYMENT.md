@@ -32,6 +32,8 @@ Node >=22.12，地址 [本地工作台](http://127.0.0.1:8080)。使用 `NODE_PO
 
 后续需要更换默认密码、补齐工作室/成员范围与设备撤销、HTTPS/WSS、明确代理信任边界、进程管理、日志保留、备份恢复和容量测试。专属服务器不要直接共享 SQLite 文件；域名、APK ID 归属与中央数据库规划见 [账号设计](ACCOUNT_DESIGN.md)。本轮没有向外部服务器部署。
 
-网页 APK 构建和独立 CLI 见 [构建说明](BUILD_BOT.md)；Telegram 接入尚未实现。启动迁移 `006_apk_queue` 为历史构建增加模板/参数/阶段字段，历史记录不覆盖。仅运行一个 Node 服务实例；SQLite 队列串行启动 Gradle，重启后执行中任务失败、排队任务继续。升级前确认无构建执行或接受中断。构建产物、私有日志、签名与容量维护见 [模板指南](../../android/apk-templates/README.md)。
+工作室独立服务器采用中央业务 API，而非复制整套超管数据库/主密钥。超管设备汇总、节点身份、域名迁移和断联处理详见 [多服务器设计（未实施）](MULTI_SERVER_DESIGN.md)。当前单机服务不通过填写一个外部域名就自动获得这些能力。
 
-连续截图接口仍属 [协议设计阶段](SCREEN_CAPTURE_PROTOCOL.md)。手机主动单张上报已按 [ScreenAgent 接入说明](SCREENAGENT_INGRESS.md) 实现设备专用认证和受限 multipart；没有开放监听。主页 URL 与 API origin 分开，手机本机联调可通过用户确认的 USB reverse。临时图片仅放有界内存，不进入数据库备份、公共静态目录、代理缓存或请求正文日志；公开入口的 HTTPS/WSS、上传/解码与并发预算需单独部署验收。
+网页 APK 构建和独立 CLI 见 [构建说明](BUILD_BOT.md)；Telegram 接入尚未实现。启动迁移 `006_apk_queue` 为历史构建增加模板/参数/阶段字段，`009_superadmin_apk_id_1` 将默认超管规范 APK ID 设为 `1`，`010_ab_package_builds` 增加 A/B 角色及 A 包锁定的 B 包构建 ID/摘要/包名并把已有 ScreenAgent 构建回填为 B 包；历史记录不覆盖。仅运行一个 Node 服务实例；SQLite 队列串行启动 Gradle，重启后执行中任务失败、排队任务继续。升级前确认无构建执行或接受中断。构建产物、私有日志、签名与容量维护见 [模板指南](../../android/apk-templates/README.md)。
+
+完整截图会话接口仍属 [协议设计阶段](SCREEN_CAPTURE_PROTOCOL.md)。手机首图与网页租约内实时最新帧已按 [ScreenAgent 接入说明](SCREENAGENT_INGRESS.md) 实现设备专用认证和受限 multipart；没有开放监听。主页 URL 与 API origin 分开，手机本机联调可通过用户确认的 USB reverse。临时图片仅放有界内存并只保留最新帧，不进入数据库备份、公共静态目录、代理缓存或请求正文日志；公开入口的 HTTPS/WSS、上传/解码与并发预算需单独部署验收。

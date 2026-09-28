@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">ScreenAgent</string>
+    <string name="accessibility_service_name">Boundary 只读截图</string>
+    <string name="accessibility_description">开启后自动上传一张临时缩略图；后续仅在后台查看页明确请求且查看租约有效时上传单张截图。不读取界面文字。</string>
+</resources>

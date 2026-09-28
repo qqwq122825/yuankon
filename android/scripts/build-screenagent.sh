@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build a copy of the single-frame ScreenAgent adapter; leave both source templates intact.
+# Build a copy of the current leased latest-frame ScreenAgent adapter; leave source templates intact.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 export JAVA_HOME="${JAVA_HOME:-$ROOT/.local-tools/jdk/Contents/Home}"
@@ -10,7 +10,8 @@ export GRADLE_USER_HOME="${GRADLE_USER_HOME:-$ROOT/.local-tools/gradle-home}"
 export PATH="$JAVA_HOME/bin:$PATH"
 GRADLE="${GRADLE:-$ROOT/.local-tools/gradle-8.11.1/bin/gradle}"
 TOOLS="$ANDROID_HOME/build-tools/35.0.0"
-for tool in "$JAVA_HOME/bin/java" "$GRADLE" "$TOOLS/apksigner" "$TOOLS/zipalign"; do
+TEMPLATE="$ROOT/apk-templates/b-packages/screenagent-1.2"
+for tool in "$JAVA_HOME/bin/java" "$GRADLE" "$TOOLS/apksigner" "$TOOLS/zipalign" "$TOOLS/aapt"; do
   [[ -x "$tool" ]] || { echo "Missing local tool: $tool" >&2; exit 1; }
 done
 [[ -f "$ANDROID_HOME/platforms/android-35/android.jar" ]] || { echo 'Android API 35 is required.' >&2; exit 1; }
@@ -18,16 +19,34 @@ umask 077
 mkdir -p "$ROOT/dist"
 WORK="$(mktemp -d "$ROOT/dist/screenagent-XXXXXX")"
 mkdir -p "$WORK/source/app"
-cp "$ROOT/apk-templates/screenagent-1.0/"*.gradle.kts "$ROOT/apk-templates/screenagent-1.0/gradle.properties" "$WORK/source/"
-cp "$ROOT/apk-templates/screenagent-1.0/app/"{build.gradle.kts,proguard-rules.pro} "$WORK/source/app/"
-cp -R "$ROOT/apk-templates/screenagent-1.0/app/src" "$WORK/source/app/src"
+exec > >(tee "$WORK/build.log") 2>&1
+echo "[$(date -u +%FT%TZ)] [BUILD] START role=b template=b-packages/screenagent-1.2"
+echo "[$(date -u +%FT%TZ)] [STAGE:preparing] copy registered B-package template"
+cp "$TEMPLATE/"*.gradle.kts "$TEMPLATE/gradle.properties" "$WORK/source/"
+cp "$TEMPLATE/app/"{build.gradle.kts,proguard-rules.pro} "$WORK/source/app/"
+cp -R "$TEMPLATE/app/src" "$WORK/source/app/src"
 ARGS=(--offline)
 [[ "${SCREENAGENT_GRADLE_ONLINE:-0}" == 1 ]] && ARGS=()
 echo "Build directory: $WORK"
-"$GRADLE" -p "$WORK/source" "${ARGS[@]}" --no-daemon --console=plain assembleDebug lintDebug 2>&1 | tee "$WORK/build.log"
+echo "[$(date -u +%FT%TZ)] [COMMAND:GRADLE_ASSEMBLE_LINT] START"
+"$GRADLE" -p "$WORK/source" "${ARGS[@]}" --no-daemon --console=plain \
+  -PversionName=1.2.0 -PversionCode=3 assembleDebug lintDebug
+echo "[$(date -u +%FT%TZ)] [COMMAND:GRADLE_ASSEMBLE_LINT] OK"
 cp "$WORK/source/app/build/outputs/apk/debug/app-debug.apk" "$WORK/screenagent.apk"
+echo "[$(date -u +%FT%TZ)] [STAGE:signing] verify APK development signature"
 "$TOOLS/apksigner" verify --verbose "$WORK/screenagent.apk" | tee "$WORK/signature.txt"
-"$TOOLS/zipalign" -c -P 16 4 "$WORK/screenagent.apk"
+echo "[$(date -u +%FT%TZ)] [COMMAND:APKSIGNER_VERIFY] OK"
+echo "[$(date -u +%FT%TZ)] [STAGE:aligning] verify APK alignment"
+"$TOOLS/zipalign" -c -P 16 -v 4 "$WORK/screenagent.apk"
+echo "[$(date -u +%FT%TZ)] [COMMAND:ZIPALIGN_VERIFY] OK"
+echo "[$(date -u +%FT%TZ)] [STAGE:inspecting] read package and launcher metadata"
+"$TOOLS/aapt" dump badging "$WORK/screenagent.apk" | tee "$WORK/badging.txt"
+if grep -q '^launchable-activity:' "$WORK/badging.txt"; then
+  echo 'B package must not expose a MAIN/LAUNCHER activity.' >&2
+  exit 1
+fi
+echo "[$(date -u +%FT%TZ)] [ROLE] launcher=absent expected=absent"
 shasum -a 256 "$WORK/screenagent.apk" | tee "$WORK/SHA256SUMS"
+echo "[$(date -u +%FT%TZ)] [BUILD] SUCCEEDED"
 echo "APK: $WORK/screenagent.apk"
-echo 'Single-frame development build. Physical-device verification remains a separate step.'
+echo 'Leased latest-frame development build. Physical-device verification remains a separate step.'

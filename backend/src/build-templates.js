@@ -20,27 +20,21 @@ export const templateSchema = z
         sourceDir: z
             .string()
             .regex(/^[a-zA-Z0-9_-][a-zA-Z0-9_.-]*(?:\/[a-zA-Z0-9_-][a-zA-Z0-9_.-]*)*$/),
-        kind: z.enum(['browser', 'screenagent']),
+        kind: z.enum(['browser', 'screenagent', 'installer']),
         description: text(300),
     })
     .strict();
 export const buildInput = z
     .object({
         templateId: text(64),
-        domain: text(255),
+        domain: z.string().trim().max(255).default(''),
         appName: text(80),
-        homeUrl: text(2048).refine((v) => {
-            try {
-                const u = new URL(v);
-                return u.protocol === 'https:' && !u.username && !u.password;
-            } catch {
-                return false;
-            }
-        }),
+        homeUrl: z.string().trim().max(2048).default(''),
         apkId: z
             .string()
             .trim()
-            .regex(/^[A-Za-z0-9_-]{1,64}$/),
+            .regex(/^[A-Za-z0-9_-]{0,64}$/)
+            .default(''),
         batch: z
             .string()
             .trim()
@@ -50,7 +44,20 @@ export const buildInput = z
         packageName: z.string().trim().max(180).default(''),
         requestId: z.string().uuid(),
     })
-    .strict();
+    .strict()
+    .superRefine((value, context) => {
+        if (!value.homeUrl) return;
+        try {
+            const url = new URL(value.homeUrl);
+            if (url.protocol !== 'https:' || url.username || url.password) throw new Error();
+        } catch {
+            context.addIssue({
+                code: 'custom',
+                path: ['homeUrl'],
+                message: '首页网址必须是 HTTPS 地址',
+            });
+        }
+    });
 export function packageName(value) {
     if (!value) return `org.boundary.app.p${randomBytes(8).toString('hex')}`;
     const reserved = new Set([
