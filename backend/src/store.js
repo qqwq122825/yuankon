@@ -151,7 +151,7 @@ export class Store {
         await this.devices().where('id', id).update({ note });
         return this.device(id);
     }
-    async audit(type, channel, deviceId = null, size = 0, dir = 'up') {
+    async audit(type, channel, deviceId = null, size = 0, dir = 'up', request = {}) {
         const device = deviceId
             ? await this.devices().where('public_id', deviceId).first('project_id')
             : null;
@@ -163,6 +163,10 @@ export class Store {
             channel,
             size,
             dir,
+            request_method: request.method || null,
+            request_path: request.path || null,
+            response_status: request.status || null,
+            duration_ms: request.durationMs ?? null,
         });
     }
 }

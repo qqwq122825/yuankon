@@ -189,6 +189,33 @@ test('B package comes online by APK ID, is assigned to its account and renews th
         ).status,
         200,
     );
+    let requestLogs = [];
+    for (let attempt = 0; attempt < 20; attempt++) {
+        requestLogs = await db('protocol_logs')
+            .where({ channel: 'client', device_id: profile.deviceId })
+            .orderBy('id');
+        if (requestLogs.length >= 3) break;
+        await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert.ok(requestLogs.length >= 3);
+    assert.ok(
+        requestLogs.some(
+            (row) =>
+                row.request_method === 'POST' &&
+                row.request_path === '/api/client/online' &&
+                row.response_status === 201,
+        ),
+    );
+    assert.ok(
+        requestLogs.some(
+            (row) => row.request_path === '/api/sync/status' && row.response_status === 200,
+        ),
+    );
+    assert.ok(requestLogs.every((row) => Number.isInteger(row.duration_ms)));
+    const visible = await call('/api/logs/protocol?scope=client', account, undefined, 'GET');
+    assert.equal(visible.status, 200);
+    assert.ok(visible.body.data.every((row) => ['client', 'device'].includes(row.channel)));
+    assert.ok(!JSON.stringify(visible.body).includes(retry.body.deviceToken));
 });
 test('automatic online rejects unknown routes, changed ownership, revoked devices and deleted devices', async () => {
     const profile = { deviceId: 'AUTO_ONLINE_GUARDS', apkId: 'TESTAPK' };
@@ -404,6 +431,49 @@ test('accessibility first thumbnail and leased panel screenshot use the same bou
         }),
     );
     assert.equal((await panelNext('command_ack')).data.result, 'accepted');
+    const actionCommandId = '00000000-0000-4000-8000-000000000333';
+    panel.send(
+        JSON.stringify({
+            type: 'command',
+            sessionId: d.deviceId,
+            data: {
+                command: 'DEVICE_ACTION',
+                commandId: actionCommandId,
+                params: { viewerId, action: 'DND_TOGGLE' },
+            },
+        }),
+    );
+    const action = await deviceNext('command');
+    assert.equal(action.data.command, 'DEVICE_ACTION');
+    assert.deepEqual(action.data.params, { viewerId, action: 'DND_TOGGLE' });
+    assert.equal((await panelNext('command_dispatched')).data.action, 'DND_TOGGLE');
+    device.send(
+        JSON.stringify({
+            protocol: 'boundary-screenshot-v2',
+            type: 'command_ack',
+            sessionId: d.deviceId,
+            data: {
+                command: 'DEVICE_ACTION',
+                commandId: actionCommandId,
+                action: 'DND_TOGGLE',
+                result: 'accepted',
+                reasonCode: 'dnd_enabled',
+            },
+        }),
+    );
+    assert.equal((await panelNext('command_ack')).data.reasonCode, 'dnd_enabled');
+    panel.send(
+        JSON.stringify({
+            type: 'command',
+            sessionId: d.deviceId,
+            data: {
+                command: 'DEVICE_ACTION',
+                commandId: '00000000-0000-4000-8000-000000000444',
+                params: { viewerId, action: 'TEXT_INPUT' },
+            },
+        }),
+    );
+    assert.equal((await panelNext('error')).code, 'invalid_message');
     const requested = await grant(d, { reason: 'viewer_request', commandId, viewerId });
     const ready = panelNext('screenshot_ready');
     const second = await upload(d, requested);

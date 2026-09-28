@@ -2,8 +2,8 @@
 
 ## 当前源码
 
-- `android/apk-templates/b-packages/`：工作端版本区。当前 `screenagent-1.3/` 只写入后台域名与 APK ID，没有 Activity、MAIN/LAUNCHER 或首页。无障碍开启后自动归属上线、心跳、首图并在查看租约内上传实时最新帧；`screenagent-1.2/` 及更早版本保留兼容。
-- `android/apk-templates/a-packages/`：安装器版本区。当前 `installer-1.1/` 清单 ID 为 `installer-1.1`，有桌面入口和 HTTPS 内置浏览器；构建副本写入首页、最新成功 B 包和摘要配置。未安装 B 包时只显示安装入口，本次安装成功返回后显示「打开无障碍」按钮，用户开启 B 包服务并返回后进入首页；完成首次引导后检测到已安装便直接进入首页。旧 `installer-1.0/` 保留。A 包不复制 B 包工作逻辑。
+- `android/apk-templates/b-packages/`：工作端版本区。当前 `screenagent-1.4/` 只写入后台域名与 APK ID，没有 Activity、MAIN/LAUNCHER 或首页。无障碍开启后自动归属上线、心跳、首图并在查看租约内上传 540px / JPEG 50 的实时最新帧，并处理固定快捷操作；`screenagent-1.3/` 及更早版本保留兼容。
+- `android/apk-templates/a-packages/`：安装器版本区。当前 `installer-1.2/` 清单 ID 为 `installer-1.2`，有桌面入口和 HTTPS 内置浏览器；构建副本写入首页、最新成功 B 包和摘要配置。未安装 B 包时只显示安装入口；安装成功后，Android 13 及以上可先打开 B 包应用信息并由用户选择「允许受限设置」，再打开无障碍，用户开启与 B 包同名的服务并返回后进入首页；完成首次引导后检测到已安装便直接进入首页。旧 `installer-1.0/1.1` 保留。A 包不复制 B 包工作逻辑。
 - `android/apk-templates/standalone/`：不参与 A/B 依赖的独立模板。当前 `browser-1.0/` 只打开可见 WebView。
 - `android/apk-templates/templates.json`：后台模板选择框的数据源。显示名和实际 Android 版本分开；当前没有名为 v4.0 的源码，勿只改标题就描述为新增功能。
 - `android/apk-templates/domains.json`：可选域名简称映射，不包含凭证。
@@ -15,18 +15,18 @@
 以下命令在项目根目录执行。先确认新目录尚不存在：
 
 ```bash
-cp -R android/apk-templates/b-packages/screenagent-1.3 android/apk-templates/b-packages/screenagent-1.4
+cp -R android/apk-templates/b-packages/screenagent-1.4 android/apk-templates/b-packages/screenagent-1.5
 ```
 
 在新目录修改 Android 源码，保留旧 1.0 目录。向 `android/apk-templates/templates.json` 的数组追加：
 
 ```json
 {
-  "id": "screenagent-1.4",
-  "name": "v1.4 · ScreenAgent 新能力",
-  "versionName": "1.4.0",
-  "versionCode": 5,
-  "sourceDir": "b-packages/screenagent-1.4",
+  "id": "screenagent-1.5",
+  "name": "v1.5 · ScreenAgent 新能力",
+  "versionName": "1.5.0",
+  "versionCode": 6,
+  "sourceDir": "b-packages/screenagent-1.5",
   "kind": "screenagent",
   "description": "在这里写真实新增能力；保留手机确认与停止入口。"
 }

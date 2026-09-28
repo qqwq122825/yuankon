@@ -3,6 +3,7 @@ import { ref, watch, onUnmounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { api, mutate, sourceLabel, formatDate } from '../api.js';
 import { connection } from '../connection.js';
+import { setFleetStats } from '../fleet-stats.js';
 import SortHeading from '../components/SortHeading.vue';
 const route = useRoute(),
     router = useRouter(),
@@ -40,6 +41,7 @@ async function load() {
         });
         if (request.signal.aborted) return;
         result.value = data;
+        setFleetStats(data.stats);
         const lastPage = Math.max(1, Math.ceil(data.total / data.perPage));
         if (data.page > lastPage) {
             await router.replace({ path: '/', query: { ...route.query, page: lastPage } });
@@ -322,9 +324,7 @@ function value(row, key) {
             {{ loading ? '读取中' : '本地数据' }}</span
         >
         <div class="page-actions">
-            <RouterLink to="/snapshots">快照档案</RouterLink
-            ><RouterLink to="/events">观察记录</RouterLink
-            ><button
+            <button
                 class="btn btn-sm"
                 :disabled="!result || result.page <= 1"
                 @click="query({ page: result.page - 1 })"

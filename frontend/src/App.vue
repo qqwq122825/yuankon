@@ -1,21 +1,21 @@
 <script setup>
 import { ref, computed, onUnmounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { api } from './api.js';
 import { connection, startConnection, stopConnection, onMessage } from './connection.js';
+import { fleetStats as stats, refreshFleetStats, clearFleetStats } from './fleet-stats.js';
 import FleetStats from './components/FleetStats.vue';
 import AccountBadge from './components/AccountBadge.vue';
 import { session } from './session.js';
 const route = useRoute(),
     router = useRouter(),
     q = ref(''),
-    stats = ref(null),
     dark = ref(localStorage.getItem('boundary-theme') === 'dark');
 const detail = computed(() => route.path.startsWith('/devices/'));
 const nav = [
     ['/', 'device-mobile', '设备'],
     ['/builds', 'package', '构建'],
     ['/settings/translation', 'adjustments', '翻译'],
+    ['/logs', 'activity', '日志'],
 ];
 watch(
     () => route.query.q,
@@ -38,12 +38,16 @@ watch(
 );
 async function loadStats() {
     try {
-        stats.value = (await api('/api/devices')).stats;
+        await refreshFleetStats();
     } catch {}
 }
 let statsTimer;
 const off = onMessage((message) => {
-    if (['device_online', 'device_offline', 'device_status_update'].includes(message.type)) {
+    if (
+        ['device_online', 'device_offline', 'device_status_update', 'device_removed'].includes(
+            message.type,
+        )
+    ) {
         clearTimeout(statsTimer);
         statsTimer = setTimeout(loadStats, 300);
     }
@@ -55,7 +59,7 @@ watch(
             loadStats();
             startConnection();
         } else {
-            stats.value = null;
+            clearFleetStats();
             clearTimeout(statsTimer);
             stopConnection();
         }

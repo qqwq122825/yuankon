@@ -11,6 +11,7 @@ import {
     captureViewerHeartbeat,
     captureViewerClose,
     requestScreenshot,
+    requestDeviceAction,
 } from '../connection.js';
 import FloatingViewer from '../components/FloatingViewer.vue';
 import NodeReader from '../components/NodeReader.vue';
@@ -29,8 +30,28 @@ const route = useRoute(),
     front = ref('reader'),
     resetKey = ref(0),
     reportedRefresh = ref(0),
-    captureState = ref('');
-let controller, subscribed, viewerId, viewerTimer, activeCommandId;
+    reportedShotCount = ref(0),
+    captureState = ref(''),
+    actionToast = ref(''),
+    actionToastTone = ref('success'),
+    dndEnabled = ref(false);
+let controller, subscribed, viewerId, viewerTimer, activeCommandId, actionToastTimer;
+const pendingActions = new Map();
+const actionProgress = {
+    BACK: '正在返回上一页',
+    HOME: '正在返回 Home',
+    RECENTS: '正在打开多任务',
+    LOCK: '正在锁屏',
+    WAKE: '正在点亮屏幕',
+    DND_TOGGLE: '正在切换勿扰',
+};
+const actionSuccess = {
+    BACK: '已返回上一页',
+    HOME: '已返回 Home',
+    RECENTS: '已打开多任务',
+    LOCK: '已锁屏',
+    WAKE: '已点亮屏幕',
+};
 const sections = [
     ['info', '设备信息'],
     ['snapshots', '历史快照'],
@@ -93,8 +114,33 @@ const off = onMessage((message) => {
     if (!data.value || message.sessionId !== data.value.device.public_id) return;
     if (message.type === 'capture_viewer_lease' && message.data?.viewerId === viewerId) {
         captureState.value = message.data.deviceOnline
-            ? '实时查看租约有效'
-            : '查看租约已建立，设备当前离线';
+            ? '正在实时查看，等待设备上传截图'
+            : '设备当前离线，连接后将继续请求截图';
+    }
+    if (message.type === 'command_ack' && message.data?.command === 'DEVICE_ACTION') {
+        const action = pendingActions.get(message.data.commandId);
+        if (action) {
+            pendingActions.delete(message.data.commandId);
+            if (message.data.result === 'accepted') {
+                if (message.data.reasonCode === 'dnd_enabled') dndEnabled.value = true;
+                if (message.data.reasonCode === 'dnd_disabled') dndEnabled.value = false;
+                showActionToast(
+                    message.data.reasonCode === 'dnd_enabled'
+                        ? '勿扰已开启'
+                        : message.data.reasonCode === 'dnd_disabled'
+                          ? '勿扰已关闭'
+                          : actionSuccess[action] || '操作已执行',
+                );
+            } else {
+                const failure = {
+                    dnd_permission_required: '设备尚未允许勿扰权限',
+                    viewer_lease_expired: '实时查看已结束',
+                    android_version_unsupported: '当前 Android 版本不支持',
+                    action_failed: '设备未执行该操作',
+                };
+                showActionToast(failure[message.data.reasonCode] || '设备未执行该操作', 'error');
+            }
+        }
     }
     if (message.type === 'command_dispatched' && message.data?.commandId === activeCommandId)
         captureState.value = '实时截图指令已下发，等待设备上传';
@@ -145,6 +191,7 @@ function openBoth() {
     front.value = 'reader';
 }
 function openReportedShot(request = true) {
+    if (!reportedShot.value) reportedShotCount.value = 0;
     reportedShot.value = true;
     shot.value = false;
     front.value = 'reported';
@@ -167,7 +214,25 @@ function closeReportedShot() {
         captureViewerClose(data.value.device.public_id, viewerId);
     viewerId = null;
     activeCommandId = null;
+    pendingActions.clear();
+    clearTimeout(actionToastTimer);
+    actionToast.value = '';
     reportedShot.value = false;
+}
+function showActionToast(message, tone = 'success') {
+    clearTimeout(actionToastTimer);
+    actionToast.value = message;
+    actionToastTone.value = tone;
+    actionToastTimer = setTimeout(() => (actionToast.value = ''), 2200);
+}
+function runDeviceAction(action) {
+    if (!viewerId || !data.value || data.value.device.status !== 'online') {
+        showActionToast('设备当前离线', 'error');
+        return;
+    }
+    const commandId = requestDeviceAction(data.value.device.public_id, viewerId, action);
+    pendingActions.set(commandId, action);
+    showActionToast(actionProgress[action] || '正在发送');
 }
 function openPrimary() {
     if (data.value.device.source === 'api') openReportedShot(true);
@@ -221,7 +286,7 @@ function choose(value) {
                     {{ label }}
                 </button>
             </nav>
-            <span class="device-nav-caption">只读研究工作台</span>
+            <span class="device-nav-caption">设备研究工作台</span>
         </aside>
         <div class="device-canvas">
             <div class="inspection-orbit">
@@ -241,7 +306,7 @@ function choose(value) {
                             class="btn"
                             @click="
                                 queryState(data.device.public_id);
-                                notice = '已请求服务端已知状态，不下发设备操作';
+                                notice = '已请求服务端已知状态';
                             "
                         >
                             查询状态
@@ -477,7 +542,8 @@ function choose(value) {
     </div>
     <FloatingViewer
         v-if="reportedShot && data"
-        title="设备上报截图"
+        title="实时截图"
+        :meta="`截图 #${reportedShotCount}`"
         :side="0"
         :reset-key="resetKey"
         :active="front === 'reported'"
@@ -491,6 +557,12 @@ function choose(value) {
             :device-id="data.device.id"
             :refresh-key="reportedRefresh"
             :status="captureState"
+            :toast="actionToast"
+            :toast-tone="actionToastTone"
+            :controls-disabled="data.device.status !== 'online'"
+            :dnd-enabled="dndEnabled"
+            @count="reportedShotCount = $event"
+            @action="runDeviceAction"
         />
     </FloatingViewer>
     <FloatingViewer

@@ -10,9 +10,16 @@ const route = useRoute(),
     polling = ref(false),
     channel = ref('');
 let timer, controller;
-const protocol = computed(() => route.path === '/protocol');
+const protocol = computed(() => ['/protocol', '/logs'].includes(route.path));
+const clientLogs = computed(() => route.path === '/logs');
 const title = computed(() =>
-    protocol.value ? '协议审计' : route.path === '/events' ? '观察记录' : '快照档案',
+    clientLogs.value
+        ? '客户端日志'
+        : protocol.value
+          ? '协议审计'
+          : route.path === '/events'
+            ? '观察记录'
+            : '快照档案',
 );
 async function load(increment = false) {
     controller?.abort();
@@ -20,7 +27,7 @@ async function load(increment = false) {
     error.value = '';
     try {
         const endpoint = protocol.value
-            ? `/api/logs/protocol/tail?afterId=${increment ? rows.value.at(-1)?.id || 0 : 0}&limit=100${channel.value ? `&channel=${channel.value}` : ''}`
+            ? `/api/logs/protocol/tail?afterId=${increment ? rows.value.at(-1)?.id || 0 : 0}&limit=100${clientLogs.value ? '&scope=client' : ''}${channel.value ? `&channel=${channel.value}` : ''}`
             : `/api${route.path}?page=${page.value}`;
         const result = await api(endpoint, { signal: controller.signal });
         rows.value = increment ? [...rows.value, ...result.data].slice(-500) : result.data;
@@ -34,6 +41,7 @@ watch(
     () => {
         page.value = 1;
         rows.value = [];
+        channel.value = '';
         polling.value = false;
         load();
     },
@@ -67,15 +75,18 @@ onUnmounted(() => {
                     @change="load(false)"
                 >
                     <option value="">全部通道</option>
-                    <option value="panel">管理端</option>
-                    <option value="device">设备</option>
-                    <option value="http">HTTP</option></select
+                    <option v-if="!clientLogs" value="panel">管理端</option>
+                    <option value="device">设备 WebSocket</option>
+                    <option v-if="!clientLogs" value="http">后台 HTTP</option>
+                    <option v-if="clientLogs" value="client">客户端 HTTP</option></select
                 ><label><input v-model="polling" type="checkbox" /> 实时增量</label
                 ><a
                     class="btn"
-                    :href="`/api/logs/protocol/export?date=${new Date().toISOString().slice(0, 10)}`"
+                    :href="`/api/logs/protocol/export?date=${new Date().toISOString().slice(0, 10)}${clientLogs ? '&scope=client' : ''}`"
                     >导出今日 UTC JSONL</a
-                ><span class="text-muted">仅类型、时间、设备与字节数；保留 7 天</span></template
+                ><span class="text-muted"
+                    >仅保留请求元数据，不记录正文或凭证；保留 7 天</span
+                ></template
             ><template v-else
                 ><button
                     class="btn"
@@ -124,7 +135,13 @@ onUnmounted(() => {
                         </td>
                         <td>{{ row.type || row.kind || sourceLabel(row.source) }}</td>
                         <td v-if="protocol">
-                            {{ row.channel }} · {{ row.dir }} · {{ row.size }} bytes
+                            <template v-if="row.request_path"
+                                ><code>{{ row.request_method }} {{ row.request_path }}</code> →
+                                {{ row.response_status }} · {{ row.duration_ms }} ms ·
+                                {{ row.size }} bytes</template
+                            ><template v-else
+                                >{{ row.channel }} · {{ row.dir }} · {{ row.size }} bytes</template
+                            >
                         </td>
                         <td v-else-if="row.node_count !== undefined">
                             <RouterLink :to="`/devices/${row.device_id}?snapshot=${row.id}`"

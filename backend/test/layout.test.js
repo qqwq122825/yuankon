@@ -43,7 +43,7 @@ test('repository has three source folders, nested dependencies and correctly loc
     }
     const screenagent = path.join(
         ROOT,
-        'android/apk-templates/b-packages/screenagent-1.3/app/src/main',
+        'android/apk-templates/b-packages/screenagent-1.4/app/src/main',
     );
     const manifest = await readFile(path.join(screenagent, 'AndroidManifest.xml'), 'utf8');
     const screenagentConfig = await readFile(
@@ -52,7 +52,7 @@ test('repository has three source folders, nested dependencies and correctly loc
     );
     const installer = path.join(
         ROOT,
-        'android/apk-templates/a-packages/installer-1.1/app/src/main',
+        'android/apk-templates/a-packages/installer-1.2/app/src/main',
     );
     const installerManifest = await readFile(path.join(installer, 'AndroidManifest.xml'), 'utf8');
     const installerActivity = await readFile(
@@ -75,6 +75,8 @@ test('repository has three source folders, nested dependencies and correctly loc
         'utf8',
     );
     assert.match(manifest, /BIND_ACCESSIBILITY_SERVICE/);
+    assert.match(manifest, /android\.permission\.WAKE_LOCK/);
+    assert.match(manifest, /android\.permission\.ACCESS_NOTIFICATION_POLICY/);
     assert.doesNotMatch(manifest, /<activity\b/);
     assert.doesNotMatch(manifest, /android\.intent\.action\.MAIN/);
     assert.doesNotMatch(manifest, /android\.intent\.category\.LAUNCHER/);
@@ -90,7 +92,10 @@ test('repository has three source folders, nested dependencies and correctly loc
         /getApplicationInfo\(config\.getString\("payloadPackageName"\), 0\)/,
     );
     assert.match(installerActivity, /install\.setText\("安装 B 包"\)/);
-    assert.match(installerActivity, /accessibility\.setText\("打开无障碍"\)/);
+    assert.match(installerActivity, /"2\. 打开无障碍"/);
+    assert.match(installerActivity, /Settings\.ACTION_APPLICATION_DETAILS_SETTINGS/);
+    assert.match(installerActivity, /Build\.VERSION_CODES\.TIRAMISU/);
+    assert.match(installerActivity, /允许受限设置/);
     assert.match(installerActivity, /Settings\.Secure\.ENABLED_ACCESSIBILITY_SERVICES/);
     assert.match(installerActivity, /Settings\.ACTION_ACCESSIBILITY_SETTINGS/);
     assert.match(installerActivity, /ACCESSIBILITY_AFTER_INSTALL/);
@@ -100,7 +105,16 @@ test('repository has three source folders, nested dependencies and correctly loc
     assert.match(metadata, /canRetrieveWindowContent="false"/);
     assert.match(service, /CMD_VIEWER_LEASE/);
     assert.match(service, /initial_accessibility/);
-    assert.match(service, /Build\.VERSION_CODES\.R\) 1001L else 334L/);
+    assert.match(service, /captureIntervalMs\.coerceAtLeast\(platformMinimum\)/);
+    assert.match(service, /CMD_DEVICE_ACTION/);
+    assert.match(service, /GLOBAL_ACTION_BACK/);
+    assert.match(service, /GLOBAL_ACTION_HOME/);
+    assert.match(service, /GLOBAL_ACTION_RECENTS/);
+    assert.match(service, /GLOBAL_ACTION_LOCK_SCREEN/);
+    assert.match(service, /ACCESS_NOTIFICATION_POLICY|isNotificationPolicyAccessGranted/);
+    assert.match(service, /SCREEN_BRIGHT_WAKE_LOCK/);
+    assert.match(screenagentConfig, /"maxWidth": 540/);
+    assert.match(screenagentConfig, /"quality": 50/);
     assert.match(service, /scheduleViewerFrame/);
     assert.match(service, /onServiceConnected[\s\S]*connect\(\)/);
     assert.match(service, /ensureOnline\(\)/);

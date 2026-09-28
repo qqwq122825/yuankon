@@ -15,7 +15,7 @@ defineProps({ stats: Object });
                 ><small>在线设备</small>
             </div>
         </div>
-        <div class="header-stat" title="当前项目设备记录总数，包含合成示例">
+        <div class="header-stat" title="当前账号可见的未删除设备记录总数，包含合成示例">
             <span class="header-stat-icon"
                 ><img src="/vendor/icons/device-mobile.svg" width="15" alt=""
             /></span>

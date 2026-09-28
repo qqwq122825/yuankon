@@ -1,7 +1,13 @@
 <script setup>
 import { ref, onMounted, onUnmounted, watch } from 'vue';
 import ViewerWidth from './ViewerWidth.vue';
-const props = defineProps({ title: String, side: Number, resetKey: Number, active: Boolean });
+const props = defineProps({
+    title: String,
+    meta: { type: String, default: '' },
+    side: Number,
+    resetKey: Number,
+    active: Boolean,
+});
 const emit = defineEmits(['close', 'activate']);
 const width = ref(300),
     left = ref(0),
@@ -79,7 +85,12 @@ onUnmounted(() => {
             @pointercancel="drag = null"
         >
             <strong>{{ title }}</strong
-            ><button class="btn btn-sm" @click="close" :aria-label="`关闭${title}`">×</button>
+            ><span class="floating-heading-actions"
+                ><span v-if="meta" class="floating-heading-meta">{{ meta }}</span
+                ><button class="btn btn-sm" @click="close" :aria-label="`关闭${title}`">
+                    ×
+                </button></span
+            >
         </header>
         <ViewerWidth v-model="width" :label="title" />
         <div class="floating-content"><slot /></div>

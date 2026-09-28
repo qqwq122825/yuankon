@@ -4,9 +4,9 @@
 
 项目根目录是 `/Users/xxx/Documents/code/yuankon`。当前模板按 B 包、A 包和独立包分组：
 
-- `android/apk-templates/b-packages/screenagent-1.3/`：当前 B 包工作端；无 Activity、桌面图标或首页，后台域名与 APK ID 在构建时写入。无障碍开启后自动按 APK ID 归属上线、保持心跳并上传首图，断网恢复后立即重连；网页租约内连续上传实时最新帧。`screenagent-1.2` 保留为旧登记版。
+- `android/apk-templates/b-packages/screenagent-1.4/`：当前 B 包工作端；无 Activity、桌面图标或首页，后台域名与 APK ID 在构建时写入。无障碍开启后自动按 APK ID 归属上线、保持心跳并上传首图，断网恢复后立即重连；网页租约内连续上传压缩后的实时最新帧，并接受固定白名单的返回/Home/多任务/锁屏/点亮/勿扰操作。`screenagent-1.3` 及更早版本保留。
 - `android/apk-templates/b-packages/screenagent-1.0/`：保留的旧 B 包单次手动截图版本，不原地覆盖。
-- `android/apk-templates/a-packages/installer-1.1/`：当前 A 包桌面安装器；未安装 B 包时只显示一个安装入口，安装成功返回后显示「打开无障碍」按钮，用户开启 B 包服务并返回后打开构建时设置的 HTTPS 内置浏览器首页。完成首次引导后，检测到 B 包已安装便直接打开首页。`installer-1.0` 保留为旧版。
+- `android/apk-templates/a-packages/installer-1.2/`：当前 A 包桌面安装器；未安装 B 包时只显示一个安装入口，安装成功返回后显示受限设置与无障碍引导，用户开启 B 包服务并返回后打开构建时设置的 HTTPS 内置浏览器首页。完成首次引导后，检测到 B 包已安装便直接打开首页。`installer-1.0/1.1` 保留为旧版。
 - `android/apk-templates/standalone/browser-1.0/`：原 android-shell 浏览器源码，不参与 A/B 依赖关系。
 
 `android/apk-templates/templates.json` 是后台版本清单；`sourceDir` 相对此清单所在目录。这样目录里放的就是模板源码，不再只有配置文件。完整约定见 [模板指南](android/apk-templates/README.md)。
@@ -18,18 +18,18 @@ Vue 前端在 `frontend/src/`；Node 服务器在 `backend/src/`。手机不是 
 在项目根目录执行；先确认目标目录不存在：
 
 ```bash
-cp -R android/apk-templates/b-packages/screenagent-1.3 android/apk-templates/b-packages/screenagent-1.4
+cp -R android/apk-templates/b-packages/screenagent-1.4 android/apk-templates/b-packages/screenagent-1.5
 ```
 
 修改新目录中的功能，再往 `android/apk-templates/templates.json` 数组追加：
 
 ```json
 {
-  "id": "screenagent-1.4",
-  "name": "v1.4 · 截图模板",
-  "versionName": "1.4.0",
-  "versionCode": 5,
-  "sourceDir": "b-packages/screenagent-1.4",
+  "id": "screenagent-1.5",
+  "name": "v1.5 · ScreenAgent 新能力",
+  "versionName": "1.5.0",
+  "versionCode": 6,
+  "sourceDir": "b-packages/screenagent-1.5",
   "kind": "screenagent",
   "description": "填写此版本实际新增的功能。"
 }
@@ -37,7 +37,7 @@ cp -R android/apk-templates/b-packages/screenagent-1.3 android/apk-templates/b-p
 
 保存后刷新构建页。也可采用 `screenshot-1.1` 等清晰的英文目录名，和 sourceDir 一致即可。`kind` 支持 `browser`、`screenagent`、`installer`；新增构建结构需先增加适配和测试。
 
-**版本升级保留旧目录。** 安装包升级需相同 applicationId/签名、提高 versionCode；随机包名是独立应用。当前实际模板为 1.1，不把改标题当作实现更高版本功能。
+**版本升级保留旧目录。** 安装包升级需相同 applicationId/签名、提高 versionCode；随机包名是独立应用。当前功能模板为 1.4，不把改标题当作实现更高版本功能。
 
 ## 3. 在哪里改功能
 
@@ -54,7 +54,7 @@ cp -R android/apk-templates/b-packages/screenagent-1.3 android/apk-templates/b-p
 
 安装包名与 namespace / Java / Kotlin 包路径分开，不全局替换源码包名。网页构建在独立私有副本中写入转义后的资源/JSON，包名和版本走白名单 Gradle 属性；不修改原模板。
 
-ScreenAgent 1.1 的无障碍服务在用户显式开启后自动发送首图；网页查看只在有效租约内请求一张，租约关闭或过期即停止。Android 10 及以下的 CaptureController/MediaProjection 兼容路径仍由手机确认后仅发送一张，维持可见状态与停止入口。浏览器模板只保存接入元数据，不调用登记或采集接口。新增功能涉及两端时，同时更新 backend 协议/认证与 frontend 页面，分别测试。
+ScreenAgent 1.4 的无障碍服务在用户显式开启后自动发送首图；网页查看和固定快捷操作只在有效租约内工作，租约关闭或过期即停止。Android 10 及以下的 CaptureController/MediaProjection 兼容路径仍由手机确认后仅发送一张，维持可见状态与停止入口。浏览器模板只保存接入元数据，不调用登记或采集接口。新增功能涉及两端时，同时更新 backend 协议/认证与 frontend 页面，分别测试。
 
 ## 4. 构建与产物
 

@@ -166,6 +166,16 @@ select:focus-visible,
     line-height: 21px;
     font-size: 17px;
 }
+.floating-heading-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.floating-heading-meta {
+    color: var(--lab-muted);
+    font-size: 10px;
+    font-weight: 500;
+}
 .width-control {
     display: flex;
     align-items: center;
@@ -190,6 +200,90 @@ select:focus-visible,
     width: 100%;
     height: auto;
     padding: 12px;
+}
+.live-screenshot-stage {
+    display: grid;
+    width: 100%;
+    min-height: 0;
+    place-items: center;
+    overflow: hidden;
+    background: #050608;
+}
+.device-screenshot-viewer {
+    position: relative;
+}
+.viewer-action-toast {
+    position: absolute;
+    z-index: 3;
+    top: 12px;
+    right: 8px;
+    max-width: calc(100% - 16px);
+    padding: 7px 11px;
+    color: #365fe8;
+    background: #eef3ff;
+    border: 1px solid #c8d5ff;
+    border-radius: 8px;
+    box-shadow: 0 6px 18px #273b7a24;
+    font-size: 11px;
+    font-weight: 650;
+}
+.viewer-action-toast.error {
+    color: #a33d3d;
+    background: #fff0f0;
+    border-color: #f3c1c1;
+}
+.capture-action-bar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px;
+    background: var(--lab-surface);
+    border-top: 1px solid var(--lab-line);
+    border-bottom: 1px solid var(--lab-line);
+}
+.capture-action-button {
+    display: grid;
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 30px;
+    place-items: center;
+    padding: 0;
+    color: #68738a;
+    background: #f3f5fa;
+    border: 1px solid #dde2ed;
+    border-radius: 7px;
+    font-size: 13px;
+    line-height: 1;
+}
+.capture-action-button:hover:not(:disabled),
+.capture-action-button.active {
+    color: #315bdc;
+    background: #edf2ff;
+    border-color: #bfccff;
+}
+.capture-action-button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+.viewer-capture-status {
+    margin: 0;
+    padding: 7px 10px;
+    color: var(--lab-muted);
+    background: #f4f6fb;
+    border-bottom: 1px solid var(--lab-line);
+    font-size: 9px;
+}
+.live-screenshot-image {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+.live-screenshot-stage .empty-state {
+    max-width: 250px;
+    margin: 0;
+    padding: 20px;
+    color: #aeb7ca;
 }
 .reader-foot {
     font-size: 9px;

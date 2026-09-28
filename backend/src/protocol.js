@@ -195,6 +195,14 @@ export const listSchema = z.object({
     page: z.coerce.number().int().min(1).max(100000).default(1),
 });
 const viewerIdSchema = z.string().uuid();
+export const DEVICE_ACTIONS = Object.freeze([
+    'BACK',
+    'HOME',
+    'RECENTS',
+    'LOCK',
+    'WAKE',
+    'DND_TOGGLE',
+]);
 const captureViewerSchema = (type) =>
     z
         .object({
@@ -226,6 +234,18 @@ export const panelSchema = z.discriminatedUnion('type', [
                         command: z.literal('SCREENSHOT_NOW'),
                         commandId: z.string().uuid(),
                         params: z.object({ viewerId: viewerIdSchema }).strict(),
+                    })
+                    .strict(),
+                z
+                    .object({
+                        command: z.literal('DEVICE_ACTION'),
+                        commandId: z.string().uuid(),
+                        params: z
+                            .object({
+                                viewerId: viewerIdSchema,
+                                action: z.enum(DEVICE_ACTIONS),
+                            })
+                            .strict(),
                     })
                     .strict(),
             ]),

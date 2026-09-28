@@ -39,6 +39,14 @@ export const requestScreenshot = (id, viewerId, commandId = crypto.randomUUID())
     });
     return commandId;
 };
+export const requestDeviceAction = (id, viewerId, action, commandId = crypto.randomUUID()) => {
+    send({
+        type: 'command',
+        sessionId: id,
+        data: { command: 'DEVICE_ACTION', commandId, params: { viewerId, action } },
+    });
+    return commandId;
+};
 function schedule() {
     if (stopped) return;
     connection.status = '重连中';

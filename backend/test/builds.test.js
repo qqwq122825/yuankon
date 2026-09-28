@@ -91,7 +91,7 @@ async function call(url, body, credential = token, method = body ? 'POST' : 'GET
     return { status: response.status, body: value };
 }
 const input = (overrides = {}) => ({
-    templateId: 'screenagent-1.3',
+    templateId: 'screenagent-1.4',
     domain: 'local',
     appName: 'Test "Name" & <test>',
     apkId: owner?.apkId,
@@ -115,7 +115,7 @@ test('catalog/build submission require account authentication and reject device 
         401,
     );
     const catalog = await call('/api/build-templates');
-    assert.equal(catalog.body.templates.length, 7);
+    assert.equal(catalog.body.templates.length, 9);
     assert.deepEqual(
         catalog.body.templates.map((template) => template.kind),
         [
@@ -123,6 +123,8 @@ test('catalog/build submission require account authentication and reject device 
             'screenagent',
             'screenagent',
             'screenagent',
+            'screenagent',
+            'installer',
             'installer',
             'installer',
             'browser',
@@ -131,10 +133,12 @@ test('catalog/build submission require account authentication and reject device 
     assert.deepEqual(
         catalog.body.templates.map((template) => template.sourceDir),
         [
+            'b-packages/screenagent-1.4',
             'b-packages/screenagent-1.3',
             'b-packages/screenagent-1.2',
             'b-packages/screenagent-1.1',
             'b-packages/screenagent-1.0',
+            'a-packages/installer-1.2',
             'a-packages/installer-1.1',
             'a-packages/installer-1.0',
             'standalone/browser-1.0',
@@ -468,6 +472,13 @@ test('source copies encode user values as XML/JSON without editing template code
         assert.ok(xml.includes('&amp;'));
         assert.ok(xml.includes('&lt;TV&gt;'));
         assert.ok(xml.includes('formatted="false"'));
+        if (t.kind === 'screenagent' && xml.includes('name="accessibility_service_name"')) {
+            const appName = xml.match(/<string name="app_name"[^>]*>(.*?)<\/string>/s)?.[1];
+            const serviceName = xml.match(
+                /<string name="accessibility_service_name"[^>]*>(.*?)<\/string>/s,
+            )?.[1];
+            assert.equal(serviceName, appName);
+        }
         if (t.kind === 'installer') {
             const assets = JSON.parse(
                 await readFile(
@@ -479,7 +490,7 @@ test('source copies encode user values as XML/JSON without editing template code
             assert.equal(assets.payloadSha256, job.payload_sha256);
             assert.equal(assets.payloadPackageName, job.payload_package_name);
             assert.equal(assets.homeUrl, job.home_url);
-            if (t.id === 'installer-1.1') {
+            if (t.id === 'installer-1.1' || t.id === 'installer-1.2') {
                 assert.match(
                     await readFile(path.join(source, 'app/src/main/AndroidManifest.xml'), 'utf8'),
                     /<package android:name="org\.test\.worker" \/>/,
@@ -509,8 +520,15 @@ test('source copies encode user values as XML/JSON without editing template code
             assert.equal(assets.apkId, job.apk_id);
             assert.equal(assets.buildId, job.id);
             assert.ok(!assets.token);
-            if (t.kind === 'screenagent') assert.ok(!Object.hasOwn(assets, 'webUrl'));
-            else assert.equal(assets.webUrl, job.home_url);
+            if (t.kind === 'screenagent') {
+                assert.ok(!Object.hasOwn(assets, 'webUrl'));
+                if (t.id === 'screenagent-1.4')
+                    assert.deepEqual(assets.capture, {
+                        intervalMs: 334,
+                        maxWidth: 540,
+                        quality: 50,
+                    });
+            } else assert.equal(assets.webUrl, job.home_url);
         }
         assert.equal(
             await readFile(

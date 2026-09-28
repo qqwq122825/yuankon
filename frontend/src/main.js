@@ -25,6 +25,7 @@ const router = createRouter({
         { path: '/settings/translation', component: Translation },
         { path: '/snapshots', component: Records },
         { path: '/events', component: Records },
+        { path: '/logs', component: Records },
         { path: '/protocol', component: Records },
         { path: '/:pathMatch(.*)*', redirect: '/' },
     ],

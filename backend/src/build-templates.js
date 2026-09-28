@@ -22,6 +22,14 @@ export const templateSchema = z
             .regex(/^[a-zA-Z0-9_-][a-zA-Z0-9_.-]*(?:\/[a-zA-Z0-9_-][a-zA-Z0-9_.-]*)*$/),
         kind: z.enum(['browser', 'screenagent', 'installer']),
         description: text(300),
+        capture: z
+            .object({
+                intervalMs: z.number().int().min(334).max(5000),
+                maxWidth: z.number().int().min(320).max(1080),
+                quality: z.number().int().min(30).max(90),
+            })
+            .strict()
+            .optional(),
     })
     .strict();
 export const buildInput = z

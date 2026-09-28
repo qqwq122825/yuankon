@@ -129,6 +129,9 @@ export async function prepareSource(config, job, template, destination, { payloa
     let xml = await readFile(resources, 'utf8');
     for (const [key, value] of Object.entries({
         app_name: job.app_name,
+        ...(template.kind === 'screenagent' && xml.includes('name="accessibility_service_name"')
+            ? { accessibility_service_name: job.app_name }
+            : {}),
         ...(template.kind === 'browser' ? { home_url: job.home_url } : {}),
     })) {
         const re = new RegExp(`<string\\s+name="${key}"[^>]*>[\\s\\S]*?<\\/string>`);
@@ -185,6 +188,9 @@ export async function prepareSource(config, job, template, destination, { payloa
         packageName: job.package_name,
         version: template.versionName,
         domain: job.domain,
+        ...(template.kind === 'screenagent' && template.capture
+            ? { capture: template.capture }
+            : {}),
     };
     await writeFile(
         path.join(

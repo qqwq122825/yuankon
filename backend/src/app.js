@@ -293,11 +293,13 @@ export async function createApplication(
     const logSchema = z.object({
         afterId: z.coerce.number().int().min(0).default(0),
         limit: z.coerce.number().int().min(1).max(100).default(50),
-        channel: z.enum(['panel', 'device', 'http']).optional(),
+        channel: z.enum(['panel', 'device', 'http', 'client']).optional(),
+        scope: z.enum(['client']).optional(),
     });
     app.get(['/api/logs/protocol', '/api/logs/protocol/tail'], async (req, res) => {
         const filter = logSchema.parse(req.query),
             query = db('protocol_logs').where('id', '>', filter.afterId);
+        if (filter.scope === 'client') query.whereIn('channel', ['client', 'device']);
         if (filter.channel) query.where('channel', filter.channel);
         res.json({
             data: await query.orderBy('id', 'asc').limit(filter.limit),
@@ -305,18 +307,23 @@ export async function createApplication(
         });
     });
     app.get('/api/logs/protocol/export', async (req, res) => {
-        const date = z
-            .string()
-            .regex(/^\d{4}-\d{2}-\d{2}$/)
-            .refine((s) => Number.isFinite(Date.parse(s)))
-            .parse(req.query.date);
+        const input = z
+            .object({
+                date: z
+                    .string()
+                    .regex(/^\d{4}-\d{2}-\d{2}$/)
+                    .refine((s) => Number.isFinite(Date.parse(s))),
+                scope: z.enum(['client']).optional(),
+            })
+            .parse(req.query);
+        const date = input.date;
         const from = Date.parse(`${date}T00:00:00Z`);
-        const rows = await db('protocol_logs')
+        const query = db('protocol_logs')
             .where('ts', '>=', from)
-            .where('ts', '<', from + 86400000)
-            .orderBy('id')
-            .limit(10000);
-        res.attachment(`protocol-${date}.jsonl`)
+            .where('ts', '<', from + 86400000);
+        if (input.scope === 'client') query.whereIn('channel', ['client', 'device']);
+        const rows = await query.orderBy('id').limit(10000);
+        res.attachment(`${input.scope === 'client' ? 'client' : 'protocol'}-${date}.jsonl`)
             .type('application/x-ndjson')
             .send(rows.map((r) => JSON.stringify(r)).join('\n'));
     });

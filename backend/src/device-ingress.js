@@ -78,6 +78,7 @@ export class DeviceIngress {
     }
     async register(req) {
         const profile = profileSchema.parse(req.body);
+        req.clientLogDeviceId = profile.deviceId;
         const p = await this.auth.verify(bearer(req), 'enrollment');
         const result = await this.db.transaction(async (trx) => {
             const ticket = await trx('device_enrollments').where('id', p.sub).first();
@@ -147,6 +148,7 @@ export class DeviceIngress {
     }
     async online(req) {
         const profile = profileSchema.parse(req.body);
+        req.clientLogDeviceId = profile.deviceId;
         const now = Date.now();
         const result = await this.db.transaction(async (trx) => {
             const route = await trx('apk_routes')
@@ -422,6 +424,39 @@ export class DeviceIngress {
     }
     deviceRoutes() {
         const router = Router();
+        const requestPaths = new Set([
+            '/client/online',
+            '/client/register',
+            '/sync/status',
+            '/device/screenshot-session',
+            '/device/screenshot',
+        ]);
+        router.use((req, res, next) => {
+            if (!requestPaths.has(req.path)) return next();
+            const started = Date.now();
+            res.once('finish', () => {
+                const rawSize = Number(req.get('content-length') || 0);
+                const size = Number.isSafeInteger(rawSize)
+                    ? Math.max(0, Math.min(rawSize, 10 * 1024 * 1024))
+                    : 0;
+                this.store
+                    .audit(
+                        'client_request',
+                        'client',
+                        req.deviceIdentity?.device?.public_id || req.clientLogDeviceId || null,
+                        size,
+                        'up',
+                        {
+                            method: req.method,
+                            path: `/api${req.path}`,
+                            status: res.statusCode,
+                            durationMs: Date.now() - started,
+                        },
+                    )
+                    .catch(() => {});
+            });
+            next();
+        });
         router.post('/client/online', async (req, res) =>
             res.status(201).json(await this.online(req)),
         );

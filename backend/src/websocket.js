@@ -1,7 +1,14 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { z } from 'zod';
 import { allowedRequest } from './security.js';
-import { panelSchema, statusSchema, fail, wireDevice, deviceIdSchema } from './protocol.js';
+import {
+    panelSchema,
+    statusSchema,
+    fail,
+    wireDevice,
+    deviceIdSchema,
+    DEVICE_ACTIONS,
+} from './protocol.js';
 
 export function attachWebSockets(
     server,
@@ -195,6 +202,7 @@ export function attachWebSockets(
                     'read_only_subscription',
                     'GET_DEVICE_STATE',
                     'SCREENSHOT_NOW',
+                    'DEVICE_ACTION',
                     'capture_viewer_lease',
                 ],
             },
@@ -296,6 +304,32 @@ export function attachWebSockets(
                         viewerId: viewer.viewerId,
                     },
                 });
+            } else if (message.type === 'command' && message.data.command === 'DEVICE_ACTION') {
+                const viewer = ws.viewers.get(device.public_id);
+                if (
+                    !viewer ||
+                    viewer.viewerId !== message.data.params.viewerId ||
+                    viewer.expiresAt <= Date.now()
+                )
+                    throw fail(410, '截图查看租约已结束');
+                if (!connections.has(device.public_id)) throw fail(409, '设备当前离线');
+                if (
+                    !sendDeviceCommand(device.public_id, 'DEVICE_ACTION', message.data.commandId, {
+                        viewerId: viewer.viewerId,
+                        action: message.data.params.action,
+                    })
+                )
+                    throw fail(409, '设备当前离线');
+                send(ws, {
+                    type: 'command_dispatched',
+                    sessionId: device.public_id,
+                    data: {
+                        command: 'DEVICE_ACTION',
+                        commandId: message.data.commandId,
+                        viewerId: viewer.viewerId,
+                        action: message.data.params.action,
+                    },
+                });
             } else {
                 send(ws, {
                     type: 'get_device_state_response',
@@ -320,6 +354,14 @@ export function attachWebSockets(
         const old = connections.get(id);
         connections.set(id, ws);
         old?.close(4001, 'session_expired');
+        store
+            .audit('device_ws_connected', 'device', id, 0, 'up', {
+                method: 'WS',
+                path: '/ws/device',
+                status: 101,
+                durationMs: 0,
+            })
+            .catch(() => {});
         setup(ws, async (raw, size) => {
             if (connections.get(id) !== ws) throw fail(401, 'superseded');
             const managed = await ingress?.resolve(ws.principal);
@@ -331,6 +373,7 @@ export function attachWebSockets(
                 )
                     throw fail(403, 'identity_mismatch');
                 if (raw.type === 'register') {
+                    await store.audit('device_ws_register', 'device', id, size);
                     send(ws, {
                         type: 'register_ack',
                         data: {
@@ -346,32 +389,60 @@ export function attachWebSockets(
                     (raw.type === 'status' && raw.data?.type === 'device_status')
                 ) {
                     await ingress.status(managed, { ...(raw.data || {}), deviceId: id });
+                    await store.audit('device_heartbeat', 'device', id, size);
                     send(ws, { type: 'status_ack', timestamp: Date.now() });
                     return;
                 }
                 if (raw.type === 'command_ack' || raw.type === 'screenshot_result') {
+                    const metadata = {
+                        protocol: z
+                            .enum(['boundary-screenshot-v1', 'boundary-screenshot-v2'])
+                            .optional(),
+                        sessionId: deviceIdSchema.optional(),
+                        apkId: z.string().max(64).optional(),
+                        timestamp: z.number().int().optional(),
+                    };
+                    const reasonCode = z
+                        .string()
+                        .regex(/^[a-z0-9_]{1,60}$/)
+                        .optional();
                     const envelope = z
-                        .object({
-                            protocol: z
-                                .enum(['boundary-screenshot-v1', 'boundary-screenshot-v2'])
-                                .optional(),
-                            type: z.enum(['command_ack', 'screenshot_result']),
-                            sessionId: deviceIdSchema.optional(),
-                            apkId: z.string().max(64).optional(),
-                            data: z
+                        .union([
+                            z
                                 .object({
-                                    command: z.literal('SCREENSHOT_NOW'),
-                                    commandId: z.string().uuid(),
-                                    result: z.enum(['accepted', 'rejected', 'uploaded', 'failed']),
-                                    reasonCode: z
-                                        .string()
-                                        .regex(/^[a-z0-9_]{1,60}$/)
-                                        .optional(),
+                                    ...metadata,
+                                    type: z.enum(['command_ack', 'screenshot_result']),
+                                    data: z
+                                        .object({
+                                            command: z.literal('SCREENSHOT_NOW'),
+                                            commandId: z.string().uuid(),
+                                            result: z.enum([
+                                                'accepted',
+                                                'rejected',
+                                                'uploaded',
+                                                'failed',
+                                            ]),
+                                            reasonCode,
+                                        })
+                                        .strict(),
                                 })
                                 .strict(),
-                            timestamp: z.number().int().optional(),
-                        })
-                        .strict()
+                            z
+                                .object({
+                                    ...metadata,
+                                    type: z.literal('command_ack'),
+                                    data: z
+                                        .object({
+                                            command: z.literal('DEVICE_ACTION'),
+                                            commandId: z.string().uuid(),
+                                            result: z.enum(['accepted', 'rejected']),
+                                            reasonCode,
+                                            action: z.enum(DEVICE_ACTIONS).optional(),
+                                        })
+                                        .strict(),
+                                })
+                                .strict(),
+                        ])
                         .parse(raw);
                     if (envelope.sessionId && envelope.sessionId !== id)
                         throw fail(403, 'identity_mismatch');
@@ -416,6 +487,7 @@ export function attachWebSockets(
             if (connections.get(id) !== ws) return;
             connections.delete(id);
             store.live.delete(id);
+            store.audit('device_ws_disconnected', 'device', id).catch(() => {});
             publish(id, 'device_offline').catch(() => {});
         });
     });

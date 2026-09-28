@@ -74,7 +74,7 @@ npm start          # Node 同域提供页面、API、WS
 
 ```bash
 npm run build:apk          # 独立构建 browser-1.0
-npm run build:screenagent  # 独立构建当前 screenagent-1.3 自动上线版
+npm run build:screenagent  # 独立构建当前 screenagent-1.4 快捷控制版
 ```
 
 CLI 产物在 `android/dist/`；网页构建产物在 `backend/.node-private/files/apk-builds/`。模板源码、临时源码与产物分开维护，不在 dist 中长期改功能。
@@ -85,9 +85,9 @@ CLI 产物在 `android/dist/`；网页构建产物在 `backend/.node-private/fil
 - 顶栏账号卡显示角色、创建账号时自动分配的固定 APK ID 和账号有效期；一个账号一个编号，初始超管编号为 `1`。构建填写有效编号归属对应账号，留空或未匹配可用账号时归属默认接收账号（当前为超管）；构建不创建新编号。超管默认长期有效；账号截止时间与登录 Token 到期分开，服务端校验有效期。总台续费流程见 [账号设计](backend/docs/ACCOUNT_DESIGN.md)。
 - 设备列表/详情、筛选排序分页、备注、截图/节点双浮窗、元数据观察、脱敏导出、翻译配置。
 - 整行进入详情；操作仅拉黑/删除，删除为后台软删除，不清除手机数据。
-- 设备首次登记、APK ID 默认归属、独立设备凭证、状态 WS、无障碍开启首图、网页租约内实时最新帧 JPEG 与列表临时缩略图。
+- 设备首次登记、APK ID 默认归属、独立设备凭证、状态 WS、无障碍开启首图、网页租约内实时最新帧 JPEG、固定快捷操作与列表临时缩略图。
 - 网页 APK 队列、实际产物下载、固定模板独立 CLI 编译。
-- **待实现**：总台/子账号、机器人验证码、Telegram 构建/发送、连续截图会话。没有总台 AppID。
+- **待实现**：总台/子账号、机器人验证码、Telegram 构建/发送。没有总台 AppID。
 - 浏览器模板不增加采集能力；ScreenAgent 只在明确网页查看租约有效时运行最新帧循环，Android 11 间隔 1001ms、Android 12+ 间隔 334ms，并串行完成截图、压缩和上传。编译通过与真机通过分别验收。
 
 ## 测试与版本管理

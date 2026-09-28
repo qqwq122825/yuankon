@@ -19,6 +19,7 @@ test('list, server sorting, query preservation, pagination, empty state and keyb
         '设备',
         '构建',
         '翻译',
+        '日志',
     ]);
     await expect(page.locator('tbody tr')).toHaveCount(10);
     await page.getByRole('button', { name: '下一页' }).click();
@@ -141,7 +142,7 @@ test('left navigation stays anchored during vertical and horizontal scrolling an
     const large = await rail.boundingBox();
     expect(large).toEqual({ x: 0, y: 50, width: 64, height: 850 });
 });
-test('translation validation, build center and protocol audit', async ({ page }) => {
+test('translation validation, build center, client logs and protocol audit', async ({ page }) => {
     await page.goto('/settings/translation');
     await expect(page.getByRole('heading', { name: '翻译设置' })).toBeVisible();
     await expect(page.getByRole('button', { name: '验证已保存密钥' })).toBeDisabled();
@@ -150,6 +151,11 @@ test('translation validation, build center and protocol audit', async ({ page })
     await expect(page.getByRole('alert')).toContainText('请填写翻译 API Key');
     await page.getByRole('link', { name: '构建', exact: true }).click();
     await expect(page.getByText(/Telegram 发送待接入/)).toBeVisible();
+    await page.getByRole('link', { name: '日志', exact: true }).click();
+    await expect(page).toHaveURL('/logs');
+    await expect(page.getByRole('heading', { name: '客户端日志' })).toBeVisible();
+    await expect(page.getByText('快照档案', { exact: true })).toHaveCount(0);
+    await expect(page.getByText('观察记录', { exact: true })).toHaveCount(0);
     await page.goto('/protocol');
     await expect(page.getByRole('heading', { name: '协议审计' })).toBeVisible();
     await page.getByRole('checkbox', { name: '实时增量' }).check();

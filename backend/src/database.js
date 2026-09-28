@@ -8,6 +8,7 @@ import {
 } from './account-schema.js';
 import { migrateDevices, migrateDeviceManagement } from './device-schema.js';
 import { migrateAbPackageBuilds, migrateBuilds } from './build-schema.js';
+import { migrateClientRequestLogs } from './log-schema.js';
 import { mkdirSync, chmodSync } from 'node:fs';
 import path from 'node:path';
 
@@ -108,6 +109,7 @@ export async function openDatabase(filename) {
     await migrateSuperadminApkId(db);
     await migrateAbPackageBuilds(db);
     await migrateAccountApkSequence(db);
+    await migrateClientRequestLogs(db);
     if (filename !== ':memory:') chmodSync(filename, 0o600);
     return db;
 }

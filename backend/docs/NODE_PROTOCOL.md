@@ -121,6 +121,8 @@ npm run device:token -- TEST_DEVICE_001
 
 账号审计另存 `account_audit`，保留登录成功/失败、退出、改密及设备拉黑/取消/删除事件、账号 ID、IP 和时间；设备管理事件包含公开设备 ID，不保存凭证或请求正文。设备管理同时记录真实项目范围的协议审计。
 
+左侧「日志」入口使用 `GET /api/logs/protocol/tail?scope=client` 查看客户端请求元数据。B 包 HTTP 请求记录固定方法、固定路由、响应状态、耗时、字节数和已验证设备 ID；设备 WebSocket 记录连接、登记、心跳、截图结果与断开事件。日志不保存 Authorization、设备 Token、请求正文、截图内容或 URL 查询参数，保留策略与协议审计一致为 7 天；`GET /api/logs/protocol/export?date=YYYY-MM-DD&scope=client` 导出当天 UTC JSONL。
+
 `/ws/bridge`、反向隧道、任意代理、二进制/base64 画面流、输入操作及原 PHP v1 诊断接口尚未接入。总台/子账号/验证码仍待实现；已加入 APK ID 到现有超管的首次登记归属。收到不支持的二进制帧返回 `unsupported_binary`，不透传。原 android-shell 不变；B 包只实现无障碍首图和有效网页租约内的串行最新帧。
 
 ## 网页构建参数
