@@ -116,3 +116,38 @@ test('install bootstrap rejects invalid origin before running npm', async () => 
         await rm(root, { recursive: true, force: true });
     }
 });
+
+test('Android environment installer helpers work with nounset enabled', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'boundary-environment-helpers-'));
+    try {
+        const script = await readFile(
+            path.join(ROOT, 'android/scripts/install-build-environment.sh'),
+            'utf8',
+        );
+        const helpers = script.split('\ncleanup()')[0];
+        const harness = `${helpers}
+mkdir -p "$DOWNLOADS" "$STAGING/source"
+printf fixture > "$DOWNLOADS/cached.bin"
+expected="$(sha256 "$DOWNLOADS/cached.bin")"
+download cached.bin https://invalid.example.test/file "$expected"
+printf source > "$STAGING/source/value"
+replace_dir "$STAGING/source" "$STAGING/target"
+test "$(cat "$STAGING/target/value")" = source
+printf 'ENVIRONMENT_HELPERS_OK\\n'
+`;
+        const result = await run('bash', ['-c', harness], {
+            cwd: root,
+            env: {
+                ...process.env,
+                BOUNDARY_ROOT: root,
+                BOUNDARY_PRIVATE_DIR: path.join(root, 'private'),
+                BOUNDARY_NODE: process.execPath,
+            },
+        });
+        assert.equal(result.status, 0, result.stderr);
+        assert.match(result.stdout, /\[CACHE\] cached\.bin/);
+        assert.match(result.stdout, /ENVIRONMENT_HELPERS_OK/);
+    } finally {
+        await rm(root, { recursive: true, force: true });
+    }
+});

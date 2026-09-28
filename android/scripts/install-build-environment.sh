@@ -28,7 +28,11 @@ sha256() {
 }
 
 download() {
-    local name="$1" url="$2" expected="$3" file="$DOWNLOADS/$name" temporary="$file.part"
+    local name="$1"
+    local url="$2"
+    local expected="$3"
+    local file="$DOWNLOADS/$name"
+    local temporary="$file.part"
     if [[ -f "$file" && "$(sha256 "$file")" == "$expected" ]]; then
         printf '[CACHE] %s\n' "$name"
         return
@@ -41,7 +45,9 @@ download() {
 }
 
 replace_dir() {
-    local source="$1" target="$2" backup="$target.previous"
+    local source="$1"
+    local target="$2"
+    local backup="$target.previous"
     rm -rf "$backup"
     if [[ -e "$target" ]]; then mv "$target" "$backup"; fi
     if mv "$source" "$target"; then rm -rf "$backup"
