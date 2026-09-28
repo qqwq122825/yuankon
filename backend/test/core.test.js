@@ -78,7 +78,7 @@ before(async () => {
             window_count: 9,
         },
     ]);
-    app = await createApplication(settings, { db, serveFrontend: false });
+    app = await createApplication(settings, { db, serveFrontend: false, bootstrapDefault: true });
     await new Promise((resolve) => app.server.listen(0, '127.0.0.1', resolve));
     base = settings.origin = `http://127.0.0.1:${app.server.address().port}`;
     const login = await fetch(base + '/api/auth/login', {

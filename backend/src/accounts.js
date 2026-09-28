@@ -20,6 +20,20 @@ export const loginSchema = z
         password: z.string().min(1).max(128),
     })
     .strict();
+export const installationSchema = z
+    .object({
+        username: z
+            .string()
+            .regex(/^[a-zA-Z0-9_]{3,32}$/)
+            .transform((v) => v.toLowerCase()),
+        password: z.string().min(8).max(128),
+        confirmPassword: z.string().min(8).max(128),
+    })
+    .strict()
+    .refine((value) => value.password === value.confirmPassword, {
+        message: '两次输入的密码不一致',
+        path: ['confirmPassword'],
+    });
 const hashPassword = (value) =>
     argon2.hash(value, { type: argon2.argon2id, memoryCost: 19456, timeCost: 2, parallelism: 1 });
 const SESSION_SECONDS = 8 * 3600;
@@ -85,8 +99,11 @@ export class Accounts extends EventEmitter {
             apkId: row.apk_id,
         };
     }
-    async initialize() {
-        if (!(await this.db('node_migrations').where('name', '003_superadmin_seed').first())) {
+    async initialize({ seedDefault = false } = {}) {
+        if (
+            seedDefault &&
+            !(await this.db('node_migrations').where('name', '003_superadmin_seed').first())
+        ) {
             const password_hash = await hashPassword('mtx123');
             await this.db.transaction(async (trx) => {
                 if (await trx('node_migrations').where('name', '003_superadmin_seed').first())
@@ -114,6 +131,28 @@ export class Accounts extends EventEmitter {
         });
         // A fixed-cost verification is still performed for unknown usernames.
         this.dummyHash = await hashPassword(randomUUID());
+    }
+    async install(input, ip) {
+        const data = installationSchema.parse(input);
+        const password_hash = await hashPassword(data.password);
+        return await this.db.transaction(async (trx) => {
+            if (await trx('accounts').first()) throw fail(409, '系统已完成初始化安装');
+            const [id] = await trx('accounts').insert({
+                username: data.username,
+                password_hash,
+                role: 'superadmin',
+                enabled: true,
+                created_at: Date.now(),
+            });
+            await assignAccountApkId(trx, { id }, this.config.projectId);
+            if (!(await trx('node_migrations').where('name', '003_superadmin_seed').first()))
+                await trx('node_migrations').insert({
+                    name: '003_superadmin_seed',
+                    created_at: new Date().toISOString(),
+                });
+            await this.audit('installed', id, ip, trx);
+            return await trx('accounts').where('id', id).first();
+        });
     }
     async checkPassword(username, password) {
         const user = await this.db('accounts').where('username', username.toLowerCase()).first();

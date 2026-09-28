@@ -9,6 +9,42 @@ async function signIn(page, password = 'mtx123') {
     await expect(page.getByText('WS · 已连接')).toBeVisible();
 }
 
+test('first-run web installer creates the superadmin then locks the install route', async ({
+    browser,
+}) => {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    let installed = false;
+    await page.route('**/api/install/status', async (route) =>
+        route.fulfill({ json: { installed } }),
+    );
+    await page.route('**/api/install', async (route) => {
+        const input = route.request().postDataJSON();
+        expect(input).toEqual({
+            username: 'first_admin',
+            password: 'StrongPass123!',
+            confirmPassword: 'StrongPass123!',
+        });
+        installed = true;
+        await route.fulfill({
+            status: 201,
+            json: { installed: true, user: { username: 'first_admin', apkId: '1' } },
+        });
+    });
+    await page.goto('/');
+    await expect(page).toHaveURL('/install');
+    await expect(page.getByRole('heading', { name: '初始化工作台' })).toBeVisible();
+    await page.getByLabel('超管账号').fill('first_admin');
+    await page.getByLabel('超管密码').fill('StrongPass123!');
+    await page.getByLabel('确认密码').fill('StrongPass123!');
+    await page.getByRole('button', { name: '完成安装' }).click();
+    await expect(page).toHaveURL('/login');
+    await expect(page.getByText('初始化完成，请使用刚设置的超管账号登录。')).toBeVisible();
+    await page.goto('/install');
+    await expect(page).toHaveURL('/login');
+    await context.close();
+});
+
 test('deep links require login; errors, cookie restoration and logout work', async ({ page }) => {
     const errors = [];
     page.on('pageerror', (error) => errors.push(error.message));

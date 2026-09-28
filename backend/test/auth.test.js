@@ -40,7 +40,7 @@ before(async () => {
         window_count: 2,
         screenshot_path: 'demo:settings',
     });
-    app = await createApplication(settings, { db, serveFrontend: false });
+    app = await createApplication(settings, { db, serveFrontend: false, bootstrapDefault: true });
     await new Promise((r) => app.server.listen(0, '127.0.0.1', r));
     base = settings.origin = `http://127.0.0.1:${app.server.address().port}`;
 });
@@ -98,7 +98,7 @@ async function rejectTicket(ticket) {
     assert.match(e.message, /401/);
 }
 
-test('default superadmin is seeded once with Argon2id, not plaintext', async () => {
+test('test fixture superadmin is seeded once with Argon2id, not plaintext', async () => {
     const user = await db('accounts').first();
     assert.equal(user.username, 'mtx');
     assert.equal(user.role, 'superadmin');
@@ -442,7 +442,7 @@ test('login limiter stops repeated failures', async () => {
         port: 0,
         loginLimit: 2,
     });
-    const limited = await createApplication(c, { serveFrontend: false });
+    const limited = await createApplication(c, { serveFrontend: false, bootstrapDefault: true });
     try {
         await new Promise((r) => limited.server.listen(0, '127.0.0.1', r));
         c.origin = `http://127.0.0.1:${limited.server.address().port}`;

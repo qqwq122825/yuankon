@@ -18,10 +18,18 @@ import { authRoutes } from './auth-routes.js';
 import { DeviceIngress } from './device-ingress.js';
 import { DeviceManagement } from './device-management.js';
 import { BuildQueue } from './build-queue.js';
+import { Installation } from './installation.js';
 
 export async function createApplication(
     config,
-    { dev = false, db: providedDb, fetcher = fetch, serveFrontend = true, buildOptions = {} } = {},
+    {
+        dev = false,
+        db: providedDb,
+        fetcher = fetch,
+        serveFrontend = true,
+        buildOptions = {},
+        bootstrapDefault = false,
+    } = {},
 ) {
     const db = providedDb || (await openDatabase(config.database)),
         key = loadKey(config.privateDir);
@@ -29,7 +37,9 @@ export async function createApplication(
         auth = tokens(key, config.projectId),
         translation = new Translation(db, config, key, fetcher);
     const accounts = new Accounts(db, config, key);
-    await accounts.initialize();
+    await accounts.initialize({ seedDefault: bootstrapDefault });
+    const installation = new Installation(db, config, accounts);
+    await installation.initialize();
     const ingress = new DeviceIngress(db, auth, store, config);
     const deviceManagement = new DeviceManagement(db, store, ingress);
     const builds = new BuildQueue(db, config, buildOptions);
@@ -59,7 +69,7 @@ export async function createApplication(
         '/api',
         rateLimit({
             windowMs: 60000,
-            limit: 300,
+            limit: config.apiLimit || 300,
             standardHeaders: 'draft-8',
             legacyHeaders: false,
             message: { error: '请求频率超限' },
@@ -71,6 +81,20 @@ export async function createApplication(
     });
     app.use(express.json({ limit: '32kb' }));
     app.use(accounts.passport.initialize());
+    const installLimit = rateLimit({
+        windowMs: 15 * 60000,
+        limit: 10,
+        standardHeaders: 'draft-8',
+        legacyHeaders: false,
+        message: { error: '初始化尝试过多，请稍后再试' },
+    });
+    app.get('/api/install/status', (_req, res) => res.json(installation.status()));
+    app.post('/api/install', installLimit, async (req, res) =>
+        res.status(201).json(await installation.install(req.body, req.socket.remoteAddress)),
+    );
+    app.use('/api', (_req, _res, next) =>
+        installation.installed ? next() : next(fail(503, '请先完成初始化安装')),
+    );
     app.use('/api', ingress.deviceRoutes());
     app.use('/api', (req, _res, next) => {
         if (!['GET', 'HEAD'].includes(req.method) && !req.is('application/json'))
@@ -303,6 +327,7 @@ export async function createApplication(
                 '/settings/translation',
                 '/settings/account',
                 '/login',
+                '/install',
                 '/snapshots',
                 '/events',
                 '/protocol',
@@ -356,6 +381,7 @@ export async function createApplication(
         store,
         auth,
         accounts,
+        installation,
         translation,
         ingress,
         deviceManagement,

@@ -11,11 +11,13 @@ import './styles/console.css';
 import './style.css';
 import Login from './pages/Login.vue';
 import Account from './pages/Account.vue';
+import Install from './pages/Install.vue';
 import { session, restoreSession, endSession } from './session.js';
 const router = createRouter({
     history: createWebHistory(),
     routes: [
         { path: '/login', component: Login },
+        { path: '/install', component: Install },
         { path: '/settings/account', component: Account },
         { path: '/', component: Devices },
         { path: '/devices/:id', component: DeviceDetail },
@@ -29,6 +31,11 @@ const router = createRouter({
 });
 router.beforeEach(async (to) => {
     await restoreSession();
+    if (!session.installed) {
+        if (to.path !== '/install') return '/install';
+        return true;
+    }
+    if (session.installed && to.path === '/install') return session.user ? '/' : '/login';
     if (!session.user && to.path !== '/login') return '/login';
     if (session.user && to.path === '/login') return '/';
 });

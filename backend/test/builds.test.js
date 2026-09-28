@@ -63,6 +63,7 @@ before(async () => {
         db,
         serveFrontend: false,
         buildOptions: { runner: fixtureRunner, readiness },
+        bootstrapDefault: true,
     });
     await new Promise((r) => app.server.listen(0, '127.0.0.1', r));
     base = settings.origin = `http://127.0.0.1:${app.server.address().port}`;

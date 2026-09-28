@@ -25,7 +25,7 @@ watch(
 watch(
     () => route.path,
     () =>
-        (document.body.className = `console-page console-${route.path === '/login' ? 'login' : detail.value ? 'detail' : 'fleet'}`),
+        (document.body.className = `console-page console-${['/login', '/install'].includes(route.path) ? 'login' : detail.value ? 'detail' : 'fleet'}`),
     { immediate: true },
 );
 watch(
@@ -126,6 +126,6 @@ function search() {
         </aside></template
     >
     <main id="main" class="console-main">
-        <RouterView v-if="session.user || route.path === '/login'" />
+        <RouterView v-if="session.user || ['/login', '/install'].includes(route.path)" />
     </main>
 </template>

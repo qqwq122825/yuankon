@@ -9,7 +9,7 @@ test('initial account receives one fixed APK ID; creation is atomic, unique and 
     const db = await openDatabase(':memory:');
     const accounts = new Accounts(db, { projectId: 1 }, Buffer.alloc(32, 1));
     try {
-        await accounts.initialize();
+        await accounts.initialize({ seedDefault: true });
         const root = await db('accounts').first();
         assert.equal(root.apk_id, '1');
         assert.equal(

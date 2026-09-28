@@ -4,9 +4,9 @@
 
 参考 2026-09-27《无障碍辅助设备管理平台 · 通信协议规范 开放版 v1.0》。当前采用其面板通道、推荐消息信封、公开设备 ID、状态上报双层 type 和事件命名；不是全协议替代实现。HTTP 端点是否存在以本文件和代码为准，未实现接口返回 404，未知 WS 报文返回 `error`。
 
-当前进程仅监听 `127.0.0.1:8080`，所有 HTTP/WS 校验直连本机地址、Host、Origin 和转发头。超管账号 `mtx` 首次初始化密码为 `mtx123`，登录后跨所有项目查看设备；设备上报的项目归属仍由服务端凭证与数据库确定。当前不要通过反向代理公开该服务。
+当前进程仅监听 `127.0.0.1:8080`，所有 HTTP/WS 校验直连本机地址、Host、Origin 和转发头。全新数据库仅开放 `/api/install/status` 与受限的单次 `/api/install`，部署者在 `/install` 设置超管账号和密码；成功后其他 API 才开放，登录后可跨所有项目查看设备。设备上报的项目归属仍由服务端凭证与数据库确定。
 
-除健康检查、登录与下述设备专用接口外，业务 HTTP API 要求账号 JWT，支持 `Authorization: Bearer ACCOUNT_TOKEN` 或 HttpOnly Cookie。账号 JWT 与设备 JWT、面板 WS 票据互不通用。账号仅保留一个有效会话，JWT 签名有效还需通过 SQLite 当前会话/角色/启用状态校验。详见 [账号方案](ACCOUNT_DESIGN.md)。
+安装完成后，除健康检查、登录与下述设备专用接口外，业务 HTTP API 要求账号 JWT，支持 `Authorization: Bearer ACCOUNT_TOKEN` 或 HttpOnly Cookie。账号 JWT 与设备 JWT、面板 WS 票据互不通用。账号仅保留一个有效会话，JWT 签名有效还需通过 SQLite 当前会话/角色/启用状态校验。详见 [账号方案](ACCOUNT_DESIGN.md)。
 
 ## HTTP
 
@@ -14,6 +14,8 @@
 
 | 方法 | 路由 | 行为 |
 |---|---|---|
+| GET | /api/install/status | `{installed:boolean}`；不返回账号或锁内容 |
+| POST | /api/install | 仅未安装时接受 `{username,password,confirmPassword}`；事务创建唯一超管与 APK ID `1`，成功后永久关闭 |
 | GET | /api/health | Node/Vue/协议/本机模式状态 |
 | POST | /api/auth/login | `{username,password}` → `{token,expiresIn,user}`；8 小时账号 JWT，同时设置 HttpOnly Cookie |
 | GET | /api/auth/me | 当前账号公开信息；需登录 |

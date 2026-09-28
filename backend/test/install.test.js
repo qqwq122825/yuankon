@@ -43,7 +43,7 @@ esac
     return root;
 }
 
-test('install bootstrap writes ignored config and lock only after initialization', async () => {
+test('install bootstrap prepares runtime and leaves account creation to the web installer', async () => {
     const root = await fixture();
     try {
         const env = { ...process.env, PATH: `${path.join(root, 'bin')}:${process.env.PATH}` };
@@ -60,26 +60,28 @@ test('install bootstrap writes ignored config and lock only after initialization
             { cwd: root, env },
         );
         assert.equal(first.status, 0, first.stderr);
-        assert.match(first.stdout, /INSTALL_OK origin=https:\/\/panel\.example\.test port=8081/);
+        assert.match(first.stdout, /BOOTSTRAP_OK origin=https:\/\/panel\.example\.test port=8081/);
+        assert.match(first.stdout, /next=https:\/\/panel\.example\.test\/install/);
         assert.equal(
             await readFile(path.join(root, 'backend/.env'), 'utf8'),
             'NODE_PUBLIC_ORIGIN=https://panel.example.test\nNODE_PORT=8081\nNODE_TRUST_PROXY=1\n',
         );
         const lock = JSON.parse(
-            await readFile(path.join(root, 'backend/.node-private/install.lock'), 'utf8'),
+            await readFile(path.join(root, 'backend/.node-private/bootstrap.lock'), 'utf8'),
         );
         assert.deepEqual(
-            { ...lock, installedAt: '<time>' },
+            { ...lock, preparedAt: '<time>' },
             {
                 schemaVersion: 1,
-                installedAt: '<time>',
+                preparedAt: '<time>',
                 origin: 'https://panel.example.test',
                 port: 8081,
                 trustProxy: true,
                 commit: 'unavailable',
             },
         );
-        assert.match(lock.installedAt, /^\d{4}-\d{2}-\d{2}T/);
+        assert.match(lock.preparedAt, /^\d{4}-\d{2}-\d{2}T/);
+        await assert.rejects(() => access(path.join(root, 'backend/.node-private/install.lock')));
         assert.equal(
             await readFile(path.join(root, 'npm.calls'), 'utf8'),
             'ci\nrun build\n--prefix backend run initialize\n',
@@ -88,7 +90,7 @@ test('install bootstrap writes ignored config and lock only after initialization
 
         const second = await run('sh', [path.join(root, 'install.sh')], { cwd: root, env });
         assert.equal(second.status, 0, second.stderr);
-        assert.match(second.stdout, /INSTALL_ALREADY_COMPLETE/);
+        assert.match(second.stdout, /BOOTSTRAP_ALREADY_COMPLETE/);
         assert.equal(
             await readFile(path.join(root, 'npm.calls'), 'utf8'),
             'ci\nrun build\n--prefix backend run initialize\n',
@@ -109,7 +111,7 @@ test('install bootstrap rejects invalid origin before running npm', async () => 
         );
         assert.notEqual(result.status, 0);
         await assert.rejects(() => access(path.join(root, 'npm.calls')));
-        await assert.rejects(() => access(path.join(root, 'backend/.node-private/install.lock')));
+        await assert.rejects(() => access(path.join(root, 'backend/.node-private/bootstrap.lock')));
     } finally {
         await rm(root, { recursive: true, force: true });
     }

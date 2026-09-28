@@ -9,6 +9,7 @@ const dir = await mkdtemp(path.join(tmpdir(), 'boundary-browser-'));
 const settings = config({
     port: 8081,
     origin: 'http://127.0.0.1:8081',
+    apiLimit: 10000,
     privateDir: dir,
     database: path.join(dir, 'browser.sqlite'),
 });
@@ -38,7 +39,11 @@ await db('snapshots').insert({
     window_count: 2,
     screenshot_path: 'demo:settings',
 });
-const app = await createApplication(settings, { db, buildOptions: buildFixture });
+const app = await createApplication(settings, {
+    db,
+    buildOptions: buildFixture,
+    bootstrapDefault: true,
+});
 const upgraded = new Set();
 app.server.on('upgrade', (_req, socket) => {
     upgraded.add(socket);

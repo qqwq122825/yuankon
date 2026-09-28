@@ -330,6 +330,9 @@ select:focus-visible,
     width: 400px;
     border-radius: 12px;
 }
+.install-card {
+    width: 440px;
+}
 .login-card .card-body {
     padding: 30px;
 }

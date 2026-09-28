@@ -1,17 +1,24 @@
 import { reactive } from 'vue';
 import { api, mutate } from './api.js';
-export const session = reactive({ user: null, ready: false, message: '' });
+export const session = reactive({ user: null, installed: null, ready: false, message: '' });
 let loading;
 export async function restoreSession() {
     if (session.ready) return session.user;
     if (!loading)
-        loading = api('/api/auth/me', { authFailureEvent: false })
-            .then((result) => {
+        loading = api('/api/install/status', { authFailureEvent: false })
+            .then(async (status) => {
+                session.installed = status.installed;
+                if (!status.installed) {
+                    session.user = null;
+                    return null;
+                }
+                const result = await api('/api/auth/me', { authFailureEvent: false });
                 session.user = result.user;
-                return result.user;
+                return session.user;
             })
             .catch((error) => {
                 session.user = null;
+                if (session.installed === null) session.installed = true;
                 if (error.status !== 401) session.message = error.message;
                 return null;
             })
@@ -20,6 +27,14 @@ export async function restoreSession() {
                 loading = null;
             });
     return loading;
+}
+export async function install(username, password, confirmPassword) {
+    const result = await mutate('/api/install', 'POST', { username, password, confirmPassword });
+    session.installed = result.installed;
+    session.user = null;
+    session.ready = true;
+    session.message = '初始化完成，请使用刚设置的超管账号登录。';
+    return result;
 }
 export async function login(username, password) {
     const result = await mutate('/api/auth/login', 'POST', { username, password });

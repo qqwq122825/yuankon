@@ -117,7 +117,7 @@ before(async () => {
         port: 0,
     });
     db = await openDatabase(settings.database);
-    app = await createApplication(settings, { db, serveFrontend: false });
+    app = await createApplication(settings, { db, serveFrontend: false, bootstrapDefault: true });
     await new Promise((r) => app.server.listen(0, '127.0.0.1', r));
     base = settings.origin = `http://127.0.0.1:${app.server.address().port}`;
     const login = await call('/api/auth/login', '', { username: 'mtx', password: 'mtx123' });

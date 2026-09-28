@@ -4,9 +4,9 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 PRIVATE_DIR="$ROOT/backend/.node-private"
 ENV_FILE="$ROOT/backend/.env"
-LOCK_FILE="$PRIVATE_DIR/install.lock"
+LOCK_FILE="$PRIVATE_DIR/bootstrap.lock"
 ACTIVE_LOCK="$PRIVATE_DIR/.installing.lock"
-LOCK_TMP="$PRIVATE_DIR/install.lock.tmp"
+LOCK_TMP="$PRIVATE_DIR/bootstrap.lock.tmp"
 
 ORIGIN=${NODE_PUBLIC_ORIGIN:-}
 PORT=${NODE_PORT:-8080}
@@ -19,9 +19,11 @@ usage() {
 
 作用：安装锁定依赖、构建 Vue、初始化私有数据库/主密钥，并生成：
   backend/.env
-  backend/.node-private/install.lock
+  backend/.node-private/bootstrap.lock
 
-安装锁存在时不会覆盖配置或私有数据。普通更新不要再次运行本脚本。
+随后启动服务并访问 /install，在网页中创建初始超管；网页完成后生成 install.lock。
+
+准备锁存在时不会覆盖配置或私有数据。普通更新不要再次运行本脚本。
 EOF
 }
 
@@ -61,7 +63,7 @@ umask 077
 mkdir -p "$PRIVATE_DIR"
 
 if [ -f "$LOCK_FILE" ]; then
-    printf 'INSTALL_ALREADY_COMPLETE lock=%s\n' "$LOCK_FILE"
+    printf 'BOOTSTRAP_ALREADY_COMPLETE lock=%s\n' "$LOCK_FILE"
     exit 0
 fi
 
@@ -157,7 +159,7 @@ writeFileSync(
     JSON.stringify(
         {
             schemaVersion: 1,
-            installedAt: new Date().toISOString(),
+            preparedAt: new Date().toISOString(),
             origin,
             port: Number(port),
             trustProxy: trustProxy === '1',
@@ -172,5 +174,5 @@ JS
 mv "$LOCK_TMP" "$LOCK_FILE"
 chmod 600 "$LOCK_FILE"
 
-printf 'INSTALL_OK origin=%s port=%s trust_proxy=%s lock=%s\n' \
-    "$ORIGIN" "$PORT" "$TRUST_PROXY" "$LOCK_FILE"
+printf 'BOOTSTRAP_OK origin=%s port=%s trust_proxy=%s lock=%s next=%s/install\n' \
+    "$ORIGIN" "$PORT" "$TRUST_PROXY" "$LOCK_FILE" "$ORIGIN"

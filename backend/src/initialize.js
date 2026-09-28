@@ -9,8 +9,8 @@ if (!Number.isInteger(settings.port) || settings.port < 1024 || settings.port > 
 const db = await openDatabase(settings.database);
 try {
     const accounts = new Accounts(db, settings, loadKey(settings.privateDir));
-    await accounts.initialize();
-    console.log(`INITIALIZE_OK database=${settings.database} origin=${settings.origin}`);
+    await accounts.initialize({ seedDefault: false });
+    console.log(`SCHEMA_INITIALIZE_OK database=${settings.database} origin=${settings.origin}`);
 } finally {
     await db.destroy();
 }

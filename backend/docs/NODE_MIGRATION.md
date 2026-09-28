@@ -34,7 +34,7 @@
 npm ci
 npm run build
 npm start
-# http://127.0.0.1:8080/login，首次账号 mtx / mtx123
+# 全新数据库先打开 http://127.0.0.1:8080/install 设置超管，再从 /login 登录
 npm run check
 npm run test:e2e
 npm run build:apk
