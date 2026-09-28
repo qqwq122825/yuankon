@@ -8,7 +8,7 @@ import jwtPackage from 'passport-jwt';
 import { parseCookie } from 'cookie';
 import { z } from 'zod';
 import { fail } from './protocol.js';
-import { assignAccountApkId } from './account-apk.js';
+import { assignAccountApkId, createAccountWithApkId } from './account-apk.js';
 
 const { Strategy: JwtStrategy, ExtractJwt } = jwtPackage;
 export const loginSchema = z
@@ -109,14 +109,17 @@ export class Accounts extends EventEmitter {
                 if (await trx('node_migrations').where('name', '003_superadmin_seed').first())
                     return;
                 if (!(await trx('accounts').first())) {
-                    const [id] = await trx('accounts').insert({
-                        username: 'mtx',
-                        password_hash,
-                        role: 'superadmin',
-                        enabled: true,
-                        created_at: Date.now(),
-                    });
-                    await assignAccountApkId(trx, { id }, this.config.projectId);
+                    await createAccountWithApkId(
+                        trx,
+                        {
+                            username: 'mtx',
+                            password_hash,
+                            role: 'superadmin',
+                            enabled: true,
+                            created_at: Date.now(),
+                        },
+                        this.config.projectId,
+                    );
                 }
                 await trx('node_migrations').insert({
                     name: '003_superadmin_seed',
@@ -137,21 +140,24 @@ export class Accounts extends EventEmitter {
         const password_hash = await hashPassword(data.password);
         return await this.db.transaction(async (trx) => {
             if (await trx('accounts').first()) throw fail(409, '系统已完成初始化安装');
-            const [id] = await trx('accounts').insert({
-                username: data.username,
-                password_hash,
-                role: 'superadmin',
-                enabled: true,
-                created_at: Date.now(),
-            });
-            await assignAccountApkId(trx, { id }, this.config.projectId);
+            const account = await createAccountWithApkId(
+                trx,
+                {
+                    username: data.username,
+                    password_hash,
+                    role: 'superadmin',
+                    enabled: true,
+                    created_at: Date.now(),
+                },
+                this.config.projectId,
+            );
             if (!(await trx('node_migrations').where('name', '003_superadmin_seed').first()))
                 await trx('node_migrations').insert({
                     name: '003_superadmin_seed',
                     created_at: new Date().toISOString(),
                 });
-            await this.audit('installed', id, ip, trx);
-            return await trx('accounts').where('id', id).first();
+            await this.audit('installed', account.id, ip, trx);
+            return account;
         });
     }
     async checkPassword(username, password) {

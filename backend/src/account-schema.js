@@ -94,3 +94,33 @@ export async function migrateSuperadminApkId(db) {
         });
     });
 }
+
+export async function migrateAccountApkSequence(db) {
+    if (await db('node_migrations').where('name', '011_unique_account_apk_sequence').first())
+        return;
+    await db.transaction(async (trx) => {
+        await trx.schema.createTable('account_apk_sequence', (t) => {
+            t.integer('id').primary();
+            t.integer('next_value').notNullable();
+            t.bigInteger('updated_at').notNullable();
+        });
+        const values = [
+            ...(await trx('accounts').whereNotNull('apk_id').pluck('apk_id')),
+            ...(await trx('apk_routes').pluck('apk_id')),
+        ];
+        const highest = values.reduce((max, value) => {
+            if (!/^\d+$/.test(String(value))) return max;
+            const parsed = Number(value);
+            return Number.isSafeInteger(parsed) ? Math.max(max, parsed) : max;
+        }, 99);
+        await trx('account_apk_sequence').insert({
+            id: 1,
+            next_value: Math.max(100, highest + 1),
+            updated_at: Date.now(),
+        });
+        await trx('node_migrations').insert({
+            name: '011_unique_account_apk_sequence',
+            created_at: new Date().toISOString(),
+        });
+    });
+}

@@ -1,5 +1,47 @@
 import { fail } from './protocol.js';
 
+const FIRST_MANAGED_APK_ID = 100;
+
+function numericApkId(value) {
+    if (!/^\d+$/.test(String(value))) return null;
+    const parsed = Number(value);
+    return Number.isSafeInteger(parsed) ? parsed : null;
+}
+
+async function advanceSequencePast(trx, apkId) {
+    const value = numericApkId(apkId);
+    if (value === null || value < FIRST_MANAGED_APK_ID) return;
+    const sequence = await trx('account_apk_sequence').where('id', 1).first();
+    if (!sequence) throw fail(500, 'APK ID 分配器尚未初始化');
+    if (sequence.next_value <= value)
+        await trx('account_apk_sequence')
+            .where('id', 1)
+            .update({ next_value: value + 1, updated_at: Date.now() });
+}
+
+async function allocateAccountApkId(trx) {
+    const sequence = await trx('account_apk_sequence').where('id', 1).first();
+    if (!sequence) throw fail(500, 'APK ID 分配器尚未初始化');
+    let candidate = Math.max(FIRST_MANAGED_APK_ID, Number(sequence.next_value));
+    if (!Number.isSafeInteger(candidate)) throw fail(500, 'APK ID 分配器状态无效');
+    while (
+        (await trx('apk_routes').where('apk_id', String(candidate)).first()) ||
+        (await trx('accounts').where('apk_id', String(candidate)).first())
+    )
+        candidate++;
+    if (!Number.isSafeInteger(candidate)) throw fail(500, 'APK ID 已超出可分配范围');
+    await trx('account_apk_sequence')
+        .where('id', 1)
+        .update({ next_value: candidate + 1, updated_at: Date.now() });
+    return String(candidate);
+}
+
+export async function createAccountWithApkId(trx, values, projectId) {
+    const [id] = await trx('accounts').insert(values);
+    const apkId = await assignAccountApkId(trx, { id }, projectId);
+    return await trx('accounts').where({ id, apk_id: apkId }).first();
+}
+
 // Call inside the account-creation transaction. APK IDs are public routing IDs, not credentials.
 export async function assignAccountApkId(trx, account, projectId) {
     const current = await trx('accounts').where('id', account.id).first();
@@ -14,15 +56,15 @@ export async function assignAccountApkId(trx, account, projectId) {
         .first();
     let apkId = legacy?.apk_id;
     if (!apkId) {
-        // Public account numbers start from the account's numeric ID. The seeded
-        // superadmin is account 1, so its canonical APK ID is also "1".
-        let candidate = current.id;
-        while (
-            (await trx('apk_routes').where('apk_id', String(candidate)).first()) ||
-            (await trx('accounts').where('apk_id', String(candidate)).first())
-        )
-            candidate++;
-        apkId = String(candidate);
+        const root =
+            current.role === 'superadmin'
+                ? await trx('accounts').where('role', 'superadmin').orderBy('id').first()
+                : null;
+        const reservedRoot =
+            root?.id === current.id &&
+            !(await trx('accounts').where('apk_id', '1').whereNot('id', current.id).first()) &&
+            !(await trx('apk_routes').where('apk_id', '1').first());
+        apkId = reservedRoot ? '1' : await allocateAccountApkId(trx);
         await trx('apk_routes').insert({
             apk_id: apkId,
             owner_account_id: account.id,
@@ -30,7 +72,7 @@ export async function assignAccountApkId(trx, account, projectId) {
             enabled: true,
             created_at: Date.now(),
         });
-    }
+    } else await advanceSequencePast(trx, apkId);
     await trx('accounts').where('id', account.id).update({ apk_id: apkId });
     return apkId;
 }

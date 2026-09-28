@@ -4,6 +4,7 @@ import {
     migrateAccountValidity,
     migrateAccountApkId,
     migrateSuperadminApkId,
+    migrateAccountApkSequence,
 } from './account-schema.js';
 import { migrateDevices, migrateDeviceManagement } from './device-schema.js';
 import { migrateAbPackageBuilds, migrateBuilds } from './build-schema.js';
@@ -106,6 +107,7 @@ export async function openDatabase(filename) {
     await migrateAccountApkId(db);
     await migrateSuperadminApkId(db);
     await migrateAbPackageBuilds(db);
+    await migrateAccountApkSequence(db);
     if (filename !== ':memory:') chmodSync(filename, 0o600);
     return db;
 }

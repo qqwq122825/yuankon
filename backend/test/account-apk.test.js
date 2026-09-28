@@ -1,8 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { openDatabase } from '../src/database.js';
 import { Accounts } from '../src/accounts.js';
-import { assignAccountApkId } from '../src/account-apk.js';
+import { assignAccountApkId, createAccountWithApkId } from '../src/account-apk.js';
 import { migrateSuperadminApkId } from '../src/account-schema.js';
 
 test('initial account receives one fixed APK ID; creation is atomic, unique and restart keeps disabled routes disabled', async () => {
@@ -35,7 +38,7 @@ test('initial account receives one fixed APK ID; creation is atomic, unique and 
             created_at: 1,
         });
         const second = await create('fixture_second');
-        assert.equal(second.apkId, '3');
+        assert.equal(second.apkId, '100');
         await assert.rejects(db('accounts').where('id', second.id).update({ apk_id: root.apk_id }));
         await assert.rejects(
             db.transaction(async (trx) => {
@@ -194,6 +197,113 @@ test('superadmin APK ID migration rejects a conflicting owner without partial ch
         assert.equal(
             await db('node_migrations').where('name', '009_superadmin_apk_id_1').first(),
             undefined,
+        );
+    } finally {
+        await db.destroy();
+    }
+});
+
+async function createManagedAccount(db, username, role = 'tenant_admin') {
+    const account = await db.transaction((trx) =>
+        createAccountWithApkId(
+            trx,
+            {
+                username,
+                password_hash: 'fixture',
+                role,
+                enabled: true,
+                created_at: Date.now(),
+            },
+            1,
+        ),
+    );
+    return { id: account.id, apkId: account.apk_id };
+}
+
+test('account APK IDs use one durable sequence, skip legacy collisions and are never reused', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'boundary-apk-sequence-'));
+    const filename = path.join(dir, 'accounts.sqlite');
+    let db;
+    try {
+        db = await openDatabase(filename);
+        const root = await createManagedAccount(db, 'root_sequence', 'superadmin');
+        assert.equal(root.apkId, '1');
+        await db('apk_routes').insert({
+            apk_id: '100',
+            project_id: 1,
+            owner_account_id: root.id,
+            enabled: false,
+            created_at: 1,
+        });
+        const created = await Promise.all([
+            createManagedAccount(db, 'studio_a'),
+            createManagedAccount(db, 'studio_b'),
+            createManagedAccount(db, 'member_a', 'tenant_member'),
+        ]);
+        assert.deepEqual(
+            created.map((account) => account.apkId),
+            ['101', '102', '103'],
+        );
+        assert.equal(new Set(created.map((account) => account.apkId)).size, created.length);
+        await db('accounts').where('id', created[0].id).update({ enabled: false });
+        await db('apk_routes').where('apk_id', created[0].apkId).update({ enabled: false });
+        assert.equal((await createManagedAccount(db, 'studio_c')).apkId, '104');
+        await db.destroy();
+        db = await openDatabase(filename);
+        assert.equal((await createManagedAccount(db, 'studio_after_restart')).apkId, '105');
+        assert.equal((await db('account_apk_sequence').where('id', 1).first()).next_value, 106);
+        assert.equal(
+            Number(
+                (await db('accounts').whereNotNull('apk_id').countDistinct('apk_id as n').first())
+                    .n,
+            ),
+            Number((await db('accounts').whereNotNull('apk_id').count('* as n').first()).n),
+        );
+        await assert.rejects(
+            db.transaction((trx) =>
+                createAccountWithApkId(
+                    trx,
+                    {
+                        username: 'studio_after_restart',
+                        password_hash: 'fixture',
+                        role: 'tenant_admin',
+                        enabled: true,
+                        created_at: Date.now(),
+                    },
+                    1,
+                ),
+            ),
+        );
+        assert.equal((await db('account_apk_sequence').where('id', 1).first()).next_value, 106);
+    } finally {
+        await db?.destroy();
+        await rm(dir, { recursive: true, force: true });
+    }
+});
+
+test('a numeric legacy route advances the allocator instead of allowing a future collision', async () => {
+    const db = await openDatabase(':memory:');
+    try {
+        const root = await createManagedAccount(db, 'root_legacy_sequence', 'superadmin');
+        const [id] = await db('accounts').insert({
+            username: 'legacy_owner',
+            password_hash: 'fixture',
+            role: 'tenant_admin',
+            enabled: true,
+            created_at: Date.now(),
+        });
+        await db('apk_routes').insert({
+            apk_id: '900',
+            project_id: 1,
+            owner_account_id: id,
+            enabled: true,
+            created_at: 1,
+        });
+        assert.equal(await db.transaction((trx) => assignAccountApkId(trx, { id }, 1)), '900');
+        assert.equal((await createManagedAccount(db, 'after_legacy')).apkId, '901');
+        assert.equal(
+            (await db('apk_routes').where('apk_id', '1').first()).owner_account_id,
+            root.id,
         );
     } finally {
         await db.destroy();

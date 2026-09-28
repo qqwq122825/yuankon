@@ -58,6 +58,11 @@ test('device enrollment migration preserves populated legacy devices and referen
             (await db('node_migrations').where('name', '010_ab_package_builds')).length,
             1,
         );
+        assert.equal(
+            (await db('node_migrations').where('name', '011_unique_account_apk_sequence')).length,
+            1,
+        );
+        assert.equal((await db('account_apk_sequence').where('id', 1).first()).next_value, 100);
     } finally {
         await db?.destroy();
         await rm(dir, { recursive: true, force: true });
