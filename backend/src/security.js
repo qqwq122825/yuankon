@@ -2,6 +2,13 @@ import { SignJWT, jwtVerify } from 'jose';
 import { hkdfSync } from 'node:crypto';
 import { fail } from './protocol.js';
 export const isLoopback = (ip) => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(ip);
+function trustedProxyHostMatches(value, expected) {
+    if (typeof value !== 'string' || value !== value.trim() || value.includes(',')) return false;
+    const host = value.toLowerCase();
+    if (expected.port) return host === expected.host.toLowerCase();
+    const hostname = expected.hostname.toLowerCase();
+    return host === hostname || host === `${hostname}:80` || host === `${hostname}:443`;
+}
 export function allowedRequest(req, config, requireOrigin = false) {
     if (!isLoopback(req.socket.remoteAddress)) return false;
     const expected = new URL(config.origin);
@@ -10,11 +17,19 @@ export function allowedRequest(req, config, requireOrigin = false) {
     if (config.trustProxy) {
         if (req.headers.forwarded) return false;
         if (req.headers['x-forwarded-proto'] !== expected.protocol.slice(0, -1)) return false;
-        if (req.headers['x-forwarded-host'] && req.headers['x-forwarded-host'] !== expected.host)
+        if (
+            req.headers['x-forwarded-host'] &&
+            !trustedProxyHostMatches(req.headers['x-forwarded-host'], expected)
+        )
             return false;
         if (!req.headers['x-real-ip'] || !req.headers['x-forwarded-for']) return false;
     }
-    if (req.headers.host !== expected.host) return false;
+    if (
+        config.trustProxy
+            ? !trustedProxyHostMatches(req.headers.host, expected)
+            : req.headers.host !== expected.host
+    )
+        return false;
     if (req.headers.origin && req.headers.origin !== config.origin) return false;
     if (requireOrigin && req.headers.origin !== config.origin) return false;
     return (

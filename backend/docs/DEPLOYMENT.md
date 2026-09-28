@@ -34,7 +34,17 @@ Node >=22.12，地址 [本地工作台](http://127.0.0.1:8080)。使用 `NODE_PO
 NODE_PUBLIC_ORIGIN=https://yk.example.com NODE_TRUST_PROXY=1 npm start
 ```
 
-反向代理上游使用 `http://127.0.0.1:8080`，必须原样传递 `Host`，并设置 `X-Real-IP`、`X-Forwarded-For`、`X-Forwarded-Proto`；`/ws/` 还要启用 HTTP/1.1 Upgrade。Node 只接受来自回环地址、Host/Origin 与 `NODE_PUBLIC_ORIGIN` 完全一致、且具备上述代理头的请求。不要把 Node 改为监听公网地址，也不要把任意外部代理加入信任链。
+反向代理上游使用 `http://127.0.0.1:8080`，必须传递同一公开主机名的 `Host`，并设置 `X-Real-IP`、`X-Forwarded-For`、`X-Forwarded-Proto`；`/ws/` 还要启用 HTTP/1.1 Upgrade。受信代理模式兼容同一主机名附带默认 `:80`/`:443` 端口，但仍拒绝其他域名、端口和转发链格式；非代理模式继续精确匹配。不要把 Node 改为监听公网地址，也不要把任意外部代理加入信任链。
+
+### 全新服务器初始化
+
+Git 只保存源码和 npm 锁文件，不保存 `.env`、数据库、主密钥及构建产物。全新克隆后在仓库根目录执行一次：
+
+```bash
+./install.sh --origin https://yk1.jk92.cc --port 8081 --trust-proxy
+```
+
+脚本依次校验 Node >=22.12、Origin/端口，原子生成权限为 `0600` 的 `backend/.env`，执行 `npm ci`、Vue 构建及数据库/超管初始化，成功后才写入 `backend/.node-private/install.lock`。安装锁记录版本、时间、Origin、端口、代理模式和 Git SHA，不保存密码或密钥。锁存在时脚本不会覆盖现有配置或私有数据；初始化中断时不会生成完成锁，可以修复失败原因后用相同参数重试。普通更新不要删除安装锁或再次初始化。
 
 首次公开启动后立即更换默认密码，并落实进程管理、日志保留、数据库与主密钥一致备份、恢复演练和容量测试。当前仍只有一个超管账号；工作室/成员范围、设备撤销与总台能力未完成。专属服务器不要直接共享 SQLite 文件；域名、APK ID 归属与中央数据库规划见 [账号设计](ACCOUNT_DESIGN.md)。
 
@@ -43,3 +53,46 @@ NODE_PUBLIC_ORIGIN=https://yk.example.com NODE_TRUST_PROXY=1 npm start
 网页 APK 构建和独立 CLI 见 [构建说明](BUILD_BOT.md)；Telegram 接入尚未实现。启动迁移 `006_apk_queue` 为历史构建增加模板/参数/阶段字段，`009_superadmin_apk_id_1` 将默认超管规范 APK ID 设为 `1`，`010_ab_package_builds` 增加 A/B 角色及 A 包锁定的 B 包构建 ID/摘要/包名并把已有 ScreenAgent 构建回填为 B 包；历史记录不覆盖。仅运行一个 Node 服务实例；SQLite 队列串行启动 Gradle，重启后执行中任务失败、排队任务继续。升级前确认无构建执行或接受中断。构建产物、私有日志、签名与容量维护见 [模板指南](../../android/apk-templates/README.md)。
 
 完整截图会话接口仍属 [协议设计阶段](SCREEN_CAPTURE_PROTOCOL.md)。手机首图与网页租约内实时最新帧已按 [ScreenAgent 接入说明](SCREENAGENT_INGRESS.md) 实现设备专用认证和受限 multipart；没有开放监听。主页 URL 与 API origin 分开，手机本机联调可通过用户确认的 USB reverse。临时图片仅放有界内存并只保留最新帧，不进入数据库备份、公共静态目录、代理缓存或请求正文日志；公开入口的 HTTPS/WSS、上传/解码与并发预算需单独部署验收。
+
+## yk1.jk92.cc 更新运行手册
+
+### 固定部署结构
+
+- Git 仓库是单仓库：`backend/` 是 Node API、WebSocket 与静态文件服务，`frontend/` 是 Vue 源码，`android/` 保存 A/B 包模板和工具链。
+- Vue 源码不能直接作为生产页面运行。`npm run build` 生成 `frontend/dist/`，随后 `npm start` 启动 Node；Node 直接运行 `backend/src/index.js` 并提供 `frontend/dist/`。
+- `frontend/dist/`、各目录的 `node_modules/`、`backend/.node-private/`、`android/.local-tools/` 和 `android/dist/` 均不提交 Git。
+- 当前服务器仓库目录为 `/www/wwwroot/yuankon`，宝塔 Node 项目名为 `yuankon`，Node 版本为 `v22.23.3`，应用端口为 `8081`，公开域名为 `https://yk1.jk92.cc`。
+- `/www/wwwroot/yk`、`yk.jk92.cc` 及其 `8080` 服务是现有独立项目，更新 `yuankon` 时不得修改。
+
+### “推送部署”触发约定
+
+用户完成本地修改并明确说“推送部署”后，按以下顺序执行。该语句授权本次代码提交、推送和既有 `yuankon` 项目的更新；不代表允许删除服务器数据、覆盖未提交改动或修改其他项目。
+
+1. 在本地仓库检查变更，只提交本次任务相关文件；发现不明改动时停止部署并报告，不执行 `reset` 或删除。
+2. 执行 `npm run check` 和 `npm run test:e2e`。测试失败时不提交、不推送、不部署。
+3. 提交到当前约定分支并推送 Git，记录提交 SHA。
+4. 在服务器部署前记录 `/www/wwwroot/yuankon` 当前 SHA，并确认工作区干净；工作区不干净时停止，不覆盖服务器文件。
+5. 使用快进方式拉取、重新安装锁定依赖并构建前端：
+
+```bash
+git -C /www/wwwroot/yuankon status --short --branch
+git -C /www/wwwroot/yuankon rev-parse HEAD
+git -C /www/wwwroot/yuankon pull --ff-only origin main
+cd /www/wwwroot/yuankon
+PATH=/www/server/nodejs/v22.23.3/bin:$PATH npm ci
+PATH=/www/server/nodejs/v22.23.3/bin:$PATH npm run build
+```
+
+6. 在宝塔的「网站 → Node项目 → yuankon → 设置 → 服务」中用可视化按钮重启，不用手工 `nohup` 启动第二个实例。
+7. 验证宝塔显示“运行中”和 PID，项目日志没有启动错误，服务器 SHA 与推送 SHA 一致，`frontend/dist/index.html` 存在，并实际打开 `https://yk1.jk92.cc/login` 检查页面和接口。出现 `403`、`502` 或旧页面时不得报告部署完成。
+8. 普通代码更新不重新绑定 CDN/DNS，不修改宝塔、Nginx 或 Cloudflare 配置；确需变更基础设施时单独说明原因和回滚方式后再处理。
+
+### 数据与回滚边界
+
+- 更新必须保留 `backend/.node-private/`，其中包含 SQLite、主密钥、截图和 APK 构建文件；不得用新目录覆盖，也不得纳入 Git。
+- 部署前记录旧提交 SHA。新版本验证失败时先停止继续操作并报告旧、新 SHA；回退代码和重启必须以记录的旧 SHA 为准，不能猜测版本。
+- 依赖安装和前端构建不等于数据库备份。涉及迁移时，先确认没有构建任务执行，再按本文件“私有存储与备份”要求备份数据库、WAL、主密钥与私有文件。
+
+### 当前部署状态（2026-09-28）
+
+服务器已安装 Node `v22.23.3`，依赖安装和 Vue 生产构建成功，宝塔中的 `yuankon` 项目已由图形界面启动。域名已经指向该项目；公开请求目前仍会被项目自身的同源/代理校验返回 `403`，因此尚不能标记为公网部署验收完成。后续应优先在仓库代码和测试中解决兼容问题，再按本运行手册推送部署；不要用临时修改服务器配置掩盖项目问题。

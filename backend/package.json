@@ -7,10 +7,11 @@
     },
     "name": "boundary-lab-backend",
     "scripts": {
-        "start": "node src/index.js",
+        "start": "node --env-file-if-exists=.env src/index.js",
+        "initialize": "node --env-file-if-exists=.env src/initialize.js",
         "dev": "nodemon --watch src --ext js src/index.js --dev",
         "test": "node --test test/*.test.js",
-        "device:token": "node src/device-token.js",
+        "device:token": "node --env-file-if-exists=.env src/device-token.js",
         "format:check": "prettier --check \"src/**/*.js\" \"test/**/*.js\" \"../frontend/src/**/*.{js,vue,css}\" ../frontend/index.html ../frontend/vite.config.js \"../frontend/test/*.js\" package.json ../package.json ../frontend/package.json ../frontend/playwright.config.js"
     },
     "dependencies": {

@@ -47,10 +47,19 @@ npm run build      # 编译 Vue 到 frontend/dist
 npm start          # Node 同域提供页面、API、WS
 ```
 
+全新服务器首次部署可使用初始化脚本；它会校验 Node 版本和参数、安装锁定依赖、构建 Vue、初始化 SQLite/主密钥，并生成 Git 忽略的 `backend/.env` 与 `backend/.node-private/install.lock`：
+
+```bash
+./install.sh --origin https://yk1.jk92.cc --port 8081 --trust-proxy
+```
+
+安装锁存在时脚本只报告已经完成，不覆盖配置、数据库或主密钥。后续代码更新使用 `git pull --ff-only`、`npm ci`、`npm run build` 和进程管理器重启，不再次运行初始化脚本。也可通过 `npm run init:server -- --origin ...` 调用。
+
 打开 [登录页](http://127.0.0.1:8080/login)。首次初始化超管 `mtx` / `mtx123`；右上角账号设置支持退出与改密。原有密码、设备、截图和构建记录保留。
 
 - `npm run dev`：Node + Vite 热更新，仍是同域 8080，不需分别启动两个端口。
 - `NODE_PORT=8082 npm start`：改本机端口。
+- `npm start` 会自动读取存在的 `backend/.env`，Shell 或进程管理器中已经设置的环境变量优先。
 - 单独安装：`npm ci --prefix backend`、`npm ci --prefix frontend`。
 - 根目录使用 `--ignore-scripts` 时会跳过两边自动安装，需另执行上面两条命令。
 - 启动路径不依赖当前工作目录；`cd backend && npm start` 同样读取 backend/.node-private。

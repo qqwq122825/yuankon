@@ -204,7 +204,19 @@ test('trusted reverse proxy accepts only the configured HTTPS origin and proxy h
         },
     });
     assert.equal(allowedRequest(request(), proxyConfig, true), true);
+    assert.equal(allowedRequest(request({ host: 'yk.jk92.cc:80' }), proxyConfig, true), true);
+    assert.equal(allowedRequest(request({ host: 'yk.jk92.cc:443' }), proxyConfig, true), true);
+    assert.equal(
+        allowedRequest(request({ 'x-forwarded-host': 'yk.jk92.cc:80' }), proxyConfig, true),
+        true,
+    );
     assert.equal(allowedRequest(request({ host: 'untrusted.test' }), proxyConfig), false);
+    assert.equal(allowedRequest(request({ host: 'untrusted.test:80' }), proxyConfig), false);
+    assert.equal(allowedRequest(request({ host: 'yk.jk92.cc:8081' }), proxyConfig), false);
+    assert.equal(
+        allowedRequest(request({ 'x-forwarded-host': 'untrusted.test:80' }), proxyConfig),
+        false,
+    );
     assert.equal(
         allowedRequest(request({ origin: 'https://untrusted.test' }), proxyConfig, true),
         false,

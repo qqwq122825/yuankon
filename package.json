@@ -8,6 +8,7 @@
     },
     "scripts": {
         "postinstall": "npm ci --prefix backend && npm ci --prefix frontend",
+        "init:server": "sh ./install.sh",
         "dev": "npm --prefix backend run dev",
         "build": "npm --prefix frontend run build",
         "start": "npm --prefix backend start",
