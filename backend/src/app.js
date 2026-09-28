@@ -37,7 +37,7 @@ export async function createApplication(
     const app = express(),
         server = createServer(app);
     app.disable('x-powered-by');
-    app.set('trust proxy', false);
+    app.set('trust proxy', config.trustProxy ? 'loopback' : false);
     app.use(localOnly(config));
     app.use(
         helmet({
@@ -83,7 +83,7 @@ export async function createApplication(
             runtime: 'node',
             frontend: 'vue',
             protocol: 'boundary-node-v1',
-            mode: 'local-only',
+            mode: config.trustProxy ? 'trusted-proxy' : 'local-only',
         }),
     );
     app.use('/api/auth', authRoutes(accounts, config));
@@ -95,7 +95,7 @@ export async function createApplication(
         res.json({
             runtime: 'Node + Express + ws',
             frontend: 'Vue 3',
-            mode: 'local-only',
+            mode: config.trustProxy ? 'trusted-proxy' : 'local-only',
             capabilities: [
                 'superadmin-login',
                 'single-session',

@@ -4,13 +4,16 @@ import { fail } from './protocol.js';
 export const isLoopback = (ip) => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(ip);
 export function allowedRequest(req, config, requireOrigin = false) {
     if (!isLoopback(req.socket.remoteAddress)) return false;
-    if (
-        ['forwarded', 'x-forwarded-for', 'x-forwarded-host', 'x-forwarded-proto'].some(
-            (name) => req.headers[name],
-        )
-    )
-        return false;
     const expected = new URL(config.origin);
+    const forwarded = ['forwarded', 'x-forwarded-for', 'x-forwarded-host', 'x-forwarded-proto'];
+    if (!config.trustProxy && forwarded.some((name) => req.headers[name])) return false;
+    if (config.trustProxy) {
+        if (req.headers.forwarded) return false;
+        if (req.headers['x-forwarded-proto'] !== expected.protocol.slice(0, -1)) return false;
+        if (req.headers['x-forwarded-host'] && req.headers['x-forwarded-host'] !== expected.host)
+            return false;
+        if (!req.headers['x-real-ip'] || !req.headers['x-forwarded-for']) return false;
+    }
     if (req.headers.host !== expected.host) return false;
     if (req.headers.origin && req.headers.origin !== config.origin) return false;
     if (requireOrigin && req.headers.origin !== config.origin) return false;

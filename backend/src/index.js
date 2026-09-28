@@ -9,8 +9,10 @@ instance.server.on('error', async (error) => {
     await instance.close();
     process.exitCode = 1;
 });
-instance.server.listen(settings.port, '127.0.0.1', () =>
-    console.log(`Boundary Lab Vue + Node: ${settings.origin}`),
+instance.server.listen(settings.port, settings.host, () =>
+    console.log(
+        `Boundary Lab Vue + Node: ${settings.origin} (${settings.host}:${settings.port}, ${settings.trustProxy ? 'trusted proxy' : 'local only'})`,
+    ),
 );
 let stopping = false;
 for (const signal of ['SIGINT', 'SIGTERM'])

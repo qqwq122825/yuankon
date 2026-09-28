@@ -14,7 +14,7 @@ import { createApplication } from '../src/app.js';
 import { normalizeSnapshot, labelsFor } from '../src/protocol.js';
 import { Translation } from '../src/translation.js';
 import { privateFile, checkPng } from '../src/files.js';
-import { isLoopback } from '../src/security.js';
+import { allowedRequest, isLoopback } from '../src/security.js';
 
 let dir, db, app, settings, base, fixture, accessToken;
 const sockets = [];
@@ -188,6 +188,30 @@ test('Host / Origin / remote-address guards and same-origin writes', async () =>
         ).status,
         403,
     );
+});
+test('trusted reverse proxy accepts only the configured HTTPS origin and proxy headers', () => {
+    const proxyConfig = { origin: 'https://yk.jk92.cc', trustProxy: true };
+    const request = (headers = {}, remoteAddress = '127.0.0.1') => ({
+        socket: { remoteAddress },
+        headers: {
+            host: 'yk.jk92.cc',
+            origin: 'https://yk.jk92.cc',
+            'sec-fetch-site': 'same-origin',
+            'x-real-ip': '192.0.2.10',
+            'x-forwarded-for': '192.0.2.10',
+            'x-forwarded-proto': 'https',
+            ...headers,
+        },
+    });
+    assert.equal(allowedRequest(request(), proxyConfig, true), true);
+    assert.equal(allowedRequest(request({ host: 'untrusted.test' }), proxyConfig), false);
+    assert.equal(
+        allowedRequest(request({ origin: 'https://untrusted.test' }), proxyConfig, true),
+        false,
+    );
+    assert.equal(allowedRequest(request({ 'x-forwarded-proto': 'http' }), proxyConfig), false);
+    assert.equal(allowedRequest(request({ 'x-forwarded-for': undefined }), proxyConfig), false);
+    assert.equal(allowedRequest(request({}, '192.0.2.20'), proxyConfig), false);
 });
 test('list filters, pagination and total stats are independent', async () => {
     const r = await request('/api/devices?q=Fixture&source=sample&page=2');
