@@ -40,8 +40,8 @@ test('first-run web installer creates the superadmin then locks the install rout
         const input = route.request().postDataJSON();
         expect(input).toEqual({
             username: 'first_admin',
-            password: 'StrongPass123!',
-            confirmPassword: 'StrongPass123!',
+            password: '123456',
+            confirmPassword: '123456',
         });
         installed = true;
         await route.fulfill({
@@ -59,8 +59,12 @@ test('first-run web installer creates the superadmin then locks the install rout
     await expect(page.getByText('JDK 17', { exact: true })).toBeVisible();
     await expect(accountInput).toBeEnabled();
     await accountInput.fill('first_admin');
-    await page.getByLabel('超管密码').fill('StrongPass123!');
-    await page.getByLabel('确认密码').fill('StrongPass123!');
+    await page.getByLabel('超管密码').fill('123456');
+    await page.getByLabel('确认密码').fill('123456');
+    await expect(page.getByLabel('超管密码')).toHaveAttribute('type', 'password');
+    await page.getByLabel('显示密码').check();
+    await expect(page.getByLabel('超管密码')).toHaveAttribute('type', 'text');
+    await expect(page.getByLabel('确认密码')).toHaveAttribute('type', 'text');
     await page.getByRole('button', { name: '完成安装' }).click();
     await expect(page).toHaveURL('/login');
     await expect(page.getByText('初始化完成，请使用刚设置的超管账号登录。')).toBeVisible();

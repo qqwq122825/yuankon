@@ -60,8 +60,8 @@ test('web installer creates the only superadmin and completion lock before enabl
             (
                 await call(settings.origin, '/api/install', {
                     username: 'owner_admin',
-                    password: 'short',
-                    confirmPassword: 'short',
+                    password: '',
+                    confirmPassword: '',
                 })
             ).status,
             422,
@@ -79,8 +79,8 @@ test('web installer creates the only superadmin and completion lock before enabl
 
         const installed = await call(settings.origin, '/api/install', {
             username: 'Owner_Admin',
-            password: 'StrongPass123!',
-            confirmPassword: 'StrongPass123!',
+            password: '123456',
+            confirmPassword: '123456',
         });
         assert.equal(installed.status, 201);
         assert.equal(installed.body.installed, true);
@@ -88,7 +88,7 @@ test('web installer creates the only superadmin and completion lock before enabl
         assert.equal(installed.body.user.apkId, '1');
         const root = await db('accounts').first();
         assert.equal(root.username, 'owner_admin');
-        assert.equal(await argon2.verify(root.password_hash, 'StrongPass123!'), true);
+        assert.equal(await argon2.verify(root.password_hash, '123456'), true);
         assert.equal((await db('accounts')).length, 1);
         assert.equal((await db('account_audit').where('event', 'installed')).length, 1);
 
@@ -97,7 +97,7 @@ test('web installer creates the only superadmin and completion lock before enabl
         assert.equal(lock.source, 'web-installer');
         assert.equal(lock.username, 'owner_admin');
         assert.equal(lock.apkId, '1');
-        assert.doesNotMatch(lockText, /StrongPass123/);
+        assert.doesNotMatch(lockText, /123456/);
         assert.deepEqual((await call(settings.origin, '/api/install/status')).body, {
             installed: true,
         });
@@ -113,7 +113,7 @@ test('web installer creates the only superadmin and completion lock before enabl
         );
         const login = await call(settings.origin, '/api/auth/login', {
             username: 'owner_admin',
-            password: 'StrongPass123!',
+            password: '123456',
         });
         assert.equal(login.status, 200);
         assert.match(login.cookie, /HttpOnly/);

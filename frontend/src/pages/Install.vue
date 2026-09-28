@@ -8,6 +8,7 @@ const router = useRouter(),
     username = ref(''),
     password = ref(''),
     confirmPassword = ref(''),
+    showPassword = ref(false),
     busy = ref(false),
     environmentBusy = ref(false),
     error = ref(''),
@@ -175,23 +176,28 @@ onBeforeUnmount(() => {
                         ><input
                             id="install-password"
                             v-model="password"
-                            type="password"
+                            :type="showPassword ? 'text' : 'password'"
                             class="form-control"
                             autocomplete="new-password"
                             required
-                            minlength="8"
-                            maxlength="128"
                         /><label for="install-confirm" class="form-label mt-3">确认密码</label
                         ><input
                             id="install-confirm"
                             v-model="confirmPassword"
-                            type="password"
+                            :type="showPassword ? 'text' : 'password'"
                             class="form-control"
                             autocomplete="new-password"
                             required
-                            minlength="8"
-                            maxlength="128"
-                        /><button
+                        />
+                        <label class="form-check mt-2">
+                            <input
+                                v-model="showPassword"
+                                class="form-check-input"
+                                type="checkbox"
+                            />
+                            <span class="form-check-label">显示密码</span>
+                        </label>
+                        <button
                             class="btn btn-primary w-100 mt-4"
                             :disabled="busy || !environment.ready"
                         >

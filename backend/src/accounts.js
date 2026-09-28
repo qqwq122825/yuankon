@@ -17,7 +17,7 @@ export const loginSchema = z
             .string()
             .regex(/^[a-zA-Z0-9_]{3,32}$/)
             .transform((v) => v.toLowerCase()),
-        password: z.string().min(1).max(128),
+        password: z.string().min(1),
     })
     .strict();
 export const installationSchema = z
@@ -26,8 +26,8 @@ export const installationSchema = z
             .string()
             .regex(/^[a-zA-Z0-9_]{3,32}$/)
             .transform((v) => v.toLowerCase()),
-        password: z.string().min(8).max(128),
-        confirmPassword: z.string().min(8).max(128),
+        password: z.string().min(1),
+        confirmPassword: z.string().min(1),
     })
     .strict()
     .refine((value) => value.password === value.confirmPassword, {
