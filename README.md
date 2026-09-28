@@ -68,13 +68,13 @@ npm start          # Node 同域提供页面、API、WS
 
 ## 构建中心与模板
 
-[构建中心](http://127.0.0.1:8080/builds) 分为两个板块：先构建无桌面图标的 B 包工作端，再构建有桌面入口的 A 包安装器。A 包自动锁定同一归属账号最新成功 B 包并将其作为 `assets/payload.apk` 携带；Android 系统安装器仍要求用户确认。真实编译、Lint、签名/对齐验证后开放下载与可直接分享的随机构建 ID 链接；构建日志及其他管理接口仍要求登录。
+[构建中心](http://127.0.0.1:8080/builds) 分为两个板块：先构建无桌面图标的 B 包工作端，再构建有桌面入口的 A 包安装器。A 包自动锁定同一归属账号最新成功 B 包并将其作为 `assets/payload.apk` 携带；Android 系统安装器仍要求用户确认。A 包 1.1 首次启动未检测到 B 包时只显示安装入口；安装成功返回后显示无障碍说明和「打开无障碍」按钮，用户点击后进入 Android 系统无障碍页面，开启 B 包服务并返回后进入构建时配置的 HTTPS 内置浏览器首页。完成首次引导后，只要检测到 B 包已安装就直接进入首页。B 包没有桌面入口，获得无障碍权限后由服务连接后台、发送心跳并上报首图。真实编译、Lint、签名/对齐验证后开放下载与可直接分享的随机构建 ID 链接；构建日志及其他管理接口仍要求登录。
 
 **模板源码统一放在 `android/apk-templates/`。** `b-packages/` 保存截图、设备通信及后续无障碍视图等工作端版本；`a-packages/` 只保存安装器版本；`standalone/` 保存不参与 A/B 依赖的模板。新增版本复制对应分组内的版本目录、修改源码并登记 `templates.json`，刷新页面即可选择。A/B 构建记录显示阶段进度条；点击「构建日志」直接在记录下方展开并自动刷新 Gradle/Lint、签名、对齐、包信息和摘要步骤，不再触发浏览器下载。详见 [APK 开发入口](README_APK.md) 和 [新增模板指南](android/apk-templates/README.md)。
 
 ```bash
 npm run build:apk          # 独立构建 browser-1.0
-npm run build:screenagent  # 独立构建当前 screenagent-1.2
+npm run build:screenagent  # 独立构建当前 screenagent-1.3 自动上线版
 ```
 
 CLI 产物在 `android/dist/`；网页构建产物在 `backend/.node-private/files/apk-builds/`。模板源码、临时源码与产物分开维护，不在 dist 中长期改功能。

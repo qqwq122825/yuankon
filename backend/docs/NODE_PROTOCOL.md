@@ -10,7 +10,7 @@
 
 ## HTTP
 
-新增的 APK 归属、设备登记、实时最新帧专用 HTTP 接口详见 [ScreenAgent 接入](SCREENAGENT_INGRESS.md) 与已实现的 [boundary-screenshot-v2](SCREENSHOT_COMMAND_PROTOCOL.md)。`/api/client/register` 使用 10 分钟登记码；`/api/sync/status`、`/api/device/screenshot-session`、`/api/device/screenshot` 使用独立设备 Bearer Token，最后一个端点为受限 multipart，其余写入仍是 JSON。所有写入继续要求 `X-Boundary-Request: 1`。
+新增的 APK 归属、自动上线、实时最新帧专用 HTTP 接口详见 [ScreenAgent 接入](SCREENAGENT_INGRESS.md) 与已实现的 [boundary-screenshot-v2](SCREENSHOT_COMMAND_PROTOCOL.md)。当前 B 包在无障碍服务连接时调用 `/api/client/online`，服务器按 APK ID 幂等归属并静默返回内部设备 Token；旧 `/api/client/register` 和登记码仅兼容旧包。`/api/sync/status`、`/api/device/screenshot-session`、`/api/device/screenshot` 使用设备 Bearer Token，最后一个端点为受限 multipart，其余写入仍是 JSON。所有写入继续要求 `X-Boundary-Request: 1`。
 
 | 方法 | 路由 | 行为 |
 |---|---|---|
@@ -18,6 +18,7 @@
 | GET | /api/install/environment | 未初始化时直接开放；初始化后需账号登录。返回固定组件、安装阶段、有界日志与 ready 状态 |
 | POST | /api/install/environment | 未初始化时直接开放；初始化后需账号登录。启动单个固定 Linux 环境安装任务；无用户参数，202 表示正在执行 |
 | POST | /api/install | 仅环境验证通过且未安装时接受 `{username,password,confirmPassword}`；事务创建唯一超管与 APK ID `1`，成功后永久关闭 |
+| POST | /api/client/online | B 包自动上线；`{deviceId,apkId,设备画像}` → 按 APK ID 归属、幂等设备记录与内部设备 Token |
 | GET | /api/health | Node/Vue/协议/本机模式状态 |
 | POST | /api/auth/login | `{username,password}` → `{token,expiresIn,user}`；8 小时账号 JWT，同时设置 HttpOnly Cookie |
 | GET | /api/auth/me | 当前账号公开信息；需登录 |
@@ -52,7 +53,7 @@ HTTP 写请求（包括登录）要求 JSON 和 `X-Boundary-Request: 1`，跨站
 排序白名单：`id,name,note,source,brand,android,snapshots,battery,a11y,nodes,windows,last_seen`。
 每页 10 条，切换排序回第 1 页，节点数取最新快照。无已登记 API 设备时在线数为 null；每日统计始终为 null，页面显示“—”。
 
-设备 HTTP 模型增加 `is_blacklisted`。拉黑后停止接入、关闭设备连接、清理内存图片及一次性上传许可；取消拉黑不恢复旧许可，原有有效凭证可再次连接。软删除撤销已登记设备凭证，设备/关联快照/图片/导出均退出正常读取范围（404），列表及统计不计入；历史数据库记录和私有文件保留用于审计，并非物理删除或手机端清除。登记码重试也不能重新激活已删除设备。项目范围检查仍适用，后续新增角色需落实完整租户认证。
+设备 HTTP 模型增加 `is_blacklisted`。拉黑后停止接入、关闭设备连接、清理内存图片及一次性上传许可；取消拉黑不恢复旧许可，原有有效凭证可再次连接。软删除撤销已登记设备凭证，设备/关联快照/图片/导出均退出正常读取范围（404），列表及统计不计入；历史数据库记录和私有文件保留用于审计，并非物理删除或手机端清除。自动上线与旧登记码重试都不能重新激活已删除设备。项目范围检查仍适用，后续新增角色需落实完整租户认证。
 
 ## WS /ws/panel
 
@@ -124,6 +125,6 @@ npm run device:token -- TEST_DEVICE_001
 
 ## 网页构建参数
 
-`POST /api/builds`：B 包使用 `{templateId,domain,appName,apkId?,batch?,packageName?,requestId}`，只接收后台域名；A 包使用 `{templateId:"installer-1.0",appName,homeUrl,packageName?,requestId}`，只接收 HTTPS 首页地址。给 B 包传 `homeUrl` 或给 A 包传 `domain` 均返回 422。requestId 为 UUID，相同提交重试幂等，换配置必须换 requestId。apkId 可空或省略：有效账号固定编号指定归属，未匹配可用账号或留空归默认接收账号（当前为超管），不创建新编号。响应 build 的 apk_id 为实际编号，requested_apk_id 保留输入，owner_account_id / owner_username / routing_reason 表示构建时归属快照；原因取 explicit / default_empty / default_unmatched。A 包必须存在同项目、同归属账号的最新成功 B 包，任务创建时固定 `payload_build_id/payload_sha256/payload_package_name`；缺少 B 返回 409，A/B 包名相同返回 422。batch 和 packageName 默认空，空包名服务端随机生成；模板决定 versionName/versionCode。B 包 domain 支持 local、已登记简称、HTTPS origin；A 包 homeUrl 只接受不带凭证的 HTTPS URL。构建后的 B 包必须没有 MAIN/LAUNCHER，A 包必须有桌面入口，否则包信息校验失败。
+`POST /api/builds`：B 包使用 `{templateId,domain,appName,apkId?,batch?,packageName?,requestId}`，只接收后台域名；A 包使用 `{templateId:"installer-1.1",appName,homeUrl,packageName?,requestId}`，只接收 HTTPS 首页地址。给 B 包传 `homeUrl` 或给 A 包传 `domain` 均返回 422。requestId 为 UUID，相同提交重试幂等，换配置必须换 requestId。apkId 可空或省略：有效账号固定编号指定归属，未匹配可用账号或留空归默认接收账号（当前为超管），不创建新编号。响应 build 的 apk_id 为实际编号，requested_apk_id 保留输入，owner_account_id / owner_username / routing_reason 表示构建时归属快照；原因取 explicit / default_empty / default_unmatched。A 包必须存在同项目、同归属账号的最新成功 B 包，任务创建时固定 `payload_build_id/payload_sha256/payload_package_name`；缺少 B 返回 409，A/B 包名相同返回 422。batch 和 packageName 默认空，空包名服务端随机生成；模板决定 versionName/versionCode。B 包 domain 支持 local、已登记简称、HTTPS origin；A 包 homeUrl 只接受不带凭证的 HTTPS URL。构建后的 B 包必须没有 MAIN/LAUNCHER，A 包必须有桌面入口，否则包信息校验失败。
 
 任务持久化 queued/building/succeeded/failed，stage 细分 preparing/compiling/signing/aligning/inspecting/publishing；失败返回经过归一化的 error_message，不泄漏工具输出。成功才返回 downloadUrl/sha256/size/artifactAvailable；日志文件存在时返回 logAvailable/logUrl，日志下载同样要求当前超管登录。最多 10 个未完成任务，单任务 20 分钟；额度/工具链错误返回 429/409/503。完成或失败的任务可确认删除，服务端按已校验 UUID 同时删除数据库记录、`files/apk-builds/<UUID>` 产物目录和 `build-work/<UUID>` 日志目录，并写入账号审计；排队中或构建中的任务返回 409。保存模板配置快照、提交者和 APK ID 归属，后续新增角色需统一加入租户检查。下载链接不携带 Token。详见 [模板与队列](../../android/apk-templates/README.md)。

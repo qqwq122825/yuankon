@@ -151,6 +151,7 @@ export async function createApplication(
                 'snapshots',
                 'status-ws',
                 'translation',
+                'apk-id-auto-online',
                 'device-enrollment',
                 'single-screenshot',
                 'accessibility-first-thumbnail',

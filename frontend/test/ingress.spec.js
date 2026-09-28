@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import sharp from 'sharp';
 
-test('APK ownership, enrollment and an actual synthetic JPEG are visible in the existing console', async ({
+test('APK ownership, automatic online and an actual synthetic JPEG are visible in the existing console', async ({
     page,
 }) => {
     const errors = [];
@@ -13,15 +13,8 @@ test('APK ownership, enrollment and an actual synthetic JPEG are visible in the 
     await expect(page).toHaveURL('/');
     const { user } = await (await page.request.get('/api/auth/me')).json();
     const apkId = user.apkId;
-    await page.goto('/settings/account');
-    await page.getByText('设备接入调试（临时登记码）', { exact: true }).click();
-    await expect(page.getByLabel('接入 APK ID')).toHaveValue(apkId);
-    await page.getByRole('button', { name: '生成设备登记码' }).click();
-    const tokenField = page.getByLabel('设备登记码（只在本页显示）');
-    await expect(tokenField).toHaveValue(/^ey/);
-    const enrollment = await tokenField.inputValue();
-    const headers = { 'X-Boundary-Request': '1', Authorization: `Bearer ${enrollment}` };
-    const register = await page.request.post('/api/client/register', {
+    const headers = { 'X-Boundary-Request': '1' };
+    const register = await page.request.post('/api/client/online', {
         headers,
         data: { deviceId: 'E2E_SCREEN_DEVICE', apkId, model: '合成截图测试设备' },
     });

@@ -4,8 +4,6 @@ import { useRouter } from 'vue-router';
 import { session, endSession, logout, refreshProfile } from '../session.js';
 import { validityDisplay } from '../account-display.js';
 import { mutate } from '../api.js';
-import DeviceEnrollment from '../components/DeviceEnrollment.vue';
-const enrollmentOpen = ref(false);
 const router = useRouter(),
     oldPassword = ref(''),
     newPassword = ref(''),
@@ -122,9 +120,5 @@ async function exit() {
                 </button>
             </div>
         </form>
-        <details class="settings-card mt-3" @toggle="enrollmentOpen = $event.target.open">
-            <summary>设备接入调试（临时登记码）</summary>
-            <DeviceEnrollment v-if="enrollmentOpen" class="mt-3" />
-        </details>
     </div>
 </template>

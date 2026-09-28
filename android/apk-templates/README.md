@@ -2,8 +2,8 @@
 
 ## 当前源码
 
-- `android/apk-templates/b-packages/`：工作端版本区。`screenagent-1.0/` 保留旧的手动单张版，`screenagent-1.1/` 保留按需单张版；当前 `screenagent-1.2/` 只写入后台域名，无 MAIN/LAUNCHER 桌面入口、无首页。A 包可用 `org.boundarylab.screenagent.SETUP` 显式打开设置；无障碍开启后 B 包负责首图、查看租约内实时最新帧、登记和设备心跳。
-- `android/apk-templates/a-packages/`：安装器版本区。当前 `installer-1.0/` 清单 ID 为 `installer-1.0`，有桌面入口和 HTTPS 首页；构建副本写入首页、最新成功 B 包和摘要配置。A 包不复制 B 包工作逻辑。
+- `android/apk-templates/b-packages/`：工作端版本区。当前 `screenagent-1.3/` 只写入后台域名与 APK ID，没有 Activity、MAIN/LAUNCHER 或首页。无障碍开启后自动归属上线、心跳、首图并在查看租约内上传实时最新帧；`screenagent-1.2/` 及更早版本保留兼容。
+- `android/apk-templates/a-packages/`：安装器版本区。当前 `installer-1.1/` 清单 ID 为 `installer-1.1`，有桌面入口和 HTTPS 内置浏览器；构建副本写入首页、最新成功 B 包和摘要配置。未安装 B 包时只显示安装入口，本次安装成功返回后显示「打开无障碍」按钮，用户开启 B 包服务并返回后进入首页；完成首次引导后检测到已安装便直接进入首页。旧 `installer-1.0/` 保留。A 包不复制 B 包工作逻辑。
 - `android/apk-templates/standalone/`：不参与 A/B 依赖的独立模板。当前 `browser-1.0/` 只打开可见 WebView。
 - `android/apk-templates/templates.json`：后台模板选择框的数据源。显示名和实际 Android 版本分开；当前没有名为 v4.0 的源码，勿只改标题就描述为新增功能。
 - `android/apk-templates/domains.json`：可选域名简称映射，不包含凭证。
@@ -15,18 +15,18 @@
 以下命令在项目根目录执行。先确认新目录尚不存在：
 
 ```bash
-cp -R android/apk-templates/b-packages/screenagent-1.2 android/apk-templates/b-packages/screenagent-1.3
+cp -R android/apk-templates/b-packages/screenagent-1.3 android/apk-templates/b-packages/screenagent-1.4
 ```
 
 在新目录修改 Android 源码，保留旧 1.0 目录。向 `android/apk-templates/templates.json` 的数组追加：
 
 ```json
 {
-  "id": "screenagent-1.3",
-  "name": "v1.3 · ScreenAgent 新能力",
-  "versionName": "1.3.0",
-  "versionCode": 4,
-  "sourceDir": "b-packages/screenagent-1.3",
+  "id": "screenagent-1.4",
+  "name": "v1.4 · ScreenAgent 新能力",
+  "versionName": "1.4.0",
+  "versionCode": 5,
+  "sourceDir": "b-packages/screenagent-1.4",
   "kind": "screenagent",
   "description": "在这里写真实新增能力；保留手机确认与停止入口。"
 }
@@ -36,13 +36,13 @@ cp -R android/apk-templates/b-packages/screenagent-1.2 android/apk-templates/b-p
 
 **同一类模板的约定：**
 
-- A/B 目录表达职责，不表达构建顺序缓存：`b-packages` 是无桌面工作应用，所有设备侧能力进入新的 B 包版本；`a-packages` 处理首页、安装、摘要校验和打开 B 包设置。A 包构建任务仍从数据库选择同账号最新成功 B 包产物。
+- A/B 目录表达职责，不表达构建顺序缓存：`b-packages` 是无桌面工作应用，所有设备侧能力进入新的 B 包版本；`a-packages` 只处理首页、安装、摘要校验和已安装状态切换，不提供 B 包设置入口。A 包构建任务仍从数据库选择同账号最新成功 B 包产物。
 - 新增 B 功能时复制 B 版本目录，提高 `versionName/versionCode`，登记新的 `sourceDir`；不要把截图、无障碍视图或设备通信代码加入 A 包。
 - `kind` 支持 `screenagent`、`installer` 或 `browser`。新的 Android 架构需要先新增构建适配和测试，不能仅填目录。
 - 复制范围为根目录 `build.gradle[.kts]`、`settings.gradle[.kts]`、`gradle.properties`，以及 `app/build.gradle[.kts]`、`app/proguard-rules.pro`、`app/src/`。不复制缓存、签名、local.properties、任意额外模块或符号链接。
 - 保留 `app/src/main/res/values/strings.xml` 的 `app_name`；浏览器还需 `home_url`。名称与网址经过 XML/Android 字符串转义，原模板不改。
 - ScreenAgent 从 `app/src/main/assets/agent_config.json` 读取后台 `serverUrl` 等运行时参数，不包含 `homeUrl/webUrl`；Gradle 不应再次覆盖这个文件。支持属性 `appId`、`versionName`、`versionCode`。
-- Installer 从 `app/src/main/assets/installer_config.json` 读取 A 包 HTTPS 首页，以及被锁定的 B 包构建 ID、摘要与包名，并携带 `payload.apk`；这些文件只能由 Node 从已完成构建复制，不接受网页上传或任意路径。
+- Installer 从 `app/src/main/assets/installer_config.json` 读取 A 包 HTTPS 首页，以及被锁定的 B 包构建 ID、摘要与包名，并携带 `payload.apk`；这些文件只能由 Node 从已完成构建复制，不接受网页上传或任意路径。1.1 在构建副本的 `<queries>` 中写入 B 包包名并直接检查安装状态，不要求 B 包暴露 Activity；A 包只在自己刚完成 B 包安装的返回路径中显示无障碍引导，用户点击按钮后才打开 Android 系统无障碍设置。
 - 浏览器支持 `shellApplicationId`、`shellVersionName`、`shellVersionCode`，元数据写入 `assets/build_config.json`，主页写入 `home_url`。
 - 输出约定 `app/build/outputs/apk/debug/app-debug.apk`；固定执行 `assembleDebug lintDebug`。保持 JDK 17、AGP 8.9.2 / Gradle 8.11.1 与 API 35 工具链兼容。
 - 参数不写入 Java/Kotlin/Gradle 源代码；包名、版本是白名单属性。包名是 applicationId，不全局替换 namespace 或 Java/Kotlin 包路径。

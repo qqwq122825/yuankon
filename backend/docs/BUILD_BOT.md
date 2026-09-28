@@ -6,7 +6,7 @@ PHP 构建控制器、机器人轮询和队列随旧后台移除。**Node 已支
 
 网页操作与新增模板见 [模板指南](../../android/apk-templates/README.md)。网页使用 `backend/src/build-queue.js` 与 `apk-builder.js`，并非调用下述无参数 CLI 脚本。
 
-网页流程分为 A/B 两类。先构建当前 `screenagent-1.2` B 包：它没有桌面图标，保留可见设置页和登记，在用户显式开启无障碍后上报首图，随后只在网页有效查看租约内串行上传实时最新帧；`screenagent-1.1` 保留按需单张，`screenagent-1.0` 保留手动单次。随后构建 `installer-1.0` A 包：队列按同项目、同归属账号自动选择最新成功且文件存在的 B 包，记录其构建 ID、SHA-256 和包名，并把 APK 复制到 A 包私有源码副本的 `assets/payload.apk`。A 包有桌面入口，运行时校验内置 B 包摘要并调用 Android 系统安装器；安装仍由用户在系统界面确认，不执行静默安装。
+网页流程分为 A/B 两类。先构建当前 `screenagent-1.3` B 包：它没有 Activity、桌面图标或首页，后台域名与 APK ID 在构建时写入；用户显式开启无障碍后，B 包自动按 APK ID 归属上线、保持 20 秒心跳并上报首图，网络恢复时立即重连，随后只在网页有效查看租约内串行上传实时最新帧。随后构建 `installer-1.1` A 包：队列按同项目、同归属账号自动选择最新成功且文件存在的 B 包，记录其构建 ID、SHA-256 和包名，并把 APK 复制到 A 包私有源码副本的 `assets/payload.apk`。A 包有桌面入口；B 包未安装时只显示一个安装入口，运行时校验摘要并调用 Android 系统安装器。本次安装成功返回后 A 包显示无障碍说明和「打开无障碍」按钮，用户点击后才进入系统无障碍页面；启用 B 包服务并返回后看到内置浏览器。完成首次引导后，检测到 B 包已安装时直接打开构建时配置的 HTTPS 首页。安装和无障碍授权都由用户在 Android 系统界面确认。旧版本保留。
 
 模板目录按职责分为 `b-packages/`、`a-packages/`、`standalone/`。设备侧新能力只增加 B 包版本；A 包保持安装和启动职责。构建页分别提供 A/B 版本选择。每次 A/B 构建的私有 `build.log` 都记录模板/包身份、B 包摘要、Gradle assemble + Lint、apksigner 签名校验、zipalign 对齐校验、aapt 包信息、SHA-256 和产物保存结果，并可从构建记录鉴权下载。
 
@@ -77,7 +77,7 @@ npm run build:apk
 
 ## 2026-09-28 A/B 模板分组与详细日志验收
 
-- 模板物理目录已按职责迁移为 `b-packages/screenagent-1.0`、`b-packages/screenagent-1.1`、`a-packages/installer-1.0` 与 `standalone/browser-1.0`；目录清单仍由 `templates.json` 固定登记，不接受网页传入任意源码路径。B 包承载设备侧工作能力，后续截图、无障碍视图等能力均通过新增 B 包版本演进；A 包只负责携带、校验并请求安装选定账号最新成功的 B 包。
+- 模板物理目录已按职责分为 `b-packages/screenagent-*`、`a-packages/installer-*` 与 `standalone/browser-1.0`；目录清单仍由 `templates.json` 固定登记，不接受网页传入任意源码路径。B 包承载设备侧工作能力，后续截图、无障碍视图等能力均通过新增 B 包版本演进；A 包只负责携带、校验并请求安装选定账号最新成功的 B 包，以及在 B 包已安装后显示内置浏览器首页。
 - 构建中心的 A/B 面板分别显示模板版本选择；每条完成记录可鉴权下载私有 `build.log`。日志按 `preparing → compiling → signing → aligning → inspecting → publishing` 记录，并包含 Gradle assemble/Lint、`apksigner verify --verbose`、`zipalign -c -P 16 -v 4`、`aapt dump badging`、产物 SHA-256 与失败终止信息。删除构建记录时仍同步删除 APK 目录与构建日志目录。
 - 使用真实 Node 单任务队列先完成 B 包 `dcd0990f-7d1f-4e12-8324-78636f0d9a63`，再完成 A 包 `cdd31def-ee27-4a80-804a-287051316854`。B 包 SHA-256 为 `88063b772637215f8ae7dca780654e737b5b73223d73580fc42392793150d027`；A 包内嵌 payload 摘要逐字节相同。B 包没有 `launchable-activity`，A 包有 1 个；两个包的签名和对齐校验均通过。
 - 独立脚本也在新目录上真实构建：`npm run build:screenagent` 得到 B 包 SHA-256 `404b74b403b2a33dc36c279d29b1fdb5d5c865820c99ced9bdea02a0805cb697`；`npm run build:apk` 得到浏览器包 SHA-256 `7630135cec45b8a97f91d7c8d3f6508cfc385eb6727675715fa6904d7f95e380`。两个脚本均保存完整 `build.log`、签名输出、badging 和 SHA 清单。

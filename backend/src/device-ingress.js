@@ -145,6 +145,90 @@ export class DeviceIngress {
             expiresAt,
         };
     }
+    async online(req) {
+        const profile = profileSchema.parse(req.body);
+        const now = Date.now();
+        const result = await this.db.transaction(async (trx) => {
+            const route = await trx('apk_routes')
+                .where({ apk_id: profile.apkId, enabled: true })
+                .first();
+            if (!route) throw fail(404, 'APK ID 不存在或已停用');
+            const owner = await this.owner(route.owner_account_id, trx);
+            let device = await trx('devices').where('public_id', profile.deviceId).first();
+            if (device?.is_blacklisted || device?.deleted_at) throw fail(403, '设备已拉黑或删除');
+            if (
+                device &&
+                (device.source !== 'api' ||
+                    device.project_id !== route.project_id ||
+                    device.apk_id !== route.apk_id ||
+                    device.owner_account_id !== route.owner_account_id)
+            )
+                throw fail(409, '设备标识已用于其他归属');
+            let created = false;
+            if (!device) {
+                const [id] = await trx('devices').insert({
+                    project_id: route.project_id,
+                    public_id: profile.deviceId,
+                    name: profile.model || profile.deviceId,
+                    brand: profile.brand,
+                    android_version: profile.osVersion,
+                    source: 'api',
+                    apk_id: route.apk_id,
+                    owner_account_id: route.owner_account_id,
+                });
+                await trx('device_credentials').insert({
+                    device_id: id,
+                    credential_id: randomUUID(),
+                    registered_at: now,
+                });
+                device = await trx('devices').where({ id }).first();
+                created = true;
+            } else {
+                await trx('devices')
+                    .where('id', device.id)
+                    .update({
+                        name: profile.model || device.name,
+                        brand: profile.brand || device.brand,
+                        android_version: profile.osVersion || device.android_version,
+                    });
+            }
+            let credential = await trx('device_credentials').where('device_id', device.id).first();
+            if (!credential) {
+                await trx('device_credentials').insert({
+                    device_id: device.id,
+                    credential_id: randomUUID(),
+                    registered_at: now,
+                });
+                credential = await trx('device_credentials').where('device_id', device.id).first();
+            }
+            if (credential.revoked) throw fail(403, '设备凭证已撤销');
+            await trx('device_credentials').where('device_id', device.id).update({
+                registered_at: now,
+            });
+            return { device, credential, owner, created };
+        });
+        const expiresAt = now + 30 * 86400000;
+        const deviceToken = await this.auth.issue(
+            'device',
+            result.device.public_id,
+            Math.floor(expiresAt / 1000),
+            { jti: result.credential.credential_id },
+        );
+        await this.store.audit(
+            result.created ? 'device_auto_registered' : 'device_auto_renewed',
+            'http',
+            result.device.public_id,
+        );
+        return {
+            deviceId: result.device.public_id,
+            localId: result.device.id,
+            apkId: result.device.apk_id,
+            owner: { id: result.owner.id, username: result.owner.username },
+            deviceToken,
+            expiresAt,
+            heartbeatSeconds: 20,
+        };
+    }
     async status(device, input) {
         const current = await this.db('devices').where('id', device.id).first();
         if (!current || current.is_blacklisted || current.deleted_at)
@@ -338,6 +422,9 @@ export class DeviceIngress {
     }
     deviceRoutes() {
         const router = Router();
+        router.post('/client/online', async (req, res) =>
+            res.status(201).json(await this.online(req)),
+        );
         router.post('/client/register', async (req, res) =>
             res.status(201).json(await this.register(req)),
         );

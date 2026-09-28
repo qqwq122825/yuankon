@@ -91,7 +91,7 @@ async function call(url, body, credential = token, method = body ? 'POST' : 'GET
     return { status: response.status, body: value };
 }
 const input = (overrides = {}) => ({
-    templateId: 'screenagent-1.2',
+    templateId: 'screenagent-1.3',
     domain: 'local',
     appName: 'Test "Name" & <test>',
     apkId: owner?.apkId,
@@ -115,17 +115,27 @@ test('catalog/build submission require account authentication and reject device 
         401,
     );
     const catalog = await call('/api/build-templates');
-    assert.equal(catalog.body.templates.length, 5);
+    assert.equal(catalog.body.templates.length, 7);
     assert.deepEqual(
         catalog.body.templates.map((template) => template.kind),
-        ['screenagent', 'screenagent', 'screenagent', 'installer', 'browser'],
+        [
+            'screenagent',
+            'screenagent',
+            'screenagent',
+            'screenagent',
+            'installer',
+            'installer',
+            'browser',
+        ],
     );
     assert.deepEqual(
         catalog.body.templates.map((template) => template.sourceDir),
         [
+            'b-packages/screenagent-1.3',
             'b-packages/screenagent-1.2',
             'b-packages/screenagent-1.1',
             'b-packages/screenagent-1.0',
+            'a-packages/installer-1.1',
             'a-packages/installer-1.0',
             'standalone/browser-1.0',
         ],
@@ -153,7 +163,7 @@ test('build inputs reject scripts, missing aliases, arbitrary templates, credent
 });
 test('A package is blocked until a completed B package exists', async () => {
     const response = await call('/api/builds', {
-        templateId: 'installer-1.0',
+        templateId: 'installer-1.1',
         appName: 'Installer before worker',
         homeUrl: 'https://example.com/',
         packageName: 'org.test.installer',
@@ -197,7 +207,7 @@ test('real HTTP queue flow is serial, idempotent, keeps ownership and exposes sh
     const latest = await call('/api/builds');
     assert.equal(latest.body.latestB.id, id);
     const installerResponse = await call('/api/builds', {
-        templateId: 'installer-1.0',
+        templateId: 'installer-1.1',
         appName: 'Fixture installer',
         homeUrl: 'https://example.com/installer',
         packageName: 'org.test.installer',
@@ -214,7 +224,7 @@ test('real HTTP queue flow is serial, idempotent, keeps ownership and exposes sh
     assert.equal(
         (
             await call('/api/builds', {
-                templateId: 'installer-1.0',
+                templateId: 'installer-1.1',
                 appName: 'Same package rejected',
                 homeUrl: 'https://example.com/installer',
                 packageName: row.package_name,
@@ -469,6 +479,16 @@ test('source copies encode user values as XML/JSON without editing template code
             assert.equal(assets.payloadSha256, job.payload_sha256);
             assert.equal(assets.payloadPackageName, job.payload_package_name);
             assert.equal(assets.homeUrl, job.home_url);
+            if (t.id === 'installer-1.1') {
+                assert.match(
+                    await readFile(path.join(source, 'app/src/main/AndroidManifest.xml'), 'utf8'),
+                    /<package android:name="org\.test\.worker" \/>/,
+                );
+                assert.doesNotMatch(
+                    await readFile(path.join(source, 'app/src/main/AndroidManifest.xml'), 'utf8'),
+                    /__PAYLOAD_PACKAGE_NAME__/,
+                );
+            }
             assert.equal(
                 await readFile(path.join(source, 'app/src/main/assets/payload.apk'), 'utf8'),
                 'synthetic-b-package',

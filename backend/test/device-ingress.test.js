@@ -155,6 +155,65 @@ test('APK routes are read-only; enrollment requires an existing route', async ()
     const routes = await call('/api/apk-routes', account, undefined, 'GET');
     assert.equal(routes.body.data[0].username, 'mtx');
 });
+test('B package comes online by APK ID, is assigned to its account and renews the same device silently', async () => {
+    const profile = {
+        deviceId: 'AUTO_ONLINE_1',
+        apkId: 'TESTAPK',
+        brand: 'Synthetic',
+        model: 'Auto fixture',
+        osVersion: '11',
+        appVersion: '1.3.0',
+        packageName: 'org.boundary.auto.fixture',
+    };
+    const first = await call('/api/client/online', '', profile);
+    assert.equal(first.status, 201, JSON.stringify(first.body));
+    assert.equal(first.body.apkId, 'TESTAPK');
+    assert.equal(first.body.owner.id, owner.id);
+    assert.equal(first.body.heartbeatSeconds, 20);
+    const retry = await call('/api/client/online', '', profile);
+    assert.equal(retry.status, 201, JSON.stringify(retry.body));
+    assert.equal(retry.body.localId, first.body.localId);
+    assert.equal((await db('devices').where('public_id', profile.deviceId)).length, 1);
+    assert.equal(
+        (await db('devices').where('id', first.body.localId).first()).owner_account_id,
+        owner.id,
+    );
+    assert.equal((await db('device_credentials').where('device_id', first.body.localId)).length, 1);
+    assert.equal(
+        (
+            await call('/api/sync/status', retry.body.deviceToken, {
+                deviceId: profile.deviceId,
+                apkId: profile.apkId,
+                accessibilityAlive: true,
+            })
+        ).status,
+        200,
+    );
+});
+test('automatic online rejects unknown routes, changed ownership, revoked devices and deleted devices', async () => {
+    const profile = { deviceId: 'AUTO_ONLINE_GUARDS', apkId: 'TESTAPK' };
+    assert.equal(
+        (await call('/api/client/online', '', { ...profile, apkId: 'MISSING' })).status,
+        404,
+    );
+    const first = await call('/api/client/online', '', profile);
+    assert.equal(first.status, 201);
+    await db('device_credentials').where('device_id', first.body.localId).update({ revoked: true });
+    assert.equal((await call('/api/client/online', '', profile)).status, 403);
+    await db('device_credentials')
+        .where('device_id', first.body.localId)
+        .update({ revoked: false });
+    await db('devices')
+        .where('id', first.body.localId)
+        .update({ apk_id: '1', owner_account_id: owner.id });
+    assert.equal((await call('/api/client/online', '', profile)).status, 409);
+    await db('devices').where('id', first.body.localId).update({ apk_id: 'TESTAPK' });
+    assert.equal(
+        (await call(`/api/devices/${first.body.localId}`, account, {}, 'DELETE')).status,
+        200,
+    );
+    assert.equal((await call('/api/client/online', '', profile)).status, 403);
+});
 test('first registration derives ownership only from enrollment, is retryable and never enrolls another device with the same ticket', async () => {
     const d = await register({ ownerAccountId: 999, projectId: 99 });
     assert.equal(d.owner.id, owner.id);

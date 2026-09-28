@@ -43,7 +43,7 @@ test('repository has three source folders, nested dependencies and correctly loc
     }
     const screenagent = path.join(
         ROOT,
-        'android/apk-templates/b-packages/screenagent-1.2/app/src/main',
+        'android/apk-templates/b-packages/screenagent-1.3/app/src/main',
     );
     const manifest = await readFile(path.join(screenagent, 'AndroidManifest.xml'), 'utf8');
     const screenagentConfig = await readFile(
@@ -52,7 +52,7 @@ test('repository has three source folders, nested dependencies and correctly loc
     );
     const installer = path.join(
         ROOT,
-        'android/apk-templates/a-packages/installer-1.0/app/src/main',
+        'android/apk-templates/a-packages/installer-1.1/app/src/main',
     );
     const installerManifest = await readFile(path.join(installer, 'AndroidManifest.xml'), 'utf8');
     const installerActivity = await readFile(
@@ -75,12 +75,27 @@ test('repository has three source folders, nested dependencies and correctly loc
         'utf8',
     );
     assert.match(manifest, /BIND_ACCESSIBILITY_SERVICE/);
+    assert.doesNotMatch(manifest, /<activity\b/);
     assert.doesNotMatch(manifest, /android\.intent\.action\.MAIN/);
     assert.doesNotMatch(manifest, /android\.intent\.category\.LAUNCHER/);
     assert.doesNotMatch(screenagentConfig, /webUrl/);
     assert.match(installerManifest, /android\.intent\.action\.MAIN/);
     assert.match(installerManifest, /android\.intent\.category\.LAUNCHER/);
-    assert.match(installerActivity, /config\.getString\("homeUrl"\)/);
+    assert.match(installerManifest, /android\.permission\.INTERNET/);
+    assert.match(installerActivity, /new WebView\(this\)/);
+    assert.match(installerActivity, /webView\.loadUrl\(config\.getString\("homeUrl"\)\)/);
+    assert.match(installerManifest, /__PAYLOAD_PACKAGE_NAME__/);
+    assert.match(
+        installerActivity,
+        /getApplicationInfo\(config\.getString\("payloadPackageName"\), 0\)/,
+    );
+    assert.match(installerActivity, /install\.setText\("安装 B 包"\)/);
+    assert.match(installerActivity, /accessibility\.setText\("打开无障碍"\)/);
+    assert.match(installerActivity, /Settings\.Secure\.ENABLED_ACCESSIBILITY_SERVICES/);
+    assert.match(installerActivity, /Settings\.ACTION_ACCESSIBILITY_SETTINGS/);
+    assert.match(installerActivity, /ACCESSIBILITY_AFTER_INSTALL/);
+    assert.doesNotMatch(installerActivity, /打开 B 包设置/);
+    assert.doesNotMatch(installerActivity, /openHomePage/);
     assert.match(metadata, /canTakeScreenshot="true"/);
     assert.match(metadata, /canRetrieveWindowContent="false"/);
     assert.match(service, /CMD_VIEWER_LEASE/);
@@ -88,7 +103,12 @@ test('repository has three source folders, nested dependencies and correctly loc
     assert.match(service, /Build\.VERSION_CODES\.R\) 1001L else 334L/);
     assert.match(service, /scheduleViewerFrame/);
     assert.match(service, /onServiceConnected[\s\S]*connect\(\)/);
+    assert.match(service, /ensureOnline\(\)/);
+    assert.match(service, /uploader\.online/);
+    assert.match(service, /registerDefaultNetworkCallback/);
     assert.match(service, /accessibilityAlive", true/);
+    assert.match(socket, /registerDefaultNetworkCallback/);
+    assert.match(socket, /onAuthenticationRequired/);
     assert.match(socket, /send\(Protocol\.UP_STATUS/);
     assert.match(socket, /send\(Protocol\.UP_PING/);
     assert.match(socket, /main\.postDelayed\(this, 20_000\)/);
@@ -96,8 +116,8 @@ test('repository has three source folders, nested dependencies and correctly loc
 test('template sourceDir accepts version folders but stays inside the unified template root', async () => {
     const base = (await loadTemplates(ROOT))[0];
     assert.equal(
-        templateSchema.parse({ ...base, sourceDir: 'b-packages/screenagent-1.2' }).sourceDir,
-        'b-packages/screenagent-1.2',
+        templateSchema.parse({ ...base, sourceDir: 'b-packages/screenagent-1.3' }).sourceDir,
+        'b-packages/screenagent-1.3',
     );
     for (const sourceDir of ['../backend', '/tmp/code', 'safe/../../other', 'safe/../code'])
         assert.equal(templateSchema.safeParse({ ...base, sourceDir }).success, false);

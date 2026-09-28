@@ -166,6 +166,13 @@ export async function prepareSource(config, job, template, destination, { payloa
                 2,
             ),
         );
+        const manifestPath = path.join(destination, 'app/src/main/AndroidManifest.xml');
+        const manifest = await readFile(manifestPath, 'utf8');
+        if (manifest.includes('__PAYLOAD_PACKAGE_NAME__'))
+            await writeFile(
+                manifestPath,
+                manifest.replaceAll('__PAYLOAD_PACKAGE_NAME__', job.payload_package_name),
+            );
         return;
     }
     const values = {
