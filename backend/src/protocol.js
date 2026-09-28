@@ -248,6 +248,18 @@ export const panelSchema = z.discriminatedUnion('type', [
                             .strict(),
                     })
                     .strict(),
+                z
+                    .object({
+                        command: z.literal('TEXT_INPUT'),
+                        commandId: z.string().uuid(),
+                        params: z
+                            .object({
+                                viewerId: viewerIdSchema,
+                                text: z.string().min(1).max(500),
+                            })
+                            .strict(),
+                    })
+                    .strict(),
             ]),
         })
         .strict(),

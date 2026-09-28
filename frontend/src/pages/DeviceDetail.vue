@@ -12,6 +12,7 @@ import {
     captureViewerClose,
     requestScreenshot,
     requestDeviceAction,
+    requestTextInput,
 } from '../connection.js';
 import FloatingViewer from '../components/FloatingViewer.vue';
 import NodeReader from '../components/NodeReader.vue';
@@ -37,6 +38,7 @@ const route = useRoute(),
     dndEnabled = ref(false);
 let controller, subscribed, viewerId, viewerTimer, activeCommandId, actionToastTimer;
 const pendingActions = new Map();
+const pendingTextInputs = new Set();
 const actionProgress = {
     BACK: '正在返回上一页',
     HOME: '正在返回 Home',
@@ -142,6 +144,22 @@ const off = onMessage((message) => {
             }
         }
     }
+    if (message.type === 'command_ack' && message.data?.command === 'TEXT_INPUT') {
+        if (pendingTextInputs.delete(message.data.commandId)) {
+            if (message.data.result === 'accepted') showActionToast('文本已发送');
+            else {
+                const failure = {
+                    input_not_focused: '设备当前没有获得焦点的输入框',
+                    input_not_editable: '设备当前焦点不可输入',
+                    sensitive_field: '密码或敏感输入框不接收远程文本',
+                    viewer_lease_expired: '实时查看已结束',
+                    invalid_text: '文本为空或长度超过 500 字符',
+                    set_text_failed: '设备未能写入文本',
+                };
+                showActionToast(failure[message.data.reasonCode] || '设备未能写入文本', 'error');
+            }
+        }
+    }
     if (message.type === 'command_dispatched' && message.data?.commandId === activeCommandId)
         captureState.value = '实时截图指令已下发，等待设备上传';
     if (message.type === 'command_ack' && message.data?.commandId === activeCommandId)
@@ -215,6 +233,7 @@ function closeReportedShot() {
     viewerId = null;
     activeCommandId = null;
     pendingActions.clear();
+    pendingTextInputs.clear();
     clearTimeout(actionToastTimer);
     actionToast.value = '';
     reportedShot.value = false;
@@ -233,6 +252,15 @@ function runDeviceAction(action) {
     const commandId = requestDeviceAction(data.value.device.public_id, viewerId, action);
     pendingActions.set(commandId, action);
     showActionToast(actionProgress[action] || '正在发送');
+}
+function runTextInput(text) {
+    if (!viewerId || !data.value || data.value.device.status !== 'online') {
+        showActionToast('设备当前离线', 'error');
+        return;
+    }
+    const commandId = requestTextInput(data.value.device.public_id, viewerId, text);
+    pendingTextInputs.add(commandId);
+    showActionToast('正在发送文本');
 }
 function openPrimary() {
     if (data.value.device.source === 'api') openReportedShot(true);
@@ -274,6 +302,14 @@ function choose(value) {
         {{ error }} <button class="btn" @click="load">重试</button>
     </div>
     <p v-if="notice" role="status" class="detail-notice">{{ notice }}</p>
+    <div
+        v-if="actionToast"
+        role="status"
+        class="device-browser-toast"
+        :class="actionToastTone === 'error' ? 'error' : 'success'"
+    >
+        {{ actionToast }}
+    </div>
     <div v-if="data" class="device-workbench">
         <aside class="device-nav">
             <nav aria-label="设备内导航">
@@ -556,13 +592,11 @@ function choose(value) {
         <DeviceScreenshot
             :device-id="data.device.id"
             :refresh-key="reportedRefresh"
-            :status="captureState"
-            :toast="actionToast"
-            :toast-tone="actionToastTone"
             :controls-disabled="data.device.status !== 'online'"
             :dnd-enabled="dndEnabled"
             @count="reportedShotCount = $event"
             @action="runDeviceAction"
+            @text-input="runTextInput"
         />
     </FloatingViewer>
     <FloatingViewer

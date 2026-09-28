@@ -74,7 +74,7 @@ npm start          # Node 同域提供页面、API、WS
 
 ```bash
 npm run build:apk          # 独立构建 browser-1.0
-npm run build:screenagent  # 独立构建当前 screenagent-1.4 快捷控制版
+npm run build:screenagent  # 独立构建当前 screenagent-1.5 焦点文本版
 ```
 
 CLI 产物在 `android/dist/`；网页构建产物在 `backend/.node-private/files/apk-builds/`。模板源码、临时源码与产物分开维护，不在 dist 中长期改功能。

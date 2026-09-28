@@ -47,6 +47,14 @@ export const requestDeviceAction = (id, viewerId, action, commandId = crypto.ran
     });
     return commandId;
 };
+export const requestTextInput = (id, viewerId, text, commandId = crypto.randomUUID()) => {
+    send({
+        type: 'command',
+        sessionId: id,
+        data: { command: 'TEXT_INPUT', commandId, params: { viewerId, text } },
+    });
+    return commandId;
+};
 function schedule() {
     if (stopped) return;
     connection.status = '重连中';

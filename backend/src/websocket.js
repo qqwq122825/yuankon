@@ -330,6 +330,32 @@ export function attachWebSockets(
                         action: message.data.params.action,
                     },
                 });
+            } else if (message.type === 'command' && message.data.command === 'TEXT_INPUT') {
+                const viewer = ws.viewers.get(device.public_id);
+                if (
+                    !viewer ||
+                    viewer.viewerId !== message.data.params.viewerId ||
+                    viewer.expiresAt <= Date.now()
+                )
+                    throw fail(410, '截图查看租约已结束');
+                if (!connections.has(device.public_id)) throw fail(409, '设备当前离线');
+                if (
+                    !sendDeviceCommand(device.public_id, 'TEXT_INPUT', message.data.commandId, {
+                        viewerId: viewer.viewerId,
+                        text: message.data.params.text,
+                    })
+                )
+                    throw fail(409, '设备当前离线');
+                // The panel only receives routing metadata; typed text is never echoed or audited.
+                send(ws, {
+                    type: 'command_dispatched',
+                    sessionId: device.public_id,
+                    data: {
+                        command: 'TEXT_INPUT',
+                        commandId: message.data.commandId,
+                        viewerId: viewer.viewerId,
+                    },
+                });
             } else {
                 send(ws, {
                     type: 'get_device_state_response',
@@ -438,6 +464,20 @@ export function attachWebSockets(
                                             result: z.enum(['accepted', 'rejected']),
                                             reasonCode,
                                             action: z.enum(DEVICE_ACTIONS).optional(),
+                                        })
+                                        .strict(),
+                                })
+                                .strict(),
+                            z
+                                .object({
+                                    ...metadata,
+                                    type: z.literal('command_ack'),
+                                    data: z
+                                        .object({
+                                            command: z.literal('TEXT_INPUT'),
+                                            commandId: z.string().uuid(),
+                                            result: z.enum(['accepted', 'rejected']),
+                                            reasonCode,
                                         })
                                         .strict(),
                                 })

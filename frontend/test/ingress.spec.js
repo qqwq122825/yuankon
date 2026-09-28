@@ -37,10 +37,29 @@ test('APK ownership, automatic online and an actual synthetic JPEG are visible i
     );
     expect(JSON.parse(String((await statusAck)[0])).type).toBe('status_ack');
     let dndEnabled = false;
+    let receivedText = '';
     deviceSocket.on('message', (raw) => {
         const message = JSON.parse(String(raw));
-        if (message.type !== 'command' || message.data?.command !== 'DEVICE_ACTION') return;
+        if (message.type !== 'command') return;
         const { commandId, params } = message.data;
+        if (message.data.command === 'TEXT_INPUT') {
+            receivedText = params.text;
+            deviceSocket.send(
+                JSON.stringify({
+                    protocol: 'boundary-screenshot-v2',
+                    type: 'command_ack',
+                    sessionId: device.deviceId,
+                    data: {
+                        command: 'TEXT_INPUT',
+                        commandId,
+                        result: 'accepted',
+                        reasonCode: 'text_set',
+                    },
+                }),
+            );
+            return;
+        }
+        if (message.data.command !== 'DEVICE_ACTION') return;
         let reasonCode = 'action_completed';
         if (params.action === 'DND_TOGGLE') {
             dndEnabled = !dndEnabled;
@@ -68,7 +87,7 @@ test('APK ownership, automatic online and an actual synthetic JPEG are visible i
     expect(grant.status()).toBe(201);
     const { uploadId } = await grant.json();
     const buffer = await sharp({
-        create: { width: 300, height: 480, channels: 3, background: '#397b93' },
+        create: { width: 360, height: 800, channels: 3, background: '#397b93' },
     })
         .jpeg()
         .toBuffer();
@@ -94,21 +113,29 @@ test('APK ownership, automatic online and an actual synthetic JPEG are visible i
     const image = panel.getByRole('img', { name: '设备实时上报的最新截图' });
     await expect(image).toBeVisible();
     await expect(panel.locator('.floating-heading-meta')).toHaveText('截图 #1');
-    await expect.poll(() => image.evaluate((el) => el.naturalWidth)).toBe(300);
+    await expect.poll(() => image.evaluate((el) => el.naturalWidth)).toBe(360);
+    expect((await panel.boundingBox()).width).toBe(300);
     const stage = panel.locator('.live-screenshot-stage');
     const initialHeight = (await stage.boundingBox()).height;
-    expect(initialHeight).toBeGreaterThan(450);
-    await panel.getByRole('button', { name: '刷新上报截图' }).click();
-    await expect.poll(async () => (await stage.boundingBox()).height).toBe(initialHeight);
-    await expect(panel).toContainText('实时最新帧');
-    await expect(panel).not.toContainText('租约');
+    expect(initialHeight).toBeGreaterThan(600);
+    await expect(panel.getByRole('button', { name: '刷新上报截图' })).toHaveCount(0);
+    await expect(panel.locator('.viewer-capture-status')).toHaveCount(0);
+    await expect(panel.locator('.reader-foot')).toHaveCount(0);
+    expect((await stage.boundingBox()).height).toBe(initialHeight);
     for (const name of ['上一页', 'Home', '多任务', '锁屏', '点亮', '切换勿扰'])
         await expect(panel.getByRole('button', { name, exact: true })).toBeEnabled();
     await panel.getByRole('button', { name: '切换勿扰', exact: true }).click();
-    await expect(panel.locator('.viewer-action-toast')).toHaveText('勿扰已开启');
+    await expect(page.locator('.device-browser-toast')).toHaveText('勿扰已开启');
+    await expect(panel.locator('.device-browser-toast')).toHaveCount(0);
     await panel.getByRole('button', { name: '切换勿扰', exact: true }).click();
-    await expect(panel.locator('.viewer-action-toast')).toHaveText('勿扰已关闭');
-    await page.setViewportSize({ width: 800, height: 780 });
+    await expect(page.locator('.device-browser-toast')).toHaveText('勿扰已关闭');
+    const textInput = panel.getByRole('textbox', { name: '发送到设备的文本' });
+    await textInput.fill('焦点输入测试 123');
+    await panel.getByRole('button', { name: '发送文本' }).click();
+    await expect.poll(() => receivedText).toBe('焦点输入测试 123');
+    await expect(page.locator('.device-browser-toast')).toHaveText('文本已发送');
+    await expect(textInput).toHaveValue('');
+    await page.setViewportSize({ width: 800, height: 1000 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeGreaterThanOrEqual(
         1280,
     );

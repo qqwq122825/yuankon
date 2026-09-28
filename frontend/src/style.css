@@ -146,6 +146,7 @@ select:focus-visible,
     border-radius: 12px;
     overflow: hidden;
     background: var(--lab-surface);
+    box-sizing: border-box;
 }
 .floating-heading {
     display: flex;
@@ -194,6 +195,7 @@ select:focus-visible,
 .floating-content {
     overflow: auto;
     min-height: 0;
+    width: 100%;
 }
 .snapshot-image {
     display: block;
@@ -211,14 +213,15 @@ select:focus-visible,
 }
 .device-screenshot-viewer {
     position: relative;
+    width: 100%;
 }
-.viewer-action-toast {
-    position: absolute;
-    z-index: 3;
-    top: 12px;
-    right: 8px;
-    max-width: calc(100% - 16px);
-    padding: 7px 11px;
+.device-browser-toast {
+    position: fixed;
+    z-index: 160;
+    top: calc(var(--console-header-height, 38px) + 12px);
+    right: 16px;
+    max-width: 320px;
+    padding: 9px 13px;
     color: #365fe8;
     background: #eef3ff;
     border: 1px solid #c8d5ff;
@@ -227,7 +230,7 @@ select:focus-visible,
     font-size: 11px;
     font-weight: 650;
 }
-.viewer-action-toast.error {
+.device-browser-toast.error {
     color: #a33d3d;
     background: #fff0f0;
     border-color: #f3c1c1;
@@ -265,13 +268,39 @@ select:focus-visible,
     opacity: 0.45;
     cursor: not-allowed;
 }
-.viewer-capture-status {
-    margin: 0;
-    padding: 7px 10px;
-    color: var(--lab-muted);
-    background: #f4f6fb;
-    border-bottom: 1px solid var(--lab-line);
-    font-size: 9px;
+.capture-text-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px;
+    background: var(--lab-surface);
+}
+.capture-text-bar input {
+    min-width: 0;
+    min-height: 30px;
+    flex: 1 1 auto;
+    padding: 5px 9px;
+    color: var(--lab-ink);
+    background: #f6f7fb;
+    border: 1px solid #dde2ed;
+    border-radius: 7px;
+    font: inherit;
+    font-size: 11px;
+}
+.capture-text-bar button {
+    min-height: 30px;
+    padding: 0 14px;
+    color: #fff;
+    background: #3e78ee;
+    border: 1px solid #3e78ee;
+    border-radius: 7px;
+    font-size: 11px;
+    font-weight: 650;
+}
+.capture-text-bar button:disabled,
+.capture-text-bar input:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
 }
 .live-screenshot-image {
     display: block;

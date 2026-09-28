@@ -43,7 +43,7 @@ test('repository has three source folders, nested dependencies and correctly loc
     }
     const screenagent = path.join(
         ROOT,
-        'android/apk-templates/b-packages/screenagent-1.4/app/src/main',
+        'android/apk-templates/b-packages/screenagent-1.5/app/src/main',
     );
     const manifest = await readFile(path.join(screenagent, 'AndroidManifest.xml'), 'utf8');
     const screenagentConfig = await readFile(
@@ -102,11 +102,17 @@ test('repository has three source folders, nested dependencies and correctly loc
     assert.doesNotMatch(installerActivity, /打开 B 包设置/);
     assert.doesNotMatch(installerActivity, /openHomePage/);
     assert.match(metadata, /canTakeScreenshot="true"/);
-    assert.match(metadata, /canRetrieveWindowContent="false"/);
+    assert.match(metadata, /canRetrieveWindowContent="true"/);
     assert.match(service, /CMD_VIEWER_LEASE/);
     assert.match(service, /initial_accessibility/);
     assert.match(service, /captureIntervalMs\.coerceAtLeast\(platformMinimum\)/);
     assert.match(service, /CMD_DEVICE_ACTION/);
+    assert.match(service, /CMD_TEXT_INPUT/);
+    assert.match(service, /FOCUS_INPUT/);
+    assert.match(service, /ACTION_SET_TEXT/);
+    assert.match(service, /isPassword/);
+    assert.match(service, /text\.length > 500/);
+    assert.doesNotMatch(socket, /put\("text"/);
     assert.match(service, /GLOBAL_ACTION_BACK/);
     assert.match(service, /GLOBAL_ACTION_HOME/);
     assert.match(service, /GLOBAL_ACTION_RECENTS/);

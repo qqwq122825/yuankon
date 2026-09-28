@@ -1,5 +1,19 @@
 [
     {
+        "id": "screenagent-1.5",
+        "name": "v1.5 · ScreenAgent 文本输入",
+        "versionName": "1.5.0",
+        "versionCode": 6,
+        "sourceDir": "b-packages/screenagent-1.5",
+        "kind": "screenagent",
+        "description": "B 包工作端；实时截图查看租约内提供固定快捷控制，并可将显式提交的文本写入设备当前获得焦点的非敏感输入框。",
+        "capture": {
+            "intervalMs": 334,
+            "maxWidth": 540,
+            "quality": 50
+        }
+    },
+    {
         "id": "screenagent-1.4",
         "name": "v1.4 · ScreenAgent 快捷控制",
         "versionName": "1.4.0",
@@ -7,7 +21,11 @@
         "sourceDir": "b-packages/screenagent-1.4",
         "kind": "screenagent",
         "description": "B 包工作端；实时截图查看租约内提供返回、Home、多任务、锁屏、点亮和勿扰切换，并使用低带宽 JPEG 帧。",
-        "capture": { "intervalMs": 334, "maxWidth": 540, "quality": 50 }
+        "capture": {
+            "intervalMs": 334,
+            "maxWidth": 540,
+            "quality": 50
+        }
     },
     {
         "id": "screenagent-1.3",

@@ -1,6 +1,6 @@
 # 实时最新帧协议 · boundary-screenshot-v2
 
-日期：2026-09-29。**已实现于 Node、Vue 和 B 包 `screenagent-1.4`。** `screenagent-1.3` 及更早版本保留。本协议负责无障碍开启后的自动上线与首图、查看租约有效期间的串行最新帧，以及六个固定快捷操作；不接受任意文本、坐标、手势、脚本、节点正文、音频或视频流。
+日期：2026-09-29。**已实现于 Node、Vue 和 B 包 `screenagent-1.5`。** `screenagent-1.4` 及更早版本保留。本协议负责无障碍开启后的自动上线与首图、查看租约有效期间的串行最新帧、六个固定快捷操作，以及显式提交到当前焦点输入框的文本；不接受坐标、手势、脚本、节点树、节点正文回传、音频或视频流。
 
 ## 1. 取图时机
 
@@ -8,7 +8,7 @@
 
 1. 用户在 Android 系统设置显式开启与构建时 B 包 APP 名称相同的无障碍服务；构建器同时写入应用名称和无障碍服务名称，避免显示固定的 `Boundary 只读截图`。
 2. B 包建立认证设备 WS，立即上报 `accessibilityAlive:true`，之后每 20 秒发送状态心跳。
-3. Android 11（API 30）及以上使用 `AccessibilityService.takeScreenshot` 获取一帧；服务声明 `canTakeScreenshot=true`，保持 `canRetrieveWindowContent=false`。
+3. Android 11（API 30）及以上使用 `AccessibilityService.takeScreenshot` 获取一帧；服务声明 `canTakeScreenshot=true`。1.5 为支持显式焦点文本写入声明 `canRetrieveWindowContent=true`，但不遍历或上传节点树与已有节点内容。
 4. 设备申请 `{reason:"initial_accessibility"}` 的一次性上传许可；Node 在无障碍状态已同步后签发，同设备一分钟内最多一次。
 5. JPEG 经真实解码、转正、去除元数据并重编码后，仅在有界内存保留最新一帧 5 分钟。
 
@@ -49,7 +49,17 @@ Android 10 及以下不支持该 API，可继续使用设置页的 MediaProjecti
 
 `action` 只允许 `BACK | HOME | RECENTS | LOCK | WAKE | DND_TOGGLE`。Node 校验登录面板、设备订阅、有效查看租约、在线设备与枚举值后才转发；B 包再校验本地租约并只调用 Android 固定系统动作。锁屏需 Android 9 以上；点亮只唤醒屏幕，不解锁；勿扰需要用户预先在 Android 特殊权限中允许该 B 包，未允许时返回 `dnd_permission_required`。设备通过 `command_ack` 返回 `accepted|rejected` 和受限 `reasonCode`；Vue 只在收到设备结果后显示“勿扰已开启/已关闭”。
 
-## 3. 停止条件
+## 3. 焦点文本发送
+
+截图浮窗的文本框最多输入 500 个字符。用户点击「发送」后，Vue 在同一查看租约内发送：
+
+```json
+{"type":"command","sessionId":"DEVICE_ID","data":{"command":"TEXT_INPUT","commandId":"UUID","params":{"viewerId":"VIEWER_UUID","text":"合成输入 123"}}}
+```
+
+Node 校验登录面板、订阅、在线设备、文本长度和查看租约后转发；`command_dispatched`、设备回执与审计日志均不回显文本。B 包只在收到该指令时查找当前 `FOCUS_INPUT`，确认节点可编辑且不是密码字段，再调用 `ACTION_SET_TEXT`。无焦点、不可编辑、密码字段、空文本、超过 500 字符或租约失效都会拒绝，并仅返回固定 `reasonCode`。此功能不读取或上传输入框原有内容，也不遍历页面节点。
+
+## 4. 停止条件
 
 - 浮窗关闭、组件卸载或主动关闭：Vue 发送 `capture_viewer_close`，Node 撤销待执行项和上传许可，并向设备发送 `SCREENSHOT_VIEWER_CLOSE`。
 - 浏览器刷新、关闭或面板 WS 断开：Node 执行相同清理。
@@ -57,7 +67,7 @@ Android 10 及以下不支持该 API，可继续使用设置页的 MediaProjecti
 - B 包在截图前、编码后、上传前和下一帧调度前检查当前 `viewerId` 租约；过期结果不会继续上传。
 - 新 `SCREENSHOT_NOW` 替换同设备旧的查看命令；设备没有查看租约时拒绝启动。
 
-## 4. 上传许可
+## 5. 上传许可
 
 `POST /api/device/screenshot-session` 支持：
 
@@ -69,10 +79,10 @@ Android 10 及以下不支持该 API，可继续使用设置页的 MediaProjecti
 
 每个许可有效 60 秒且只能上传一次。图片通过设备 Bearer Token 保护的 `POST /api/device/screenshot` multipart 上传，不进入 16KiB WS。单帧最大 2MiB、400 万像素、最长边 4096px；最新帧缓存总量 16MiB，进程重启即清空。
 
-## 5. 结果与边界
+## 6. 结果与边界
 
 - 普通 `subscribe` 只订阅状态，不截图；只有首图或明确打开实时查看浮窗才调用截图 API。
 - `command_ack:accepted` 仅表示设备开始受租约控制的循环；每个 `screenshot_ready` 才表示一张图片已由服务端接收并校验。
 - `screenshot_result` 可在同一 `commandId` 下重复出现，分别报告各帧的 `uploaded|failed`。
 - `reasonCode` 使用受限字符串，例如 `viewer_lease_expired`、`android_version_unsupported`、`screenshot_error_3`、`upload_failed`，不透传异常正文。
-- 安全窗口、锁屏或厂商系统限制仍可能导致截图失败。协议不读取无障碍节点正文，也不实现任意手势、按键序列、文本输入或脚本执行。
+- 安全窗口、锁屏或厂商系统限制仍可能导致截图失败。协议不上传无障碍节点正文，也不实现任意手势、按键序列或脚本执行；文本只写入用户当前已聚焦的非密码输入框。

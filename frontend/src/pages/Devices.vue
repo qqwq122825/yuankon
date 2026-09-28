@@ -12,11 +12,17 @@ const route = useRoute(),
     loading = ref(false),
     busyId = ref(null),
     notice = ref(''),
-    selected = ref([]),
-    source = ref(''),
-    a11y = ref(''),
-    status = ref('');
+    selected = ref([]);
 let controller, timer;
+const quickFilters = [
+    { key: 'status', value: 'online', label: '在线', tone: 'online' },
+    { key: 'status', value: 'offline', label: '离线', tone: 'offline' },
+    { key: 'a11y', value: 'enabled', label: '无障碍', tone: 'a11y' },
+    { key: 'a11y', value: 'disabled', label: '未开无障碍', tone: 'offline' },
+    { key: 'source', value: 'api', label: '设备上报', tone: 'source' },
+    { key: 'source', value: 'import', label: '历史记录', tone: 'source' },
+    { key: 'source', value: 'sample', label: '合成示例', tone: 'source' },
+];
 const columns = [
     ['id', 'ID'],
     ['name', '设备名称'],
@@ -56,16 +62,7 @@ async function load() {
         if (controller === request) loading.value = false;
     }
 }
-watch(
-    () => route.fullPath,
-    () => {
-        source.value = String(route.query.source || '');
-        a11y.value = String(route.query.a11y || '');
-        status.value = String(route.query.status || '');
-        load();
-    },
-    { immediate: true },
-);
+watch(() => route.fullPath, load, { immediate: true });
 watch(
     () => connection.revision,
     () => {
@@ -79,6 +76,15 @@ onUnmounted(() => {
 });
 function query(changes) {
     router.push({ path: '/', query: { ...route.query, ...changes } });
+}
+function filterActive(filter) {
+    return String(route.query[filter.key] || '') === filter.value;
+}
+function toggleFilter(filter) {
+    query({ [filter.key]: filterActive(filter) ? '' : filter.value, page: 1 });
+}
+function clearFilters() {
+    query({ q: '', source: '', a11y: '', status: '', page: 1 });
 }
 function sort(field) {
     query({
@@ -167,24 +173,20 @@ function value(row, key) {
         </div>
         <button class="btn btn-primary" @click="load" :disabled="loading">刷新状态</button
         ><span class="toolbar-hint">心跳状态与历史记录分开显示</span>
-        <form class="fleet-filters" @submit.prevent="query({ source, a11y, status, page: 1 })">
-            <select v-model="source" aria-label="数据来源" class="form-select">
-                <option value="">全部来源</option>
-                <option value="sample">合成示例</option>
-                <option value="import">历史记录</option>
-                <option value="api">设备 API</option></select
-            ><select v-model="a11y" aria-label="无障碍状态" class="form-select">
-                <option value="">全部无障碍</option>
-                <option value="enabled">已开启</option>
-                <option value="disabled">已关闭</option></select
-            ><select v-model="status" aria-label="在线状态" class="form-select">
-                <option value="">全部状态</option>
-                <option value="online">在线</option>
-                <option value="offline">离线</option></select
-            ><button class="btn filter-apply">筛选</button>
-        </form>
-        <button class="btn" @click="query({ q: '', source: '', a11y: '', status: '', page: 1 })">
-            清除筛选</button
+        <div class="fleet-filter-strip" role="group" aria-label="设备筛选">
+            <button
+                v-for="filter in quickFilters"
+                :key="`${filter.key}:${filter.value}`"
+                type="button"
+                class="fleet-filter-chip"
+                :class="[`tone-${filter.tone}`, { active: filterActive(filter) }]"
+                :aria-pressed="filterActive(filter)"
+                @click="toggleFilter(filter)"
+            >
+                <span class="filter-dot" aria-hidden="true"></span>{{ filter.label }}
+            </button>
+        </div>
+        <button class="btn filter-reset" @click="clearFilters">清除筛选</button
         ><span class="selection-count" v-if="selected.length">已选择 {{ selected.length }} 台</span
         ><span class="fleet-sample-label">示例不代表真机在线</span>
     </div>

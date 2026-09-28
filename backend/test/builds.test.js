@@ -91,7 +91,7 @@ async function call(url, body, credential = token, method = body ? 'POST' : 'GET
     return { status: response.status, body: value };
 }
 const input = (overrides = {}) => ({
-    templateId: 'screenagent-1.4',
+    templateId: 'screenagent-1.5',
     domain: 'local',
     appName: 'Test "Name" & <test>',
     apkId: owner?.apkId,
@@ -115,10 +115,11 @@ test('catalog/build submission require account authentication and reject device 
         401,
     );
     const catalog = await call('/api/build-templates');
-    assert.equal(catalog.body.templates.length, 9);
+    assert.equal(catalog.body.templates.length, 10);
     assert.deepEqual(
         catalog.body.templates.map((template) => template.kind),
         [
+            'screenagent',
             'screenagent',
             'screenagent',
             'screenagent',
@@ -133,6 +134,7 @@ test('catalog/build submission require account authentication and reject device 
     assert.deepEqual(
         catalog.body.templates.map((template) => template.sourceDir),
         [
+            'b-packages/screenagent-1.5',
             'b-packages/screenagent-1.4',
             'b-packages/screenagent-1.3',
             'b-packages/screenagent-1.2',
@@ -522,7 +524,7 @@ test('source copies encode user values as XML/JSON without editing template code
             assert.ok(!assets.token);
             if (t.kind === 'screenagent') {
                 assert.ok(!Object.hasOwn(assets, 'webUrl'));
-                if (t.id === 'screenagent-1.4')
+                if (['screenagent-1.4', 'screenagent-1.5'].includes(t.id))
                     assert.deepEqual(assets.capture, {
                         intervalMs: 334,
                         maxWidth: 540,

@@ -462,13 +462,46 @@ test('accessibility first thumbnail and leased panel screenshot use the same bou
         }),
     );
     assert.equal((await panelNext('command_ack')).data.reasonCode, 'dnd_enabled');
+    const textCommandId = '00000000-0000-4000-8000-000000000444';
+    panel.send(
+        JSON.stringify({
+            type: 'command',
+            sessionId: d.deviceId,
+            data: {
+                command: 'TEXT_INPUT',
+                commandId: textCommandId,
+                params: { viewerId, text: '合成输入 123' },
+            },
+        }),
+    );
+    const textCommand = await deviceNext('command');
+    assert.equal(textCommand.data.command, 'TEXT_INPUT');
+    assert.deepEqual(textCommand.data.params, { viewerId, text: '合成输入 123' });
+    const textDispatched = await panelNext('command_dispatched');
+    assert.equal(textDispatched.data.command, 'TEXT_INPUT');
+    assert.equal(textDispatched.data.commandId, textCommandId);
+    assert.equal(Object.hasOwn(textDispatched.data, 'text'), false);
+    device.send(
+        JSON.stringify({
+            protocol: 'boundary-screenshot-v2',
+            type: 'command_ack',
+            sessionId: d.deviceId,
+            data: {
+                command: 'TEXT_INPUT',
+                commandId: textCommandId,
+                result: 'accepted',
+                reasonCode: 'text_set',
+            },
+        }),
+    );
+    assert.equal((await panelNext('command_ack')).data.reasonCode, 'text_set');
     panel.send(
         JSON.stringify({
             type: 'command',
             sessionId: d.deviceId,
             data: {
                 command: 'DEVICE_ACTION',
-                commandId: '00000000-0000-4000-8000-000000000444',
+                commandId: '00000000-0000-4000-8000-000000000555',
                 params: { viewerId, action: 'TEXT_INPUT' },
             },
         }),

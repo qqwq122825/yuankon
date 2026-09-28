@@ -22,6 +22,23 @@ test('list, server sorting, query preservation, pagination, empty state and keyb
         '日志',
     ]);
     await expect(page.locator('tbody tr')).toHaveCount(10);
+    const onlineFilter = page.getByRole('button', { name: '在线', exact: true });
+    await expect(onlineFilter).toHaveAttribute('aria-pressed', 'false');
+    await onlineFilter.click();
+    await expect(page).toHaveURL(/status=online/);
+    await expect(onlineFilter).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByText('暂无匹配设备；可调整筛选条件。')).toBeVisible();
+    await onlineFilter.click();
+    await expect(page).not.toHaveURL(/status=online/);
+    await expect(page.locator('tbody tr')).toHaveCount(10);
+    await page.getByRole('button', { name: '无障碍', exact: true }).click();
+    await expect(page).toHaveURL(/a11y=enabled/);
+    await expect(page.locator('tbody tr')).toHaveCount(10);
+    await page.getByRole('button', { name: '设备上报', exact: true }).click();
+    await expect(page).toHaveURL(/source=api/);
+    await expect(page.getByText('暂无匹配设备；可调整筛选条件。')).toBeVisible();
+    await page.getByRole('button', { name: '清除筛选', exact: true }).click();
+    await expect(page.locator('tbody tr')).toHaveCount(10);
     await page.getByRole('button', { name: '下一页' }).click();
     await expect(page).toHaveURL(/page=2/);
     await expect(page.locator('tbody tr')).toHaveCount(2);

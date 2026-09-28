@@ -1,16 +1,13 @@
 <script setup>
 import { ref, onMounted, onUnmounted, watch } from 'vue';
-import { api, formatDate } from '../api.js';
+import { api } from '../api.js';
 const props = defineProps({
     deviceId: Number,
     refreshKey: Number,
-    status: String,
-    toast: String,
-    toastTone: String,
     controlsDisabled: Boolean,
     dndEnabled: Boolean,
 });
-const emit = defineEmits(['count', 'action']);
+const emit = defineEmits(['count', 'action', 'text-input']);
 const actions = [
     ['BACK', '◀', '上一页'],
     ['HOME', '●', 'Home'],
@@ -20,7 +17,8 @@ const actions = [
 ];
 const frame = ref(null),
     error = ref(''),
-    stageAspect = ref('9 / 16');
+    inputText = ref(''),
+    stageAspect = ref('9 / 20');
 let timer,
     stopped = false,
     loading = false,
@@ -28,6 +26,11 @@ let timer,
     controller,
     aspectLocked = false;
 const seenFrames = new Set();
+function sendText() {
+    if (props.controlsDisabled || !inputText.value.trim()) return;
+    emit('text-input', inputText.value);
+    inputText.value = '';
+}
 async function load() {
     if (stopped) return;
     if (loading) {
@@ -89,14 +92,6 @@ onUnmounted(() => {
 <template>
     <div class="device-screenshot-viewer">
         <p v-if="error" role="alert">{{ error }}</p>
-        <div
-            v-if="toast"
-            role="status"
-            class="viewer-action-toast"
-            :class="toastTone === 'error' ? 'error' : 'success'"
-        >
-            {{ toast }}
-        </div>
         <div class="live-screenshot-stage" :style="{ aspectRatio: stageAspect }">
             <img
                 v-if="frame"
@@ -132,11 +127,22 @@ onUnmounted(() => {
                 {{ dndEnabled ? '🔔' : '🔕' }}
             </button>
         </nav>
-        <p v-if="status" role="status" class="viewer-capture-status">{{ status }}</p>
-        <footer class="reader-foot">
-            实时最新帧 · 关闭窗口即停止 · 最多暂存 5 分钟
-            <span v-if="frame">接收：{{ formatDate(frame.receivedAt) }}</span>
-            <button class="btn btn-sm" @click="load">刷新上报截图</button>
-        </footer>
+        <form class="capture-text-bar" @submit.prevent="sendText">
+            <input
+                v-model="inputText"
+                type="text"
+                maxlength="500"
+                :disabled="controlsDisabled"
+                aria-label="发送到设备的文本"
+                placeholder="输入文本…"
+            />
+            <button
+                type="submit"
+                :disabled="controlsDisabled || !inputText.trim()"
+                aria-label="发送文本"
+            >
+                发送
+            </button>
+        </form>
     </div>
 </template>
