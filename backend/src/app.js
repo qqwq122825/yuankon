@@ -19,6 +19,7 @@ import { DeviceIngress } from './device-ingress.js';
 import { DeviceManagement } from './device-management.js';
 import { BuildQueue } from './build-queue.js';
 import { Installation } from './installation.js';
+import { BuildEnvironment } from './build-environment.js';
 
 export async function createApplication(
     config,
@@ -28,6 +29,7 @@ export async function createApplication(
         fetcher = fetch,
         serveFrontend = true,
         buildOptions = {},
+        environmentOptions = {},
         bootstrapDefault = false,
     } = {},
 ) {
@@ -40,6 +42,8 @@ export async function createApplication(
     await accounts.initialize({ seedDefault: bootstrapDefault });
     const installation = new Installation(db, config, accounts);
     await installation.initialize();
+    const environment = new BuildEnvironment(config, environmentOptions);
+    await environment.initialize();
     const ingress = new DeviceIngress(db, auth, store, config);
     const deviceManagement = new DeviceManagement(db, store, ingress);
     const builds = new BuildQueue(db, config, buildOptions);
@@ -88,10 +92,22 @@ export async function createApplication(
         legacyHeaders: false,
         message: { error: '初始化尝试过多，请稍后再试' },
     });
+    const requireEnvironmentAccess = accounts.requireLogin();
+    const environmentAccess = (req, res, next) =>
+        installation.installed ? requireEnvironmentAccess(req, res, next) : next();
     app.get('/api/install/status', (_req, res) => res.json(installation.status()));
-    app.post('/api/install', installLimit, async (req, res) =>
-        res.status(201).json(await installation.install(req.body, req.socket.remoteAddress)),
-    );
+    app.get('/api/install/environment', environmentAccess, async (_req, res) => {
+        res.json(await environment.status());
+    });
+    app.post('/api/install/environment', environmentAccess, installLimit, async (_req, res) => {
+        const status = await environment.install();
+        res.status(status.ready ? 200 : 202).json(status);
+    });
+    app.post('/api/install', installLimit, async (req, res) => {
+        if (installation.installed) throw fail(409, '系统已完成初始化安装');
+        await environment.requireReady();
+        res.status(201).json(await installation.install(req.body, req.socket.remoteAddress));
+    });
     app.use('/api', (_req, _res, next) =>
         installation.installed ? next() : next(fail(503, '请先完成初始化安装')),
     );
@@ -382,6 +398,7 @@ export async function createApplication(
         auth,
         accounts,
         installation,
+        environment,
         translation,
         ingress,
         deviceManagement,
@@ -389,6 +406,7 @@ export async function createApplication(
         async close() {
             clearInterval(prune);
             ingress.close();
+            await environment.close();
             await builds.close();
             await ws.close();
             await vite?.close();

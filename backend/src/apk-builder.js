@@ -40,19 +40,49 @@ export function toolchain(config) {
         },
     };
 }
-export async function checkTools(config) {
+export async function checkToolDetails(config) {
     const t = toolchain(config);
-    try {
-        for (const key of ['gradle', 'signer', 'align', 'aapt', 'java'])
-            await access(t[key], constants.X_OK);
-        await access(path.join(t.sdk, 'platforms/android-35/android.jar'));
-        return { ready: true, message: '本地单任务队列 · 开发签名 APK · Telegram 发送待接入' };
-    } catch {
-        return {
-            ready: false,
-            message: '本地 Android 工具链未就绪，请按构建说明准备 JDK、SDK、Gradle 与离线缓存',
-        };
-    }
+    const components = [
+        { id: 'java', label: 'JDK 17', target: t.java, mode: constants.X_OK },
+        { id: 'gradle', label: 'Gradle 8.11.1', target: t.gradle, mode: constants.X_OK },
+        { id: 'apksigner', label: 'Android apksigner', target: t.signer, mode: constants.X_OK },
+        { id: 'zipalign', label: 'Android zipalign', target: t.align, mode: constants.X_OK },
+        { id: 'aapt', label: 'Android aapt', target: t.aapt, mode: constants.X_OK },
+        {
+            id: 'platform',
+            label: 'Android SDK Platform 35',
+            target: path.join(t.sdk, 'platforms/android-35/android.jar'),
+        },
+        {
+            id: 'cache',
+            label: 'Gradle 离线依赖缓存',
+            target: path.join(
+                t.env.GRADLE_USER_HOME,
+                'caches/modules-2/files-2.1/com.android.tools.build/gradle/8.9.2',
+            ),
+        },
+    ];
+    return Promise.all(
+        components.map(async ({ target, mode, ...component }) => {
+            try {
+                await access(target, mode);
+                return { ...component, ready: true };
+            } catch {
+                return { ...component, ready: false };
+            }
+        }),
+    );
+}
+export async function checkTools(config) {
+    const components = await checkToolDetails(config),
+        ready = components.every((component) => component.ready);
+    return {
+        ready,
+        components,
+        message: ready
+            ? '本地单任务队列 · 开发签名 APK · Telegram 发送待接入'
+            : '本地 Android 工具链未就绪，请在安装页准备 JDK、SDK、Gradle 与离线缓存',
+    };
 }
 export async function copySource(from, to) {
     const info = await lstat(from);

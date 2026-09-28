@@ -44,9 +44,11 @@ Git 只保存源码和 npm 锁文件，不保存 `.env`、数据库、主密钥�
 ./install.sh --origin https://yk1.jk92.cc --port 8081 --trust-proxy
 ```
 
-脚本依次校验 Node >=22.12、Origin/端口，原子生成权限为 `0600` 的 `backend/.env`，执行 `npm ci`、Vue 构建及数据库结构/主密钥初始化，成功后写入 `backend/.node-private/bootstrap.lock`。准备锁记录版本、时间、Origin、端口、代理模式和 Git SHA，不保存密码或密钥。随后由进程管理器启动服务并访问 `https://域名/install`；页面提交通过同源写入校验，在单个事务中创建唯一超管、Argon2id 密码和 APK ID `1`，成功后生成 `backend/.node-private/install.lock`。完成锁只记录账号 ID、用户名、APK ID、时间和来源，不保存密码或摘要。
+脚本依次校验 Node >=22.12、Origin/端口，原子生成权限为 `0600` 的 `backend/.env`，执行 `npm ci`、Vue 构建及数据库结构/主密钥初始化，成功后写入 `backend/.node-private/bootstrap.lock`。准备锁记录版本、时间、Origin、端口、代理模式和 Git SHA，不保存密码或密钥。随后由进程管理器启动服务并访问 `https://域名/install`：第一步通过固定、无用户参数的脚本下载并校验 Temurin JDK 17、Gradle 8.11.1 和 Android 命令行工具，安装 API 35 / Build Tools 35.0.0，逐个预编译 `templates.json` 登记模板并验证离线缓存；进度写入有界的私有 `environment-install.log`，成功写入 `environment.lock`。第二步提交超管表单，通过同源写入校验，在单个事务中创建唯一超管、Argon2id 密码和 APK ID `1`，成功后生成 `backend/.node-private/install.lock`。完成锁只记录账号 ID、用户名、APK ID、时间和来源，不保存密码或摘要。
 
-`bootstrap.lock` 存在时脚本不会覆盖现有配置或私有数据；`install.lock` 与数据库超管共同表示网页安装完成，安装完成后 `/install` 自动跳转 `/login`。如果旧版本已有超管但没有完成锁，启动时会补写完成锁，绝不开放二次初始化。准备中断时不会生成准备锁，可以修复后用相同参数重试。普通更新不要删除任何锁或再次初始化。
+账号尚未初始化时，环境接口允许部署者完成第一步；账号已经初始化后，只有登录的账号可再次访问环境页面并检测或补齐工具链，不会显示或执行账号初始化。`GET /api/install/environment` 返回各固定组件、阶段和最多 80 行安装日志；`POST /api/install/environment` 启动单个后台安装任务。所有写入仍要求 `X-Boundary-Request: 1` 和同源请求。安装脚本只写入 Git 忽略的 `android/.local-tools/`、`backend/.node-private/environment-warmup/` 与环境日志/锁；完成后删除下载压缩包和预热副本。Linux 服务器至少预留 6 GiB，可用 `npm run install:android-env` 执行同一脚本并查看终端日志。
+
+`bootstrap.lock` 存在时脚本不会覆盖现有配置或私有数据；`install.lock` 与数据库超管共同表示网页安装完成。未登录访问 `/install` 会跳转 `/login`，登录账号可从该地址维护构建环境，但账号初始化表单保持关闭。如果旧版本已有超管但没有完成锁，启动时会补写完成锁，绝不开放二次初始化；单独删除 `install.lock` 不会删除 SQLite 中的账号，进程下次启动也会依据账号补写该锁。准备中断时不会生成准备锁，可以修复后用相同参数重试。普通更新不要删除任何锁或再次初始化。
 
 首次公开启动后立即更换默认密码，并落实进程管理、日志保留、数据库与主密钥一致备份、恢复演练和容量测试。当前仍只有一个超管账号；工作室/成员范围、设备撤销与总台能力未完成。专属服务器不要直接共享 SQLite 文件；域名、APK ID 归属与中央数据库规划见 [账号设计](ACCOUNT_DESIGN.md)。
 

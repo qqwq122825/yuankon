@@ -53,11 +53,12 @@ npm start          # Node 同域提供页面、API、WS
 ./install.sh --origin https://yk1.jk92.cc --port 8081 --trust-proxy
 ```
 
-准备完成后启动 Node 并打开 `/install`，在网页中设置初始超管账号和不少于 8 位的密码。网页成功创建唯一超管及 APK ID `1` 后生成 `backend/.node-private/install.lock`，此后 `/install` 自动跳转登录页。`bootstrap.lock` 存在时脚本只报告准备完成，不覆盖配置、数据库或主密钥。后续代码更新使用 `git pull --ff-only`、`npm ci`、`npm run build` 和进程管理器重启，不再次运行初始化脚本。也可通过 `npm run init:server -- --origin ...` 调用。
+准备完成后启动 Node 并打开 `/install`。安装页第一步在项目私有目录中下载、校验并安装固定的 JDK 17、Android SDK 35、Build Tools 35.0.0、Gradle 8.11.1，并真实预编译登记模板以生成离线缓存；第二步设置初始超管账号和不少于 8 位的密码。环境未通过验证时不会开放账号提交，避免安装完成后构建按钮仍为灰色。网页成功创建唯一超管及 APK ID `1` 后生成 `backend/.node-private/install.lock`，账号初始化永久关闭；未登录访问 `/install` 会跳转登录页，登录账号仍可在该页检测或补齐构建环境。`bootstrap.lock` 存在时脚本只报告准备完成，不覆盖配置、数据库或主密钥。后续代码更新使用 `git pull --ff-only`、`npm ci`、`npm run build` 和进程管理器重启，不再次运行初始化脚本。也可通过 `npm run init:server -- --origin ...` 调用。
 
 新安装打开 [安装页](http://127.0.0.1:8080/install)，已有安装打开 [登录页](http://127.0.0.1:8080/login)。右上角账号设置支持退出与改密；升级不会重置原有账号、密码、设备、截图和构建记录。
 
 - `npm run dev`：Node + Vite 热更新，仍是同域 8080，不需分别启动两个端口。
+- `npm run install:android-env`：在 Linux 服务器直接执行与安装页相同的固定 Android 环境安装脚本。
 - `NODE_PORT=8082 npm start`：改本机端口。
 - `npm start` 会自动读取存在的 `backend/.env`，Shell 或进程管理器中已经设置的环境变量优先。
 - 单独安装：`npm ci --prefix backend`、`npm ci --prefix frontend`。

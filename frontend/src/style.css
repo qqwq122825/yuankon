@@ -331,7 +331,7 @@ select:focus-visible,
     border-radius: 12px;
 }
 .install-card {
-    width: 440px;
+    width: 720px;
 }
 .login-card .card-body {
     padding: 30px;
@@ -348,6 +348,60 @@ select:focus-visible,
     font-size: 9px;
     letter-spacing: 1.7px;
     color: var(--lab-muted);
+}
+.install-step {
+    margin-top: 18px;
+    padding: 18px;
+    border: 1px solid var(--lab-border);
+    border-radius: 9px;
+    background: var(--lab-bg);
+}
+.install-step-heading {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    margin-bottom: 14px;
+}
+.install-step-heading > div {
+    flex: 1;
+}
+.install-step-heading h2 {
+    margin: 0 0 3px;
+    font-size: 15px;
+}
+.install-step-heading p {
+    margin: 0;
+    color: var(--lab-muted);
+}
+.environment-components {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
+    margin: 0 0 12px;
+    padding: 0;
+    list-style: none;
+}
+.environment-components li {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 10px;
+    border: 1px solid var(--lab-border);
+    border-radius: 6px;
+    background: var(--tblr-bg-surface, #fff);
+    font-size: 11px;
+}
+.environment-log {
+    max-height: 180px;
+    margin: 12px 0 0;
+    padding: 10px;
+    overflow: auto;
+    border-radius: 6px;
+    background: #151a26;
+    color: #dbe3f3;
+    font-size: 10px;
+    line-height: 1.55;
+    white-space: pre-wrap;
 }
 .login-message {
     padding: 9px 12px;

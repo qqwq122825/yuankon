@@ -35,7 +35,7 @@ router.beforeEach(async (to) => {
         if (to.path !== '/install') return '/install';
         return true;
     }
-    if (session.installed && to.path === '/install') return session.user ? '/' : '/login';
+    if (session.installed && to.path === '/install') return session.user ? true : '/login';
     if (!session.user && to.path !== '/login') return '/login';
     if (session.user && to.path === '/login') return '/';
 });

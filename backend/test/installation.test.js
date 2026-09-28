@@ -8,13 +8,17 @@ import { config } from '../src/config.js';
 import { openDatabase } from '../src/database.js';
 import { createApplication } from '../src/app.js';
 
-async function call(base, url, body) {
+async function call(base, url, body, requestHeaders = {}) {
     const response = await fetch(base + url, {
         method: body === undefined ? 'GET' : 'POST',
         headers:
             body === undefined
-                ? {}
-                : { 'Content-Type': 'application/json', 'X-Boundary-Request': '1' },
+                ? requestHeaders
+                : {
+                      'Content-Type': 'application/json',
+                      'X-Boundary-Request': '1',
+                      ...requestHeaders,
+                  },
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
     return {
@@ -24,6 +28,14 @@ async function call(base, url, body) {
     };
 }
 
+const readyEnvironmentOptions = {
+    probe: async () => ({
+        ready: true,
+        message: 'ready',
+        components: [{ id: 'java', label: 'JDK 17', ready: true }],
+    }),
+};
+
 test('web installer creates the only superadmin and completion lock before enabling login', async () => {
     const dir = await mkdtemp(path.join(tmpdir(), 'boundary-web-install-'));
     const settings = config({
@@ -32,7 +44,11 @@ test('web installer creates the only superadmin and completion lock before enabl
         port: 0,
     });
     const db = await openDatabase(settings.database);
-    let app = await createApplication(settings, { db, serveFrontend: false });
+    let app = await createApplication(settings, {
+        db,
+        serveFrontend: false,
+        environmentOptions: readyEnvironmentOptions,
+    });
     try {
         await new Promise((resolve) => app.server.listen(0, '127.0.0.1', resolve));
         settings.origin = `http://127.0.0.1:${app.server.address().port}`;
@@ -104,7 +120,11 @@ test('web installer creates the only superadmin and completion lock before enabl
 
         await app.close();
         app = null;
-        app = await createApplication(settings, { db, serveFrontend: false });
+        app = await createApplication(settings, {
+            db,
+            serveFrontend: false,
+            environmentOptions: readyEnvironmentOptions,
+        });
         await new Promise((resolve) => app.server.listen(0, '127.0.0.1', resolve));
         settings.origin = `http://127.0.0.1:${app.server.address().port}`;
         assert.deepEqual((await call(settings.origin, '/api/install/status')).body, {
@@ -113,6 +133,92 @@ test('web installer creates the only superadmin and completion lock before enabl
         assert.equal((await db('accounts')).length, 1);
     } finally {
         await app?.close();
+        await db.destroy();
+        await rm(dir, { recursive: true, force: true });
+    }
+});
+
+test('web installer prepares the fixed Android build environment before account creation', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'boundary-environment-install-'));
+    const settings = config({
+        privateDir: path.join(dir, '.node-private'),
+        database: path.join(dir, 'install.sqlite'),
+        port: 0,
+    });
+    const db = await openDatabase(settings.database);
+    let ready = false,
+        runs = 0;
+    const environmentOptions = {
+        probe: async () => ({
+            ready,
+            message: ready ? 'ready' : 'missing',
+            components: [{ id: 'java', label: 'JDK 17', ready }],
+        }),
+        runner: async (write) => {
+            runs += 1;
+            write('[STAGE:download-jdk] 下载 JDK\n');
+            write('[STAGE:verify] 验证环境\n');
+            ready = true;
+        },
+    };
+    const app = await createApplication(settings, {
+        db,
+        serveFrontend: false,
+        environmentOptions,
+    });
+    try {
+        await new Promise((resolve) => app.server.listen(0, '127.0.0.1', resolve));
+        settings.origin = `http://127.0.0.1:${app.server.address().port}`;
+        const missing = await call(settings.origin, '/api/install/environment');
+        assert.equal(missing.status, 200);
+        assert.equal(missing.body.ready, false);
+        assert.equal(missing.body.components[0].ready, false);
+        assert.equal(
+            (
+                await call(settings.origin, '/api/install', {
+                    username: 'owner_admin',
+                    password: 'StrongPass123!',
+                    confirmPassword: 'StrongPass123!',
+                })
+            ).status,
+            409,
+        );
+
+        const started = await call(settings.origin, '/api/install/environment', {});
+        assert.ok([200, 202].includes(started.status));
+        await app.environment.task;
+        const completed = await call(settings.origin, '/api/install/environment');
+        assert.equal(completed.body.ready, true);
+        assert.equal(completed.body.state, 'ready');
+        assert.match(completed.body.log, /验证环境/);
+        assert.equal(runs, 1);
+        assert.match(
+            await readFile(path.join(settings.privateDir, 'environment.lock'), 'utf8'),
+            /"java"/,
+        );
+
+        assert.equal(
+            (
+                await call(settings.origin, '/api/install', {
+                    username: 'owner_admin',
+                    password: 'StrongPass123!',
+                    confirmPassword: 'StrongPass123!',
+                })
+            ).status,
+            201,
+        );
+        assert.equal((await call(settings.origin, '/api/install/environment')).status, 401);
+        const login = await call(settings.origin, '/api/auth/login', {
+            username: 'owner_admin',
+            password: 'StrongPass123!',
+        });
+        const authenticated = await call(settings.origin, '/api/install/environment', undefined, {
+            Cookie: login.cookie.split(';', 1)[0],
+        });
+        assert.equal(authenticated.status, 200);
+        assert.equal(authenticated.body.ready, true);
+    } finally {
+        await app.close();
         await db.destroy();
         await rm(dir, { recursive: true, force: true });
     }

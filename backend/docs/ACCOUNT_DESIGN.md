@@ -5,7 +5,7 @@
 当前账号角色仍只有超级管理员，不创建总台或子账号。后续增量已实现 APK ID 首次归属与 ScreenAgent 实时最新帧接入，详见 [接入契约](SCREENAGENT_INGRESS.md)；下文账号层级与自动下发仍是规划。
 
 - Vue + Node 同域运行，SQLite 位于 `backend/.node-private/boundary.sqlite`。旧 PHP 运行数据已移出项目私有备份，不参与当前运行。
-- 全新数据库首次访问 `/install` 设置唯一初始超管账号和不少于 8 位的密码；服务端事务创建账号、固定 APK ID `1` 与审计记录，密码以 Argon2id 散列保存。成功后生成私有完成锁并关闭安装入口；重启不重置密码，不重复创建账号。已有超管的旧实例升级时自动补写完成锁。
+- 全新数据库首次访问 `/install` 设置唯一初始超管账号和不少于 8 位的密码；服务端事务创建账号、固定 APK ID `1` 与审计记录，密码以 Argon2id 散列保存。成功后生成私有完成锁并永久关闭账号初始化；登录账号仍可在 `/install` 检测或补齐构建环境。重启不重置密码，不重复创建账号。已有超管的旧实例升级时自动补写完成锁。
 - 打开 [登录页](http://127.0.0.1:8080/login)，登录后右上角「账号设置」支持退出与修改密码。
 - 使用 Passport Local/JWT 与 jose。HTTP Token 有效期 8 小时；浏览器使用 HttpOnly、SameSite=Strict、Path=/api 的 Cookie，不将 Token 放入 localStorage。Bearer Token 可用于本机 API 调试，两者同时存在时以 Authorization 为准。
 - 每个账号在 SQLite 只保留一个有效 `session_id`。新登录替换旧会话；旧 Token/图片/导出/API 请求立即失效，已有面板 WS 收到会话结束通知，旧页面返回登录。

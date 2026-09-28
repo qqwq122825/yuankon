@@ -14,10 +14,28 @@ test('first-run web installer creates the superadmin then locks the install rout
 }) => {
     const context = await browser.newContext();
     const page = await context.newPage();
-    let installed = false;
+    let installed = false,
+        environmentReady = false;
     await page.route('**/api/install/status', async (route) =>
         route.fulfill({ json: { installed } }),
     );
+    await page.route('**/api/install/environment', async (route) => {
+        if (route.request().method() === 'POST') environmentReady = true;
+        await route.fulfill({
+            status: 200,
+            json: {
+                ready: environmentReady,
+                state: environmentReady ? 'ready' : 'idle',
+                stage: environmentReady ? 'complete' : 'waiting',
+                message: environmentReady ? '构建环境已就绪' : '构建环境尚未安装',
+                components: [
+                    { id: 'java', label: 'JDK 17', ready: environmentReady },
+                    { id: 'platform', label: 'Android SDK Platform 35', ready: environmentReady },
+                ],
+                log: environmentReady ? '[STAGE:complete] 构建环境安装并验证完成' : '',
+            },
+        });
+    });
     await page.route('**/api/install', async (route) => {
         const input = route.request().postDataJSON();
         expect(input).toEqual({
@@ -34,7 +52,13 @@ test('first-run web installer creates the superadmin then locks the install rout
     await page.goto('/');
     await expect(page).toHaveURL('/install');
     await expect(page.getByRole('heading', { name: '初始化工作台' })).toBeVisible();
-    await page.getByLabel('超管账号').fill('first_admin');
+    const accountInput = page.getByRole('textbox', { name: '超管账号', exact: true });
+    await expect(accountInput).toBeDisabled();
+    await page.getByRole('button', { name: '安装构建环境', exact: true }).click();
+    await expect(page.getByRole('button', { name: '构建环境已就绪' })).toBeDisabled();
+    await expect(page.getByText('JDK 17', { exact: true })).toBeVisible();
+    await expect(accountInput).toBeEnabled();
+    await accountInput.fill('first_admin');
     await page.getByLabel('超管密码').fill('StrongPass123!');
     await page.getByLabel('确认密码').fill('StrongPass123!');
     await page.getByRole('button', { name: '完成安装' }).click();
@@ -57,6 +81,11 @@ test('deep links require login; errors, cookie restoration and logout work', asy
     await expect(page.getByRole('alert')).toHaveText('账号或密码错误');
     await expect(page.getByLabel('密码', { exact: true })).toHaveValue('');
     await signIn(page);
+    await page.goto('/install');
+    await expect(page.getByRole('heading', { name: '构建环境', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '创建超管账号' })).toHaveCount(0);
+    await expect(page.getByRole('link', { name: '返回构建页面' })).toBeVisible();
+    await page.goto('/');
     const cookie = (await page.context().cookies()).find((c) => c.name === 'boundary_session_8081');
     expect(cookie).toMatchObject({ httpOnly: true, sameSite: 'Strict', path: '/api' });
     expect(await page.evaluate(() => document.cookie)).not.toContain('boundary_session');

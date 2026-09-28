@@ -67,7 +67,7 @@ npm run build:screenagent
 
 网页 [构建中心](http://127.0.0.1:8080/builds) 先选择 B 包版本并构建，再选择 A 包版本构建。B 包接收后台域名、APP 名、可选 APK ID/批次/包名，不接收首页；A 包接收名称、HTTPS 首页地址和包名。服务端按同项目、同归属账号选取最新成功且文件仍存在的 B 包，固定记录 B 构建 ID、SHA-256 与包名。没有可用 B 包时 A 包返回 409；两者包名相同时返回 422。A 包构建副本写入 `assets/payload.apk` 和带首页地址的 `installer_config.json`，并在复制前校验摘要。B 包必须没有 MAIN/LAUNCHER，A 包必须有桌面入口，真实构建在 `aapt badging` 阶段强制校验。产物在 `backend/.node-private/files/apk-builds/<UUID>/application.apk`；详细日志在 `backend/.node-private/build-work/<UUID>/build.log`，构建记录可鉴权下载，包含 Gradle/Lint、签名、对齐、包信息、摘要及产物保存步骤。完成或失败的记录可在列表确认后删除，服务端同时永久删除该 UUID 的记录、APK 目录与构建日志目录；排队中或构建中的任务不可删除，B 包正被活动 A 包使用时也不可删除。
 
-工具链在 `android/.local-tools/`：JDK 17、Gradle 8.11.1、AGP 8.9.2、Android API 35。支持 JAVA_HOME、ANDROID_HOME、GRADLE、GRADLE_USER_HOME、ANDROID_USER_HOME。离线依赖由维护者预先准备；开发签名和缓存不进 Git。
+工具链在 `android/.local-tools/`：JDK 17、Gradle 8.11.1、AGP 8.9.2、Android API 35。全新 Linux 服务器在 `/install` 第一步点击「安装构建环境」，服务端会校验固定下载、安装 SDK 组件、逐个预编译登记模板并生成离线依赖缓存；也可运行 `npm run install:android-env` 执行同一脚本。安装需要至少 6 GiB 可用空间，进度日志和完成锁位于 `backend/.node-private/`。支持 JAVA_HOME、ANDROID_HOME、GRADLE、GRADLE_USER_HOME、ANDROID_USER_HOME；显式环境变量优先。开发签名、下载文件和缓存不进 Git。
 
 ## 5. 域名、归属与其他目录
 

@@ -21,7 +21,8 @@ usage() {
   backend/.env
   backend/.node-private/bootstrap.lock
 
-随后启动服务并访问 /install，在网页中创建初始超管；网页完成后生成 install.lock。
+随后启动服务并访问 /install，先安装 Android 构建环境，再创建初始超管；
+网页完成后生成 environment.lock 与 install.lock。
 
 准备锁存在时不会覆盖配置或私有数据。普通更新不要再次运行本脚本。
 EOF
