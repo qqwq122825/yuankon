@@ -43,11 +43,15 @@ test('repository has three source folders, nested dependencies and correctly loc
     }
     const screenagent = path.join(
         ROOT,
-        'android/apk-templates/b-packages/screenagent-1.5/app/src/main',
+        'android/apk-templates/b-packages/screenagent-1.7/app/src/main',
     );
     const manifest = await readFile(path.join(screenagent, 'AndroidManifest.xml'), 'utf8');
     const screenagentConfig = await readFile(
         path.join(screenagent, 'assets/agent_config.json'),
+        'utf8',
+    );
+    const agentRuntimeConfig = await readFile(
+        path.join(screenagent, 'java/com/zaka/screenagent/Config.kt'),
         'utf8',
     );
     const installer = path.join(
@@ -66,6 +70,18 @@ test('repository has three source folders, nested dependencies and correctly loc
         ),
         'utf8',
     );
+    const projectionActivity = await readFile(
+        path.join(screenagent, 'java/com/zaka/screenagent/ProjectionActivity.kt'),
+        'utf8',
+    );
+    const projectionService = await readFile(
+        path.join(screenagent, 'java/com/zaka/screenagent/capture/ProjectionCaptureService.kt'),
+        'utf8',
+    );
+    const projectionController = await readFile(
+        path.join(screenagent, 'java/com/zaka/screenagent/capture/ProjectionController.kt'),
+        'utf8',
+    );
     const socket = await readFile(
         path.join(screenagent, 'java/com/zaka/screenagent/net/AgentSocket.kt'),
         'utf8',
@@ -77,9 +93,11 @@ test('repository has three source folders, nested dependencies and correctly loc
     assert.match(manifest, /BIND_ACCESSIBILITY_SERVICE/);
     assert.match(manifest, /android\.permission\.WAKE_LOCK/);
     assert.match(manifest, /android\.permission\.ACCESS_NOTIFICATION_POLICY/);
-    assert.doesNotMatch(manifest, /<activity\b/);
-    assert.doesNotMatch(manifest, /android\.intent\.action\.MAIN/);
-    assert.doesNotMatch(manifest, /android\.intent\.category\.LAUNCHER/);
+    assert.match(manifest, /android\.permission\.FOREGROUND_SERVICE_MEDIA_PROJECTION/);
+    assert.match(manifest, /android:foregroundServiceType="mediaProjection"/);
+    assert.match(manifest, /<activity\b/);
+    assert.match(manifest, /android\.intent\.action\.MAIN/);
+    assert.match(manifest, /android\.intent\.category\.LAUNCHER/);
     assert.doesNotMatch(screenagentConfig, /webUrl/);
     assert.match(installerManifest, /android\.intent\.action\.MAIN/);
     assert.match(installerManifest, /android\.intent\.category\.LAUNCHER/);
@@ -101,13 +119,34 @@ test('repository has three source folders, nested dependencies and correctly loc
     assert.match(installerActivity, /ACCESSIBILITY_AFTER_INSTALL/);
     assert.doesNotMatch(installerActivity, /打开 B 包设置/);
     assert.doesNotMatch(installerActivity, /openHomePage/);
-    assert.match(metadata, /canTakeScreenshot="true"/);
+    assert.match(metadata, /canTakeScreenshot="false"/);
     assert.match(metadata, /canRetrieveWindowContent="true"/);
+    assert.match(metadata, /flagRetrieveInteractiveWindows\|flagReportViewIds/);
     assert.match(service, /CMD_VIEWER_LEASE/);
     assert.match(service, /initial_accessibility/);
-    assert.match(service, /captureIntervalMs\.coerceAtLeast\(platformMinimum\)/);
+    assert.doesNotMatch(service, /screenshotIntervalMs|waitMs/);
+    assert.doesNotMatch(service, /takeScreenshot\(/);
+    assert.match(service, /ProjectionCaptureService\.captureLatest/);
+    assert.match(service, /if \(data != null\) 0 else 500/);
+    assert.match(projectionActivity, /createScreenCaptureIntent\(\)/);
+    assert.match(projectionService, /getMediaProjection\(resultCode, data\)/);
+    assert.match(projectionService, /startForeground\(/);
+    assert.match(projectionController, /ImageReader\.newInstance\(/);
+    assert.match(projectionController, /createVirtualDisplay\(/);
+    assert.match(projectionController, /acquireLatestImage\(\)/);
+    assert.match(projectionController, /image\?\.close\(\)/);
+    assert.ok(
+        projectionController.indexOf('registerCallback') <
+            projectionController.indexOf('createVirtualDisplay'),
+    );
     assert.match(service, /CMD_DEVICE_ACTION/);
     assert.match(service, /CMD_TEXT_INPUT/);
+    assert.match(service, /MAX_NODE_COUNT = 250/);
+    assert.match(service, /scheduleNodeSnapshot/);
+    assert.match(service, /accessibilitySnapshot\(viewerId, payload\)/);
+    assert.doesNotMatch(service, /\.put\("text"|\.put\("content_description"/);
+    assert.match(socket, /fun accessibilitySnapshot\(viewerId: String, payload: JSONObject\)/);
+    assert.match(socket, /Protocol\.NODE_VERSION/);
     assert.match(service, /FOCUS_INPUT/);
     assert.match(service, /ACTION_SET_TEXT/);
     assert.match(service, /isPassword/);
@@ -121,6 +160,8 @@ test('repository has three source folders, nested dependencies and correctly loc
     assert.match(service, /SCREEN_BRIGHT_WAKE_LOCK/);
     assert.match(screenagentConfig, /"maxWidth": 540/);
     assert.match(screenagentConfig, /"quality": 50/);
+    assert.doesNotMatch(screenagentConfig, /"intervalMs"/);
+    assert.doesNotMatch(agentRuntimeConfig, /captureIntervalMs|var interval =/);
     assert.match(service, /scheduleViewerFrame/);
     assert.match(service, /onServiceConnected[\s\S]*connect\(\)/);
     assert.match(service, /ensureOnline\(\)/);
@@ -132,12 +173,16 @@ test('repository has three source folders, nested dependencies and correctly loc
     assert.match(socket, /send\(Protocol\.UP_STATUS/);
     assert.match(socket, /send\(Protocol\.UP_PING/);
     assert.match(socket, /main\.postDelayed\(this, 20_000\)/);
+    for (const version of ['1.0', '1.1', '1.2', '1.3', '1.4'])
+        await assert.rejects(() =>
+            access(path.join(ROOT, `android/apk-templates/b-packages/screenagent-${version}`)),
+        );
 });
 test('template sourceDir accepts version folders but stays inside the unified template root', async () => {
     const base = (await loadTemplates(ROOT))[0];
     assert.equal(
-        templateSchema.parse({ ...base, sourceDir: 'b-packages/screenagent-1.3' }).sourceDir,
-        'b-packages/screenagent-1.3',
+        templateSchema.parse({ ...base, sourceDir: 'b-packages/screenagent-1.7' }).sourceDir,
+        'b-packages/screenagent-1.7',
     );
     for (const sourceDir of ['../backend', '/tmp/code', 'safe/../../other', 'safe/../code'])
         assert.equal(templateSchema.safeParse({ ...base, sourceDir }).success, false);

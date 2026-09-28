@@ -351,12 +351,13 @@ export async function buildApk(config, job, template, { signal, stage, payloadFi
         )
             throw new Error('APK identity mismatch');
         const hasLauncher = metadata.includes('launchable-activity:');
-        if (template.kind === 'screenagent' && hasLauncher)
-            throw new Error('B package unexpectedly exposes a launcher activity');
-        if (template.kind !== 'screenagent' && !hasLauncher)
+        const expectsLauncher = template.kind !== 'screenagent' || template.visibleLauncher;
+        if (!expectsLauncher && hasLauncher)
+            throw new Error('Headless B package unexpectedly exposes a launcher activity');
+        if (expectsLauncher && !hasLauncher)
             throw new Error('Visible package is missing its launcher activity');
         logLine(
-            `[ROLE] launcher=${hasLauncher} expected=${template.kind === 'screenagent' ? 'absent' : 'present'}`,
+            `[ROLE] launcher=${hasLauncher} expected=${expectsLauncher ? 'present' : 'absent'}`,
         );
         const sha256 = await fileSha256(apk);
         logLine(`[APK] sha256=${sha256}`);

@@ -282,6 +282,62 @@ test('notes are validated and persisted with fixed project', async () => {
         422,
     );
 });
+test('installation time is immutable registration time and daily totals use the Beijing cohort', async () => {
+    const registeredAt = Date.now();
+    await db('device_credentials').insert({
+        device_id: 100,
+        credential_id: 'CORE-INSTALL-TIME',
+        registered_at: registeredAt,
+    });
+    const response = await request('/api/devices?q=DEVICE-100');
+    assert.equal(response.status, 200);
+    assert.equal(response.body.data[0].installed_at, registeredAt);
+    assert.equal(response.body.stats.periods[0].installed, 1);
+    assert.equal(response.body.stats.periods[0].offline, 1);
+    assert.equal(response.body.stats.periods[0].accessibility, 0);
+    await db('device_credentials').where('device_id', 100).delete();
+});
+test('device memos support scoped create, edit, list and delete without replacing remarks', async () => {
+    const created = await request(
+        '/api/devices/1/memos',
+        json('POST', { body: '需要后续核对', label: 'follow_up' }),
+    );
+    assert.equal(created.status, 201);
+    assert.equal(created.body.body, '需要后续核对');
+    assert.equal(created.body.label, 'follow_up');
+    assert.equal(created.body.author, 'mtx');
+    const list = await request('/api/devices/1/memos');
+    assert.equal(list.body.total, 1);
+    assert.equal(list.body.data[0].id, created.body.id);
+    const deviceList = await request('/api/devices?sort=memo&direction=desc');
+    assert.equal(deviceList.body.data[0].id, 1);
+    assert.equal(deviceList.body.data[0].memo_count, 1);
+    const updated = await request(
+        `/api/devices/1/memos/${created.body.id}`,
+        json('PATCH', { body: '已经处理', label: 'handled' }),
+    );
+    assert.equal(updated.body.body, '已经处理');
+    assert.equal(updated.body.label, 'handled');
+    assert.equal(
+        (
+            await request(
+                `/api/devices/2/memos/${created.body.id}`,
+                json('PATCH', { body: '越设备', label: 'none' }),
+            )
+        ).status,
+        404,
+    );
+    assert.equal(
+        (await request('/api/devices/1/memos', json('POST', { body: '', label: 'none' }))).status,
+        422,
+    );
+    assert.equal(
+        (await request(`/api/devices/1/memos/${created.body.id}`, json('DELETE', {}))).status,
+        200,
+    );
+    assert.equal((await request('/api/devices/1/memos')).body.total, 0);
+    assert.equal((await app.store.device(1)).note, 'Node test note');
+});
 test('no upload or manual import routes were reintroduced', async () => {
     for (const url of [
         '/api/import',

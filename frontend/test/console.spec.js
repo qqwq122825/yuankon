@@ -22,6 +22,40 @@ test('list, server sorting, query preservation, pagination, empty state and keyb
         '日志',
     ]);
     await expect(page.locator('tbody tr')).toHaveCount(10);
+    await expect(page.locator('.fleet-table thead')).toContainText('ID');
+    await expect(page.locator('.fleet-table thead')).toContainText('壁纸');
+    await expect(page.locator('.fleet-table thead')).toContainText('账号');
+    await expect(page.locator('.fleet-table thead')).toContainText('备注');
+    await expect(page.locator('.fleet-table thead')).toContainText('备忘');
+    await expect(page.locator('.fleet-table thead')).toContainText('注入');
+    await expect(page.locator('.fleet-table thead')).toContainText('AI');
+    await expect(page.locator('.fleet-table thead')).toContainText('安装时间');
+    await expect(page.locator('tbody tr').first()).toContainText('—');
+    await page.getByRole('button', { name: '查看 测试设备 1 的备忘（0 条）', exact: true }).click();
+    const memos = page.getByRole('dialog', { name: '备忘录 — DEMO-001' });
+    await expect(memos).toContainText('共 0 条');
+    await memos.getByRole('button', { name: '＋ 添加' }).click();
+    await memos.getByRole('textbox', { name: '备忘内容' }).fill('E2E 跟进记录');
+    await memos.getByRole('button', { name: '待跟进', exact: true }).click();
+    await memos.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(memos).toContainText('共 1 条');
+    await expect(memos).toContainText('E2E 跟进记录');
+    await page.screenshot({ path: 'test-results/device-memo-dialog.png', fullPage: true });
+    await memos.getByRole('button', { name: '编辑', exact: true }).click();
+    await memos.getByRole('textbox', { name: '备忘内容' }).fill('E2E 已处理记录');
+    await memos.getByRole('button', { name: '已处理', exact: true }).click();
+    await memos.getByRole('button', { name: '更新', exact: true }).click();
+    await expect(memos).toContainText('E2E 已处理记录');
+    page.once('dialog', (dialog) => dialog.accept());
+    await memos.getByRole('button', { name: '删除', exact: true }).click();
+    await expect(memos).toContainText('共 0 条');
+    await memos.getByRole('button', { name: '关闭备忘录' }).click();
+    await expect(memos).toHaveCount(0);
+    await expect(
+        page.getByRole('button', { name: '查看 测试设备 1 的备忘（0 条）', exact: true }),
+    ).toBeVisible();
+    await page.setViewportSize({ width: 2400, height: 900 });
+    await page.screenshot({ path: 'test-results/device-table-reference.png', fullPage: true });
     const onlineFilter = page.getByRole('button', { name: '在线', exact: true });
     await expect(onlineFilter).toHaveAttribute('aria-pressed', 'false');
     await onlineFilter.click();
@@ -56,7 +90,7 @@ test('list, server sorting, query preservation, pagination, empty state and keyb
     await expect(page.getByText('暂无匹配设备；可调整筛选条件。')).toBeVisible();
     expect(errors).toEqual([]);
 });
-test('detail saves notes and viewers resize, drag, switch tabs and close with Escape', async ({
+test('detail saves notes, keeps screenshots at 300px, resizes reader, drags and closes', async ({
     page,
 }) => {
     const errors = [];
@@ -76,6 +110,9 @@ test('detail saves notes and viewers resize, drag, switch tabs and close with Es
     await expect(shot).toBeVisible();
     expect((await reader.boundingBox()).width).toBe(300);
     expect((await shot.boundingBox()).width).toBe(300);
+    await expect(reader.locator('.width-control')).toHaveCount(1);
+    await expect(shot.locator('.width-control')).toHaveCount(0);
+    await expect(shot.getByRole('button', { name: '放大截图', exact: true })).toHaveCount(0);
     await reader.getByRole('button', { name: '放大阅读器', exact: true }).click();
     expect((await reader.boundingBox()).width).toBe(320);
     expect((await shot.boundingBox()).width).toBe(300);
@@ -91,9 +128,10 @@ test('detail saves notes and viewers resize, drag, switch tabs and close with Es
         box = await heading.boundingBox();
     await page.mouse.move(box.x + 50, box.y + 15);
     await page.mouse.down();
-    await page.mouse.move(box.x + 90, box.y + 70);
+    await page.mouse.move(0, 0);
     await page.mouse.up();
-    expect((await shot.boundingBox()).y).toBeGreaterThan(76);
+    expect(await shot.boundingBox()).toMatchObject({ x: 0, y: 0, width: 300 });
+    await page.screenshot({ path: 'test-results/viewer-full-window.png', fullPage: true });
     await page.keyboard.press('Escape');
     await expect(shot).toHaveCount(0);
     await expect(reader).toBeVisible();

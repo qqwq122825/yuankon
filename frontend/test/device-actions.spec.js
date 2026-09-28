@@ -26,7 +26,10 @@ test('row navigation, keyboard and checkboxes are independent of blacklist/delet
     await page.goto(query);
     const row = page.locator(`tr[data-device-id="${device.localId}"]`);
     await expect(row).toBeVisible();
-    await expect(row.getByRole('button')).toHaveText(['拉黑', '删除']);
+    await expect(row.locator('.fleet-row-actions').getByRole('button')).toHaveText([
+        '拉黑',
+        '删除',
+    ]);
     await expect(page.getByRole('columnheader', { name: /^节点/ })).toHaveCount(0);
     await expect(row.getByRole('link', { name: '查看', exact: true })).toHaveCount(0);
     await row.getByRole('checkbox').check();

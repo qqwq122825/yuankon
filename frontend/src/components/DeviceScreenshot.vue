@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted, watch } from 'vue';
 import { api } from '../api.js';
+import DeviceControls from './DeviceControls.vue';
 const props = defineProps({
     deviceId: Number,
     refreshKey: Number,
@@ -8,17 +9,9 @@ const props = defineProps({
     dndEnabled: Boolean,
 });
 const emit = defineEmits(['count', 'action', 'text-input']);
-const actions = [
-    ['BACK', '◀', '上一页'],
-    ['HOME', '●', 'Home'],
-    ['RECENTS', '■', '多任务'],
-    ['LOCK', '🔒', '锁屏'],
-    ['WAKE', '💡', '点亮'],
-];
 const frame = ref(null),
     error = ref(''),
-    inputText = ref(''),
-    stageAspect = ref('9 / 20');
+    stageAspect = ref('9 / 19.5');
 let timer,
     stopped = false,
     loading = false,
@@ -26,11 +19,6 @@ let timer,
     controller,
     aspectLocked = false;
 const seenFrames = new Set();
-function sendText() {
-    if (props.controlsDisabled || !inputText.value.trim()) return;
-    emit('text-input', inputText.value);
-    inputText.value = '';
-}
 async function load() {
     if (stopped) return;
     if (loading) {
@@ -100,49 +88,15 @@ onUnmounted(() => {
                 alt="设备实时上报的最新截图"
                 @error="frame = null"
             />
-            <p v-else class="empty-state">暂无有效截图；正在等待设备响应实时查看请求。</p>
+            <p v-else class="empty-state" role="status">
+                暂无有效截图；正在等待设备响应实时查看请求。
+            </p>
         </div>
-        <nav class="capture-action-bar" aria-label="设备快捷操作">
-            <button
-                v-for="[action, icon, label] in actions"
-                :key="action"
-                type="button"
-                class="capture-action-button"
-                :disabled="controlsDisabled"
-                :aria-label="label"
-                :title="label"
-                @click="emit('action', action)"
-            >
-                {{ icon }}
-            </button>
-            <button
-                type="button"
-                class="capture-action-button"
-                :class="{ active: dndEnabled }"
-                :disabled="controlsDisabled"
-                aria-label="切换勿扰"
-                title="切换勿扰"
-                @click="emit('action', 'DND_TOGGLE')"
-            >
-                {{ dndEnabled ? '🔔' : '🔕' }}
-            </button>
-        </nav>
-        <form class="capture-text-bar" @submit.prevent="sendText">
-            <input
-                v-model="inputText"
-                type="text"
-                maxlength="500"
-                :disabled="controlsDisabled"
-                aria-label="发送到设备的文本"
-                placeholder="输入文本…"
-            />
-            <button
-                type="submit"
-                :disabled="controlsDisabled || !inputText.trim()"
-                aria-label="发送文本"
-            >
-                发送
-            </button>
-        </form>
+        <DeviceControls
+            :disabled="controlsDisabled"
+            :dnd-enabled="dndEnabled"
+            @action="emit('action', $event)"
+            @text-input="emit('text-input', $event)"
+        />
     </div>
 </template>

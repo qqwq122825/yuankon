@@ -14,7 +14,7 @@ test('build form, optional fields, failure, polling and shareable artifact downl
     await page.goto('/builds');
     const form = page.getByRole('form', { name: 'B 包构建配置' });
     const installerForm = page.getByRole('form', { name: 'A 包构建配置' });
-    await expect(form.getByLabel('B 包模板版本')).toHaveValue('screenagent-1.5');
+    await expect(form.getByLabel('B 包模板版本')).toHaveValue('screenagent-1.7');
     await expect(installerForm.getByLabel('A 包模板版本')).toHaveValue('installer-1.2');
     await expect(installerForm.getByRole('button', { name: '构建 A 包' })).toBeDisabled();
     await form.getByLabel('后台域名').fill('cohuducox');

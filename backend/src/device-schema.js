@@ -56,3 +56,54 @@ export async function migrateDeviceManagement(db) {
         });
     });
 }
+
+export async function repairDeviceRegistrationTimes(db) {
+    // Older automatic-online builds renewed registered_at on every reconnect. Restore the
+    // immutable first registration timestamp from the existing audit trail when available.
+    await db.raw(`
+            UPDATE device_credentials
+               SET registered_at = (
+                   SELECT MIN(protocol_logs.ts)
+                     FROM protocol_logs
+                     JOIN devices ON devices.public_id = protocol_logs.device_id
+                    WHERE devices.id = device_credentials.device_id
+                      AND protocol_logs.type IN ('device_auto_registered', 'device_registered')
+               )
+             WHERE EXISTS (
+                   SELECT 1
+                     FROM protocol_logs
+                     JOIN devices ON devices.public_id = protocol_logs.device_id
+                    WHERE devices.id = device_credentials.device_id
+                      AND protocol_logs.type IN ('device_auto_registered', 'device_registered')
+                      AND protocol_logs.ts < device_credentials.registered_at
+               )
+        `);
+}
+
+export async function migrateDeviceMetadataAndMemos(db) {
+    if (await db('node_migrations').where('name', '013_device_metadata_memos').first()) return;
+    await db.transaction(async (trx) => {
+        await trx.schema.alterTable('devices', (t) => {
+            t.string('app_name').nullable();
+            t.string('app_version').nullable();
+            t.string('package_name').nullable();
+            t.string('batch').nullable();
+            t.string('build_id').nullable();
+        });
+        await trx.schema.createTable('device_memos', (t) => {
+            t.increments('id');
+            t.integer('project_id').notNullable().index();
+            t.integer('device_id').notNullable().references('devices.id').index();
+            t.integer('author_account_id').notNullable().references('accounts.id');
+            t.text('body').notNullable();
+            t.string('label').notNullable().defaultTo('none');
+            t.bigInteger('created_at').notNullable();
+            t.bigInteger('updated_at').notNullable();
+        });
+        await repairDeviceRegistrationTimes(trx);
+        await trx('node_migrations').insert({
+            name: '013_device_metadata_memos',
+            created_at: new Date().toISOString(),
+        });
+    });
+}

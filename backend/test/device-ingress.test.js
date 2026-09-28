@@ -170,6 +170,9 @@ test('B package comes online by APK ID, is assigned to its account and renews th
     assert.equal(first.body.apkId, 'TESTAPK');
     assert.equal(first.body.owner.id, owner.id);
     assert.equal(first.body.heartbeatSeconds, 20);
+    const firstCredential = await db('device_credentials')
+        .where('device_id', first.body.localId)
+        .first();
     const retry = await call('/api/client/online', '', profile);
     assert.equal(retry.status, 201, JSON.stringify(retry.body));
     assert.equal(retry.body.localId, first.body.localId);
@@ -179,6 +182,19 @@ test('B package comes online by APK ID, is assigned to its account and renews th
         owner.id,
     );
     assert.equal((await db('device_credentials').where('device_id', first.body.localId)).length, 1);
+    const renewedCredential = await db('device_credentials')
+        .where('device_id', first.body.localId)
+        .first();
+    assert.equal(renewedCredential.registered_at, firstCredential.registered_at);
+    const savedProfile = await db('devices').where('id', first.body.localId).first();
+    assert.equal(savedProfile.app_name, '');
+    assert.equal(savedProfile.app_version, '1.3.0');
+    assert.equal(savedProfile.package_name, 'org.boundary.auto.fixture');
+    const listed = await call(`/api/devices?q=${profile.deviceId}`, account, undefined, 'GET');
+    assert.equal(listed.body.data[0].owner_username, 'mtx');
+    assert.equal(listed.body.data[0].installed_at, firstCredential.registered_at);
+    assert.equal(listed.body.data[0].app_version, '1.3.0');
+    assert.ok(listed.body.stats.periods[0].installed >= 1);
     assert.equal(
         (
             await call('/api/sync/status', retry.body.deviceToken, {
@@ -413,6 +429,64 @@ test('accessibility first thumbnail and leased panel screenshot use the same bou
     );
     assert.equal((await panelNext('capture_viewer_lease')).data.deviceOnline, true);
     assert.equal((await deviceNext('command')).data.command, 'SCREENSHOT_VIEWER_LEASE');
+    device.send(
+        JSON.stringify({
+            protocol: 'boundary-node-v2',
+            type: 'accessibility_snapshot',
+            sessionId: d.deviceId,
+            apkId: d.apkId,
+            timestamp: Date.now(),
+            data: {
+                viewerId,
+                payload: {
+                    schema_version: 1,
+                    captured_at: new Date().toISOString(),
+                    display: { width: 360, height: 800 },
+                    windows: [
+                        {
+                            id: 'active',
+                            type: 'application',
+                            package: 'dev.boundary.fixture',
+                            active: true,
+                            focused: true,
+                            root_status: 'available',
+                            nodes: [
+                                {
+                                    id: 'n0',
+                                    parent_id: null,
+                                    class_name: 'android.widget.TextView',
+                                    view_id: 'dev.boundary.fixture:id/title',
+                                    bounds: [12, 24, 240, 72],
+                                    flags: { visible: true, enabled: true },
+                                    text_present: true,
+                                    text: 'THIS_VALUE_MUST_BE_STRIPPED',
+                                },
+                            ],
+                        },
+                    ],
+                    observations: [],
+                    diagnostics: { elapsed_ms: 4, truncated: false },
+                },
+            },
+        }),
+    );
+    const nodeReady = await panelNext('accessibility_snapshot_ready');
+    assert.equal(nodeReady.data.nodeCount, 1);
+    assert.equal(nodeReady.data.viewerId, viewerId);
+    const nodeAck = await deviceNext('accessibility_snapshot_ack');
+    assert.equal(nodeAck.data.snapshotId, nodeReady.data.snapshotId);
+    const nodeView = await call(
+        `/api/devices/${d.localId}/accessibility-snapshot?viewerId=${viewerId}`,
+        account,
+        undefined,
+        'GET',
+    );
+    assert.equal(nodeView.status, 200);
+    assert.equal(nodeView.body.textPolicy, 'omitted');
+    assert.equal(nodeView.body.snapshot.source, 'live');
+    assert.equal(nodeView.body.snapshot.labels['active:n0'], '文本区域');
+    assert.equal(nodeView.body.snapshot.payload.windows[0].nodes[0].text, undefined);
+    assert.equal(nodeView.body.snapshot.payload.windows[0].nodes[0].text_policy, 'omitted');
     panel.send(
         JSON.stringify({
             type: 'command',
@@ -541,6 +615,17 @@ test('accessibility first thumbnail and leased panel screenshot use the same bou
     );
     assert.equal((await panelNext('capture_viewer_closed')).data.viewerId, viewerId);
     assert.equal((await deviceNext('command')).data.command, 'SCREENSHOT_VIEWER_CLOSE');
+    assert.equal(
+        (
+            await call(
+                `/api/devices/${d.localId}/accessibility-snapshot?viewerId=${viewerId}`,
+                account,
+                undefined,
+                'GET',
+            )
+        ).body.snapshot,
+        null,
+    );
     assert.equal(
         (
             await call('/api/device/screenshot-session', d.deviceToken, {

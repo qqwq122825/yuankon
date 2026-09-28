@@ -3,7 +3,14 @@ import { Router } from 'express';
 import multer from 'multer';
 import sharp from 'sharp';
 import { z } from 'zod';
-import { deviceIdSchema, fail, idSchema, statusSchema } from './protocol.js';
+import {
+    deviceIdSchema,
+    fail,
+    idSchema,
+    normalizeLiveSnapshot,
+    statusSchema,
+    structuralLabelsFor,
+} from './protocol.js';
 
 const apkIdSchema = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
 const profileSchema = z.object({
@@ -21,6 +28,13 @@ const profileSchema = z.object({
 const bearer = (req) => req.headers.authorization?.match(/^Bearer (\S+)$/)?.[1];
 const MAX_FILE = 2 * 1024 * 1024;
 const CACHE_TTL = 5 * 60000;
+const profileMetadata = (profile, current = {}) => ({
+    app_name: profile.appName ?? current.app_name ?? '',
+    app_version: profile.appVersion ?? current.app_version ?? '',
+    package_name: profile.packageName ?? current.package_name ?? '',
+    batch: profile.batch ?? current.batch ?? '',
+    build_id: profile.buildId ?? current.build_id ?? '',
+});
 
 // ScreenAgent accepts one JPEG per explicit grant. Grants are either local-user initiated,
 // the first accessibility-service thumbnail, or tied to a short-lived panel viewer command.
@@ -29,6 +43,8 @@ export class DeviceIngress {
         Object.assign(this, { db, auth, store, config });
         this.grants = new Map();
         this.frames = new Map();
+        this.nodeFrames = new Map();
+        this.viewerLeases = new Map();
         this.pendingCaptures = new Map();
         this.autoCaptureAt = new Map();
         this.inflight = new Set();
@@ -36,13 +52,21 @@ export class DeviceIngress {
         this.timer.unref();
     }
     prune() {
-        for (const map of [this.grants, this.frames, this.pendingCaptures])
+        for (const map of [
+            this.grants,
+            this.frames,
+            this.nodeFrames,
+            this.viewerLeases,
+            this.pendingCaptures,
+        ])
             for (const [key, value] of map) if (value.expiresAt <= Date.now()) map.delete(key);
     }
     close() {
         clearInterval(this.timer);
         this.grants.clear();
         this.frames.clear();
+        this.nodeFrames.clear();
+        this.viewerLeases.clear();
         this.pendingCaptures.clear();
         this.autoCaptureAt.clear();
     }
@@ -110,6 +134,7 @@ export class DeviceIngress {
                     source: 'api',
                     apk_id: ticket.apk_id,
                     owner_account_id: ticket.owner_account_id,
+                    ...profileMetadata(profile),
                 });
                 await trx('device_credentials').insert({
                     device_id: id,
@@ -177,6 +202,7 @@ export class DeviceIngress {
                     source: 'api',
                     apk_id: route.apk_id,
                     owner_account_id: route.owner_account_id,
+                    ...profileMetadata(profile),
                 });
                 await trx('device_credentials').insert({
                     device_id: id,
@@ -192,6 +218,7 @@ export class DeviceIngress {
                         name: profile.model || device.name,
                         brand: profile.brand || device.brand,
                         android_version: profile.osVersion || device.android_version,
+                        ...profileMetadata(profile, device),
                     });
             }
             let credential = await trx('device_credentials').where('device_id', device.id).first();
@@ -204,9 +231,6 @@ export class DeviceIngress {
                 credential = await trx('device_credentials').where('device_id', device.id).first();
             }
             if (credential.revoked) throw fail(403, '设备凭证已撤销');
-            await trx('device_credentials').where('device_id', device.id).update({
-                registered_at: now,
-            });
             return { device, credential, owner, created };
         });
         const expiresAt = now + 30 * 86400000;
@@ -267,6 +291,11 @@ export class DeviceIngress {
         return pending;
     }
     renewCapture(device, viewerId, expiresAt) {
+        this.viewerLeases.set(device.id, {
+            viewerId,
+            ownerId: device.owner_account_id,
+            expiresAt,
+        });
         const pending = this.pendingCaptures.get(device.id);
         if (pending?.viewerId === viewerId)
             pending.expiresAt = Math.max(pending.expiresAt, expiresAt + 3000);
@@ -277,6 +306,65 @@ export class DeviceIngress {
         const grant = this.grants.get(device.id);
         if (grant?.reason === 'viewer_request' && grant.viewerId === viewerId)
             this.grants.delete(device.id);
+        const lease = this.viewerLeases.get(device.id);
+        if (lease?.viewerId === viewerId) {
+            this.viewerLeases.delete(device.id);
+            this.nodeFrames.delete(device.id);
+        }
+    }
+    async receiveAccessibilitySnapshot(device, viewerId, input) {
+        this.prune();
+        const lease = this.viewerLeases.get(device.id);
+        if (
+            !lease ||
+            lease.viewerId !== viewerId ||
+            lease.ownerId !== device.owner_account_id ||
+            lease.expiresAt <= Date.now()
+        )
+            throw fail(410, '阅读器查看租约已结束');
+        const payload = normalizeLiveSnapshot(input);
+        const nodeCount = payload.windows.reduce((sum, window) => sum + window.nodes.length, 0);
+        const frame = {
+            id: randomUUID(),
+            source: 'live',
+            captured_at: payload.captured_at,
+            received_at: new Date().toISOString(),
+            expiresAt: Math.min(lease.expiresAt + 3000, Date.now() + 30000),
+            ownerId: device.owner_account_id,
+            viewerId,
+            node_count: nodeCount,
+            window_count: payload.windows.length,
+            payload,
+            labels: structuralLabelsFor(payload),
+        };
+        this.nodeFrames.set(device.id, frame);
+        await this.store.audit('accessibility_snapshot_received', 'device', device.public_id);
+        return frame;
+    }
+    async accessibilitySnapshot(id, viewerId) {
+        const device = await this.store.device(id);
+        this.prune();
+        const lease = this.viewerLeases.get(id);
+        const frame = this.nodeFrames.get(id);
+        const credential = await this.db('device_credentials').where('device_id', id).first();
+        if (
+            device.is_blacklisted ||
+            credential?.revoked ||
+            frame?.ownerId !== device.owner_account_id
+        ) {
+            if (frame) this.nodeFrames.delete(id);
+            return null;
+        }
+        if (
+            !lease ||
+            lease.viewerId !== viewerId ||
+            lease.ownerId !== device.owner_account_id ||
+            !frame ||
+            frame.viewerId !== viewerId
+        )
+            return null;
+        const { ownerId, viewerId: _viewerId, expiresAt, ...safe } = frame;
+        return { ...safe, expires_at: expiresAt };
     }
     async grant(device, input = { consent: true }) {
         this.prune();
@@ -593,6 +681,8 @@ export class DeviceIngress {
                 .where('device_id', device.id)
                 .update({ revoked: true });
             this.frames.delete(device.id);
+            this.nodeFrames.delete(device.id);
+            this.viewerLeases.delete(device.id);
             this.grants.delete(device.id);
             this.pendingCaptures.delete(device.id);
             this.autoCaptureAt.delete(device.id);
@@ -607,6 +697,15 @@ export class DeviceIngress {
                 frame: this.frameMeta(id, await this.frame(id)),
                 mode: 'leased-latest-frame',
                 retentionSeconds: 300,
+            });
+        });
+        router.get('/devices/:id/accessibility-snapshot', async (req, res) => {
+            const id = idSchema.parse(req.params.id);
+            const viewerId = z.string().uuid().parse(req.query.viewerId);
+            res.json({
+                snapshot: await this.accessibilitySnapshot(id, viewerId),
+                mode: 'leased-structural-preview',
+                textPolicy: 'omitted',
             });
         });
         router.get('/devices/:id/screenshot/:frameId', async (req, res) => {

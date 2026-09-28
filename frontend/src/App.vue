@@ -92,7 +92,7 @@ function search() {
                         v-model="q"
                         class="form-control"
                         aria-label="搜索设备"
-                        placeholder="搜索设备 ID / 备注 / 名称 / 品牌…"
+                        placeholder="搜索设备 ID / 备注 / 账号 / 品牌…"
                         maxlength="100"
                     /><button class="header-search-button" aria-label="提交搜索">
                         <img src="/vendor/icons/search.svg" width="15" alt="" />

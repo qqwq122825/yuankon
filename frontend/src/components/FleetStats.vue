@@ -3,10 +3,7 @@ defineProps({ stats: Object });
 </script>
 <template>
     <div class="header-device-stats" role="group" aria-label="设备统计">
-        <div
-            class="header-stat"
-            title="已登记 API 设备最近 90 秒的有效 WS 状态；无接入设备时显示未知"
-        >
+        <div class="header-stat" title="已登记 API 设备最近 90 秒的有效 WS 状态">
             <span class="header-stat-icon mint"
                 ><img src="/vendor/icons/activity.svg" width="15" alt=""
             /></span>
@@ -42,7 +39,15 @@ defineProps({ stats: Object });
                 :key="key"
                 class="header-period-metric"
                 :class="`metric-${key}`"
-                title="尚未接入每日事件统计"
+                :title="
+                    period[key] === null || period[key] === undefined
+                        ? '没有可核对的设备安装记录'
+                        : key === 'installed'
+                          ? `${period.label}首次登记的设备数`
+                          : key === 'offline'
+                            ? `${period.label}首次登记、当前处于离线的设备数`
+                            : `${period.label}首次登记、当前已开启无障碍的设备数`
+                "
                 ><strong>{{ period[key] ?? '—' }}</strong
                 ><small>{{ label }}</small></span
             >

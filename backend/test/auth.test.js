@@ -114,6 +114,7 @@ test('every data route and panel-ticket route requires login', async () => {
         '/api/devices',
         '/api/device/list',
         '/api/devices/2',
+        '/api/devices/1/memos',
         '/api/snapshots/1/image',
         '/api/snapshots/1/export',
         '/api/builds',

@@ -17,6 +17,7 @@ import { Accounts } from './accounts.js';
 import { authRoutes } from './auth-routes.js';
 import { DeviceIngress } from './device-ingress.js';
 import { DeviceManagement } from './device-management.js';
+import { DeviceMemos } from './device-memos.js';
 import { BuildQueue } from './build-queue.js';
 import { Installation } from './installation.js';
 import { BuildEnvironment } from './build-environment.js';
@@ -46,6 +47,7 @@ export async function createApplication(
     await environment.initialize();
     const ingress = new DeviceIngress(db, auth, store, config);
     const deviceManagement = new DeviceManagement(db, store, ingress);
+    const deviceMemos = new DeviceMemos(db, store);
     const builds = new BuildQueue(db, config, buildOptions);
     await builds.initialize();
     const app = express(),
@@ -156,6 +158,7 @@ export async function createApplication(
                 'single-screenshot',
                 'accessibility-first-thumbnail',
                 'viewer-requested-screenshot',
+                'leased-accessibility-preview',
                 'apk-build-queue',
             ],
             pending: [
@@ -195,6 +198,41 @@ export async function createApplication(
         });
         await store.audit('note_updated', 'http', device.public_id);
         res.json(device);
+    });
+    const memoInput = z
+        .object({
+            body: z.string().trim().min(1).max(500),
+            label: z.enum(['none', 'important', 'follow_up', 'handled']).default('none'),
+        })
+        .strict();
+    app.get('/api/devices/:id/memos', async (req, res) =>
+        res.json(await deviceMemos.list(idSchema.parse(req.params.id))),
+    );
+    app.post('/api/devices/:id/memos', async (req, res) => {
+        const deviceId = idSchema.parse(req.params.id);
+        const memo = await deviceMemos.create(deviceId, memoInput.parse(req.body), req.user.id);
+        const device = await store.device(deviceId);
+        await store.audit('device_memo_created', 'http', device.public_id);
+        res.status(201).json(memo);
+    });
+    app.patch('/api/devices/:id/memos/:memoId', async (req, res) => {
+        const deviceId = idSchema.parse(req.params.id);
+        const memo = await deviceMemos.update(
+            deviceId,
+            idSchema.parse(req.params.memoId),
+            memoInput.parse(req.body),
+        );
+        const device = await store.device(deviceId);
+        await store.audit('device_memo_updated', 'http', device.public_id);
+        res.json(memo);
+    });
+    app.delete('/api/devices/:id/memos/:memoId', async (req, res) => {
+        z.object({}).strict().parse(req.body);
+        const deviceId = idSchema.parse(req.params.id);
+        await deviceMemos.remove(deviceId, idSchema.parse(req.params.memoId));
+        const device = await store.device(deviceId);
+        await store.audit('device_memo_deleted', 'http', device.public_id);
+        res.json({ ok: true });
     });
     app.patch('/api/devices/:id/blacklist', async (req, res) => {
         const { blacklisted } = z.object({ blacklisted: z.boolean() }).strict().parse(req.body);

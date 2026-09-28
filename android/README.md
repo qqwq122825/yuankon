@@ -1,6 +1,6 @@
 # Android 模板与本地工具
 
-- [apk-templates/](apk-templates/README.md)：版本清单与实际源码，screenagent-1.0 / browser-1.0。
+- [apk-templates/](apk-templates/README.md)：版本清单与实际源码，screenagent-1.7 / browser-1.0。
 - `scripts/`：CLI 构建与既有辅助脚本。
 - `installer/`：既有离线安装器源码。
 - `apk-repack/`、`apk-shield/`：既有独立工具，彼此仍同级；本轮原样移动，不加入网页构建队列。

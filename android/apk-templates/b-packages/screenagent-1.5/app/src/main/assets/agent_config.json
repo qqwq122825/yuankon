@@ -6,5 +6,5 @@
   "appName": "ScreenAgent",
   "packageName": "com.zaka.screenagent",
   "version": "1.4.0",
-  "capture": { "intervalMs": 334, "maxWidth": 540, "quality": 50 }
+  "capture": { "maxWidth": 540, "quality": 50 }
 }

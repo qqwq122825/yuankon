@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch, onUnmounted } from 'vue';
+import { computed, ref, watch, onUnmounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { api, mutate, sourceLabel, formatDate, normalizeWireDevice } from '../api.js';
 import {
@@ -32,11 +32,21 @@ const route = useRoute(),
     resetKey = ref(0),
     reportedRefresh = ref(0),
     reportedShotCount = ref(0),
+    liveNodeSnapshot = ref(null),
     captureState = ref(''),
     actionToast = ref(''),
     actionToastTone = ref('success'),
     dndEnabled = ref(false);
 let controller, subscribed, viewerId, viewerTimer, activeCommandId, actionToastTimer;
+const activeReaderSnapshot = computed(() =>
+    data.value?.device.source === 'api' ? liveNodeSnapshot.value : data.value?.snapshot,
+);
+const readerMeta = computed(() => {
+    const snapshot = activeReaderSnapshot.value;
+    if (!snapshot) return '等待节点';
+    const packageName = snapshot.payload.windows.find((window) => window.active)?.package;
+    return `#${snapshot.node_count}${packageName ? ` · ${packageName}` : ''}`;
+});
 const pendingActions = new Map();
 const pendingTextInputs = new Set();
 const actionProgress = {
@@ -69,7 +79,7 @@ async function load() {
     error.value = '';
     notice.value = '';
     shot.value = false;
-    if (viewerId) closeReportedShot();
+    if (viewerId) stopLiveSession();
     reader.value = false;
     try {
         const result = await api(
@@ -85,6 +95,7 @@ async function load() {
             subscribed = result.device.public_id;
             subscribe(subscribed);
         }
+        if (reader.value && result.device.source === 'api') startLiveLease();
     } catch (e) {
         if (e.name !== 'AbortError') {
             data.value = null;
@@ -118,6 +129,7 @@ const off = onMessage((message) => {
         captureState.value = message.data.deviceOnline
             ? '正在实时查看，等待设备上传截图'
             : '设备当前离线，连接后将继续请求截图';
+        if (message.data.deviceOnline) loadLiveNodes();
     }
     if (message.type === 'command_ack' && message.data?.command === 'DEVICE_ACTION') {
         const action = pendingActions.get(message.data.commandId);
@@ -179,11 +191,15 @@ const off = onMessage((message) => {
                 ? '已收到无障碍开启后的首张缩略图'
                 : '实时画面已更新';
     }
+    if (message.type === 'accessibility_snapshot_ready' && message.data?.viewerId === viewerId) {
+        captureState.value = `已收到 ${message.data.nodeCount} 个脱敏节点`;
+        loadLiveNodes();
+    }
 });
 onUnmounted(() => {
     controller?.abort();
     off();
-    closeReportedShot();
+    stopLiveSession();
     if (subscribed) unsubscribe(subscribed);
 });
 async function save() {
@@ -203,16 +219,13 @@ async function save() {
     }
 }
 function openBoth() {
-    closeReportedShot();
+    stopLiveSession();
     shot.value = true;
     reader.value = true;
     front.value = 'reader';
 }
-function openReportedShot(request = true) {
-    if (!reportedShot.value) reportedShotCount.value = 0;
-    reportedShot.value = true;
-    shot.value = false;
-    front.value = 'reported';
+function startLiveLease() {
+    if (!data.value || data.value.device.source !== 'api') return;
     if (!viewerId) viewerId = crypto.randomUUID();
     clearInterval(viewerTimer);
     captureViewerHeartbeat(data.value.device.public_id, viewerId);
@@ -220,12 +233,52 @@ function openReportedShot(request = true) {
         () => captureViewerHeartbeat(data.value.device.public_id, viewerId),
         5000,
     );
+}
+async function loadLiveNodes() {
+    if (!viewerId || !data.value || data.value.device.source !== 'api') return;
+    try {
+        const result = await api(
+            `/api/devices/${data.value.device.id}/accessibility-snapshot?viewerId=${encodeURIComponent(viewerId)}`,
+        );
+        if (result.snapshot) liveNodeSnapshot.value = result.snapshot;
+    } catch (e) {
+        if (viewerId) captureState.value = e.message;
+    }
+}
+function openReportedShot(request = true) {
+    if (!reportedShot.value) reportedShotCount.value = 0;
+    reportedShot.value = true;
+    shot.value = false;
+    reader.value = true;
+    front.value = 'reported';
+    startLiveLease();
     if (request) {
         activeCommandId = requestScreenshot(data.value.device.public_id, viewerId);
         captureState.value = '正在启动实时截图';
     }
 }
+function openLiveReader() {
+    reader.value = true;
+    front.value = 'reader';
+    startLiveLease();
+    loadLiveNodes();
+}
+function openReader() {
+    if (data.value.device.source === 'api') openLiveReader();
+    else {
+        reader.value = true;
+        front.value = 'reader';
+    }
+}
 function closeReportedShot() {
+    reportedShot.value = false;
+    if (!reader.value) stopLiveSession();
+}
+function closeReader() {
+    reader.value = false;
+    if (!reportedShot.value && data.value?.device.source === 'api') stopLiveSession();
+}
+function stopLiveSession() {
     clearInterval(viewerTimer);
     viewerTimer = null;
     if (viewerId && data.value?.device.public_id)
@@ -237,6 +290,12 @@ function closeReportedShot() {
     clearTimeout(actionToastTimer);
     actionToast.value = '';
     reportedShot.value = false;
+    liveNodeSnapshot.value = null;
+}
+function closeAll() {
+    shot.value = false;
+    reader.value = false;
+    stopLiveSession();
 }
 function showActionToast(message, tone = 'success') {
     clearTimeout(actionToastTimer);
@@ -268,10 +327,7 @@ function openPrimary() {
 }
 function choose(value) {
     section.value = value;
-    if (value === 'nodes') {
-        reader.value = true;
-        front.value = 'reader';
-    }
+    if (value === 'nodes') openReader();
 }
 </script>
 <template>
@@ -484,18 +540,19 @@ function choose(value) {
                 <div class="card card-body">
                     <p>
                         {{
-                            data.snapshot
-                                ? `当前快照 ${data.snapshot.node_count} 个节点，正文已剔除。`
-                                : '暂无节点快照。'
+                            data.device.source === 'api'
+                                ? liveNodeSnapshot
+                                    ? `实时记录 ${liveNodeSnapshot.node_count} 个结构节点，可查看坐标、节点树和完整 JSON 字段；正文未采集。`
+                                    : '打开后由设备在有效查看租约内上报节点结构记录。'
+                                : data.snapshot
+                                  ? `当前快照 ${data.snapshot.node_count} 个节点，正文已剔除。`
+                                  : '暂无节点快照。'
                         }}
                     </p>
                     <button
                         class="btn"
-                        :disabled="!data.snapshot"
-                        @click="
-                            reader = true;
-                            front = 'reader';
-                        "
+                        :disabled="data.device.source !== 'api' && !data.snapshot"
+                        @click="openReader"
                     >
                         打开节点阅读器
                     </button>
@@ -526,24 +583,12 @@ function choose(value) {
                     截图浮窗</button
                 ><button
                     class="tool-button"
-                    :disabled="!data.snapshot"
-                    @click="
-                        reader = true;
-                        front = 'reader';
-                    "
+                    :disabled="data.device.source !== 'api' && !data.snapshot"
+                    @click="openReader"
                 >
                     节点浮窗</button
                 ><button class="tool-button muted" @click="resetKey++">重置浮窗位置</button
-                ><button
-                    class="tool-button muted"
-                    @click="
-                        shot = false;
-                        closeReportedShot();
-                        reader = false;
-                    "
-                >
-                    关闭全部浮窗
-                </button>
+                ><button class="tool-button muted" @click="closeAll">关闭全部浮窗</button>
             </div>
             <div class="tool-group">
                 <h2>历史快照</h2>
@@ -578,11 +623,12 @@ function choose(value) {
     </div>
     <FloatingViewer
         v-if="reportedShot && data"
-        title="实时截图"
+        title="BM截图"
         :meta="`截图 #${reportedShotCount}`"
         :side="0"
         :reset-key="resetKey"
         :active="front === 'reported'"
+        live
         @activate="front = 'reported'"
         @close="
             closeReportedShot();
@@ -628,16 +674,26 @@ function choose(value) {
             >
         </footer></FloatingViewer
     ><FloatingViewer
-        v-if="reader && data?.snapshot"
+        v-if="reader && data && (activeReaderSnapshot || data.device.source === 'api')"
         title="阅读器"
+        :meta="readerMeta"
         :side="1"
         :reset-key="resetKey"
         :active="front === 'reader'"
+        :live="data.device.source === 'api'"
+        :variant="data.device.source === 'api' ? 'reader' : ''"
+        :width-label="data.device.source === 'api' ? '屏幕' : '阅读器'"
+        resizable
         @activate="front = 'reader'"
         @close="
-            reader = false;
+            closeReader();
             front = 'shot';
         "
-        ><NodeReader :snapshot="data.snapshot"
+        ><NodeReader
+            :snapshot="activeReaderSnapshot"
+            :controls-disabled="data.device.status !== 'online'"
+            :dnd-enabled="dndEnabled"
+            @action="runDeviceAction"
+            @text-input="runTextInput"
     /></FloatingViewer>
 </template>

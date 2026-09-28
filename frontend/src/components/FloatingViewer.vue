@@ -7,6 +7,10 @@ const props = defineProps({
     side: Number,
     resetKey: Number,
     active: Boolean,
+    live: Boolean,
+    resizable: Boolean,
+    widthLabel: String,
+    variant: { type: String, default: '' },
 });
 const emit = defineEmits(['close', 'activate']);
 const width = ref(300),
@@ -28,14 +32,11 @@ function down(event) {
 function move(event) {
     if (!drag) return;
     left.value = Math.max(
-        88,
-        Math.min(
-            Math.max(1280, window.innerWidth) - width.value - 20,
-            drag.left + event.pageX - drag.x,
-        ),
+        0,
+        Math.min(Math.max(1280, window.innerWidth) - width.value, drag.left + event.pageX - drag.x),
     );
     top.value = Math.max(
-        44,
+        0,
         Math.min(Math.max(500, window.innerHeight) - 80, drag.top + event.pageY - drag.y),
     );
 }
@@ -69,6 +70,7 @@ onUnmounted(() => {
         role="region"
         :aria-label="title"
         class="floating-viewer card"
+        :class="{ 'floating-viewer-live': live, [`floating-viewer-${variant}`]: variant }"
         :style="{
             width: `${width}px`,
             left: `${left}px`,
@@ -84,15 +86,17 @@ onUnmounted(() => {
             @pointerup="drag = null"
             @pointercancel="drag = null"
         >
-            <strong>{{ title }}</strong
+            <span class="floating-heading-title"
+                ><span v-if="live" class="viewer-live-dot" aria-hidden="true"></span
+                ><strong>{{ title }}</strong></span
             ><span class="floating-heading-actions"
                 ><span v-if="meta" class="floating-heading-meta">{{ meta }}</span
                 ><button class="btn btn-sm" @click="close" :aria-label="`关闭${title}`">
-                    ×
+                    {{ live ? 'X' : '×' }}
                 </button></span
             >
         </header>
-        <ViewerWidth v-model="width" :label="title" />
+        <ViewerWidth v-if="resizable" v-model="width" :label="widthLabel || title" />
         <div class="floating-content"><slot /></div>
     </section>
 </template>

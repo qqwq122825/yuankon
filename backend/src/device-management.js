@@ -45,6 +45,8 @@ export class DeviceManagement {
         });
         if (!changed) return device;
         this.ingress.frames.delete(id);
+        this.ingress.nodeFrames.delete(id);
+        this.ingress.viewerLeases.delete(id);
         this.ingress.grants.delete(id);
         this.ingress.pendingCaptures.delete(id);
         this.ingress.autoCaptureAt.delete(id);

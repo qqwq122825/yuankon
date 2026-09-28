@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build a copy of the current automatic-online ScreenAgent adapter; leave source templates intact.
+# Build a copy of the current user-consented MediaProjection ScreenAgent adapter.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 export JAVA_HOME="${JAVA_HOME:-$ROOT/.local-tools/jdk/Contents/Home}"
@@ -10,7 +10,7 @@ export GRADLE_USER_HOME="${GRADLE_USER_HOME:-$ROOT/.local-tools/gradle-home}"
 export PATH="$JAVA_HOME/bin:$PATH"
 GRADLE="${GRADLE:-$ROOT/.local-tools/gradle-8.11.1/bin/gradle}"
 TOOLS="$ANDROID_HOME/build-tools/35.0.0"
-TEMPLATE="$ROOT/apk-templates/b-packages/screenagent-1.5"
+TEMPLATE="$ROOT/apk-templates/b-packages/screenagent-1.7"
 for tool in "$JAVA_HOME/bin/java" "$GRADLE" "$TOOLS/apksigner" "$TOOLS/zipalign" "$TOOLS/aapt"; do
   [[ -x "$tool" ]] || { echo "Missing local tool: $tool" >&2; exit 1; }
 done
@@ -20,7 +20,7 @@ mkdir -p "$ROOT/dist"
 WORK="$(mktemp -d "$ROOT/dist/screenagent-XXXXXX")"
 mkdir -p "$WORK/source/app"
 exec > >(tee "$WORK/build.log") 2>&1
-echo "[$(date -u +%FT%TZ)] [BUILD] START role=b template=b-packages/screenagent-1.5"
+echo "[$(date -u +%FT%TZ)] [BUILD] START role=b template=b-packages/screenagent-1.7"
 echo "[$(date -u +%FT%TZ)] [STAGE:preparing] copy registered B-package template"
 cp "$TEMPLATE/"*.gradle.kts "$TEMPLATE/gradle.properties" "$WORK/source/"
 cp "$TEMPLATE/app/"{build.gradle.kts,proguard-rules.pro} "$WORK/source/app/"
@@ -30,7 +30,7 @@ ARGS=(--offline)
 echo "Build directory: $WORK"
 echo "[$(date -u +%FT%TZ)] [COMMAND:GRADLE_ASSEMBLE_LINT] START"
 "$GRADLE" -p "$WORK/source" "${ARGS[@]}" --no-daemon --console=plain \
-  -PversionName=1.5.0 -PversionCode=6 assembleDebug lintDebug
+  -PversionName=1.7.0 -PversionCode=8 assembleDebug lintDebug
 echo "[$(date -u +%FT%TZ)] [COMMAND:GRADLE_ASSEMBLE_LINT] OK"
 cp "$WORK/source/app/build/outputs/apk/debug/app-debug.apk" "$WORK/screenagent.apk"
 echo "[$(date -u +%FT%TZ)] [STAGE:signing] verify APK development signature"
@@ -41,12 +41,14 @@ echo "[$(date -u +%FT%TZ)] [STAGE:aligning] verify APK alignment"
 echo "[$(date -u +%FT%TZ)] [COMMAND:ZIPALIGN_VERIFY] OK"
 echo "[$(date -u +%FT%TZ)] [STAGE:inspecting] read package and launcher metadata"
 "$TOOLS/aapt" dump badging "$WORK/screenagent.apk" | tee "$WORK/badging.txt"
-if grep -q '^launchable-activity:' "$WORK/badging.txt"; then
-  echo 'B package must not expose a MAIN/LAUNCHER activity.' >&2
+if ! grep -q '^launchable-activity:' "$WORK/badging.txt"; then
+  echo 'MediaProjection B package must expose the user-consent launcher.' >&2
   exit 1
 fi
-echo "[$(date -u +%FT%TZ)] [ROLE] launcher=absent expected=absent"
+grep -q "uses-permission: name='android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION'" \
+  "$WORK/badging.txt" || { echo 'Missing mediaProjection foreground-service permission.' >&2; exit 1; }
+echo "[$(date -u +%FT%TZ)] [ROLE] launcher=present expected=present"
 shasum -a 256 "$WORK/screenagent.apk" | tee "$WORK/SHA256SUMS"
 echo "[$(date -u +%FT%TZ)] [BUILD] SUCCEEDED"
 echo "APK: $WORK/screenagent.apk"
-echo 'Automatic-online leased latest-frame development build. Physical-device verification remains a separate step.'
+echo 'User-consented MediaProjection screenshot and structural-node preview development build. Physical-device verification remains a separate step.'

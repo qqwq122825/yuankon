@@ -138,6 +138,41 @@ export function normalizeSnapshot(input) {
     data.diagnostics.text_policy = 'omitted';
     return data;
 }
+export function normalizeLiveSnapshot(input) {
+    const data = normalizeSnapshot(input);
+    const count = data.windows.reduce((sum, window) => sum + window.nodes.length, 0);
+    if (count > 400 || data.observations.length) throw fail(422, '实时节点快照超出边界');
+    return data;
+}
+const STRUCTURAL_LABELS = Object.freeze({
+    Button: '按钮',
+    ImageButton: '图标按钮',
+    TextView: '文本区域',
+    EditText: '输入框',
+    ImageView: '图片',
+    CheckBox: '复选框',
+    RadioButton: '单选框',
+    Switch: '开关',
+    ToggleButton: '切换按钮',
+    SeekBar: '滑块',
+    ProgressBar: '进度',
+    ListView: '列表',
+    RecyclerView: '列表',
+    ScrollView: '滚动区域',
+    WebView: '网页区域',
+    ViewPager: '分页区域',
+    Toolbar: '工具栏',
+});
+export function structuralLabelsFor(payload) {
+    return Object.fromEntries(
+        payload.windows.flatMap((window) =>
+            window.nodes.map((node) => {
+                const type = node.class_name.split('.').pop();
+                return [`${window.id}:${node.id}`, STRUCTURAL_LABELS[type] || '界面元素'];
+            }),
+        ),
+    );
+}
 export const SAMPLE_LABELS = Object.freeze({
     title: 'Research test page',
     subtitle: 'Synthetic fixture',
@@ -173,14 +208,19 @@ export const statusSchema = z.object({
 });
 export const SORT_COLUMNS = Object.freeze({
     id: 'public_id',
+    account: 'owner_username',
     name: 'name',
     note: 'note',
+    memo: 'memo_count',
+    app: 'app_name',
+    app_version: 'app_version',
     source: 'source',
     brand: 'brand',
     android: 'android_version',
     battery: 'battery',
     a11y: 'accessibility_enabled',
     last_seen: 'last_received_at',
+    installed: 'installed_at',
     nodes: 'node_count',
     windows: 'window_count',
     snapshots: 'snapshots_count',

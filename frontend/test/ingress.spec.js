@@ -42,6 +42,62 @@ test('APK ownership, automatic online and an actual synthetic JPEG are visible i
         const message = JSON.parse(String(raw));
         if (message.type !== 'command') return;
         const { commandId, params } = message.data;
+        if (message.data.command === 'SCREENSHOT_VIEWER_LEASE') {
+            deviceSocket.send(
+                JSON.stringify({
+                    protocol: 'boundary-node-v2',
+                    type: 'accessibility_snapshot',
+                    sessionId: device.deviceId,
+                    apkId,
+                    timestamp: Date.now(),
+                    data: {
+                        viewerId: params.viewerId,
+                        payload: {
+                            schema_version: 1,
+                            captured_at: new Date().toISOString(),
+                            display: { width: 360, height: 800 },
+                            windows: [
+                                {
+                                    id: 'active',
+                                    type: 'application',
+                                    package: 'dev.boundary.fixture',
+                                    active: true,
+                                    focused: true,
+                                    root_status: 'available',
+                                    nodes: [
+                                        {
+                                            id: 'n0',
+                                            parent_id: null,
+                                            class_name: 'android.widget.TextView',
+                                            view_id: 'dev.boundary.fixture:id/title',
+                                            bounds: [20, 40, 260, 92],
+                                            flags: { visible: true, enabled: true },
+                                            text_present: true,
+                                        },
+                                        {
+                                            id: 'n1',
+                                            parent_id: 'n0',
+                                            class_name: 'android.widget.Button',
+                                            view_id: 'dev.boundary.fixture:id/action',
+                                            bounds: [80, 620, 280, 700],
+                                            flags: {
+                                                visible: true,
+                                                enabled: true,
+                                                clickable: true,
+                                            },
+                                            text_present: true,
+                                        },
+                                    ],
+                                },
+                            ],
+                            observations: [],
+                            diagnostics: { elapsed_ms: 3, truncated: false },
+                        },
+                    },
+                }),
+            );
+            return;
+        }
         if (message.data.command === 'TEXT_INPUT') {
             receivedText = params.text;
             deviceSocket.send(
@@ -109,13 +165,48 @@ test('APK ownership, automatic online and an actual synthetic JPEG are visible i
     await page.goto(`/devices/${device.localId}`);
     await expect(page.getByText(`${apkId} / mtx`)).toBeVisible();
     await page.getByRole('button', { name: '实时查看截图', exact: true }).click();
-    const panel = page.getByRole('region', { name: '实时截图', exact: true });
+    const panel = page.getByRole('region', { name: 'BM截图', exact: true });
+    const reader = page.getByRole('region', { name: '阅读器', exact: true });
     const image = panel.getByRole('img', { name: '设备实时上报的最新截图' });
     await expect(image).toBeVisible();
+    await expect(reader).toBeVisible();
+    expect((await reader.boundingBox()).width).toBe(300);
+    await expect(reader.locator('.reader-map-node')).toHaveCount(2);
+    await expect(reader.locator('.reader-map-node').first()).toContainText('文本区域');
+    await expect(reader.getByRole('button', { name: '原文', exact: true })).toBeVisible();
+    await reader.getByRole('button', { name: '原文', exact: true }).click();
+    await expect(reader.locator('.reader-map-node').first()).toContainText('TextView');
+    await reader.getByRole('button', { name: '缩小阅读器字号' }).click();
+    await expect(reader.locator('.reader-actions output')).toHaveText('50%');
+    await expect(reader.locator('.reader-record-summary')).toContainText(
+        '1 个窗口2 个节点本帧结构完整',
+    );
+    await reader.getByRole('tab', { name: '节点树', exact: true }).click();
+    await expect(reader.getByRole('textbox', { name: '搜索节点' })).toBeVisible();
+    await expect(reader.locator('.reader-node')).toHaveCount(2);
+    await reader.locator('.reader-node .node-select').first().click();
+    await expect(reader.locator('.reader-properties')).toContainText(
+        '"view_id": "dev.boundary.fixture:id/title"',
+    );
+    await expect(reader.locator('.reader-properties')).toContainText('"text_present": true');
+    await reader.getByRole('tab', { name: 'JSON', exact: true }).click();
+    await expect(reader.locator('.reader-body > pre')).toContainText('"root_status": "available"');
+    await reader.getByRole('tab', { name: '坐标', exact: true }).click();
+    await expect(reader.locator('.reader-record-note')).toHaveText(
+        '完整显示本帧结构字段 · 正文与输入内容未采集',
+    );
+    await expect(reader.locator('.width-control')).toContainText('屏幕宽度');
     await expect(panel.locator('.floating-heading-meta')).toHaveText('截图 #1');
+    await expect(panel.locator('.viewer-live-dot')).toBeVisible();
+    await expect(panel.locator('.width-control')).toHaveCount(0);
+    await expect(panel.locator('.floating-heading-title strong')).toHaveCSS(
+        'color',
+        'rgb(255, 61, 67)',
+    );
     await expect.poll(() => image.evaluate((el) => el.naturalWidth)).toBe(360);
     expect((await panel.boundingBox()).width).toBe(300);
     const stage = panel.locator('.live-screenshot-stage');
+    await expect(stage).toHaveCSS('background-color', 'rgb(48, 48, 48)');
     const initialHeight = (await stage.boundingBox()).height;
     expect(initialHeight).toBeGreaterThan(600);
     await expect(panel.getByRole('button', { name: '刷新上报截图' })).toHaveCount(0);

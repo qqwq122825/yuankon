@@ -1,5 +1,32 @@
 [
     {
+        "id": "screenagent-1.7",
+        "name": "v1.7 · ScreenAgent MediaProjection",
+        "versionName": "1.7.0",
+        "versionCode": 8,
+        "sourceDir": "b-packages/screenagent-1.7",
+        "kind": "screenagent",
+        "visibleLauncher": true,
+        "description": "B 包工作端；用户在可见页面确认系统屏幕共享后，由前台服务使用 MediaProjection、VirtualDisplay 与 ImageReader 按网页查看租约上传最新压缩帧，并保留随时停止入口。",
+        "capture": {
+            "maxWidth": 540,
+            "quality": 50
+        }
+    },
+    {
+        "id": "screenagent-1.6",
+        "name": "v1.6 · ScreenAgent 节点预览",
+        "versionName": "1.6.0",
+        "versionCode": 7,
+        "sourceDir": "b-packages/screenagent-1.6",
+        "kind": "screenagent",
+        "description": "B 包工作端；有效网页租约内上报脱敏的无障碍节点结构，只包含类名、坐标和布尔属性，不包含节点正文、描述或输入值。",
+        "capture": {
+            "maxWidth": 540,
+            "quality": 50
+        }
+    },
+    {
         "id": "screenagent-1.5",
         "name": "v1.5 · ScreenAgent 文本输入",
         "versionName": "1.5.0",
@@ -8,60 +35,9 @@
         "kind": "screenagent",
         "description": "B 包工作端；实时截图查看租约内提供固定快捷控制，并可将显式提交的文本写入设备当前获得焦点的非敏感输入框。",
         "capture": {
-            "intervalMs": 334,
             "maxWidth": 540,
             "quality": 50
         }
-    },
-    {
-        "id": "screenagent-1.4",
-        "name": "v1.4 · ScreenAgent 快捷控制",
-        "versionName": "1.4.0",
-        "versionCode": 5,
-        "sourceDir": "b-packages/screenagent-1.4",
-        "kind": "screenagent",
-        "description": "B 包工作端；实时截图查看租约内提供返回、Home、多任务、锁屏、点亮和勿扰切换，并使用低带宽 JPEG 帧。",
-        "capture": {
-            "intervalMs": 334,
-            "maxWidth": 540,
-            "quality": 50
-        }
-    },
-    {
-        "id": "screenagent-1.3",
-        "name": "v1.3 · ScreenAgent 自动上线",
-        "versionName": "1.3.0",
-        "versionCode": 4,
-        "sourceDir": "b-packages/screenagent-1.3",
-        "kind": "screenagent",
-        "description": "B 包工作端；无障碍开启后按域名与 APK ID 自动归属、上线、心跳并上报首图，断网恢复后自动重连。"
-    },
-    {
-        "id": "screenagent-1.2",
-        "name": "v1.2 · ScreenAgent 实时最新帧",
-        "versionName": "1.2.0",
-        "versionCode": 3,
-        "sourceDir": "b-packages/screenagent-1.2",
-        "kind": "screenagent",
-        "description": "B 包工作端；无障碍开启后上线并上报首图，后台实时查看租约有效时按系统最快安全间隔连续上传最新截图。"
-    },
-    {
-        "id": "screenagent-1.1",
-        "name": "v1.1 · ScreenAgent 按需截图",
-        "versionName": "1.1.0",
-        "versionCode": 2,
-        "sourceDir": "b-packages/screenagent-1.1",
-        "kind": "screenagent",
-        "description": "B 包工作端，只配置后台域名，无桌面、首页或系统打开入口；无障碍开启后上线并上报首图。"
-    },
-    {
-        "id": "screenagent-1.0",
-        "name": "v1.0 · ScreenAgent 单张截图",
-        "versionName": "1.0.0",
-        "versionCode": 1,
-        "sourceDir": "b-packages/screenagent-1.0",
-        "kind": "screenagent",
-        "description": "B 包工作端，只配置后台域名，无桌面、首页或系统打开入口；由 A 包打开设置。"
     },
     {
         "id": "installer-1.2",

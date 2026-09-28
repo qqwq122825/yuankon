@@ -286,10 +286,11 @@ class BoundaryAccessibilityService : AccessibilityService() {
     private fun leaseValid(viewerId: String?): Boolean =
         !viewerId.isNullOrBlank() && (leases[viewerId] ?: 0L) > SystemClock.elapsedRealtime()
 
-    private fun screenshotIntervalMs(): Long {
-        val platformMinimum =
-            if (Build.VERSION.SDK_INT == Build.VERSION_CODES.R) 1001L else 334L
-        return AgentConfig.get(this).captureIntervalMs.coerceAtLeast(platformMinimum)
+    private fun screenshotRateLimitRetryMs(errorCode: Int): Long {
+        if (errorCode != ERROR_TAKE_SCREENSHOT_INTERVAL_TIME_SHORT) return 500L
+        if (Build.VERSION.SDK_INT != Build.VERSION_CODES.R) return 50L
+        return (lastScreenshotRequestAt + 1001L - SystemClock.elapsedRealtime())
+            .coerceAtLeast(25L)
     }
 
     private fun streamActive(commandId: String, viewerId: String): Boolean =
@@ -352,15 +353,8 @@ class BoundaryAccessibilityService : AccessibilityService() {
             releaseViewerFrame(generation)
             return
         }
-        val now = SystemClock.elapsedRealtime()
-        val waitMs = (lastScreenshotRequestAt + screenshotIntervalMs() - now).coerceAtLeast(0L)
-        if (waitMs > 0) {
-            main.postDelayed(
-                { takeAndUploadViewer(generation, uploadId, commandId, viewerId) },
-                waitMs
-            )
-            return
-        }
+        // The successful path is completion-driven: request the next screenshot immediately after
+        // the preceding upload succeeds. Only a platform rate-limit rejection gets a delayed retry.
         lastScreenshotRequestAt = SystemClock.elapsedRealtime()
         takeScreenshot(
             Display.DEFAULT_DISPLAY,
@@ -406,9 +400,7 @@ class BoundaryAccessibilityService : AccessibilityService() {
                         viewerId,
                         "failed",
                         "screenshot_error_$errorCode",
-                        if (errorCode == ERROR_TAKE_SCREENSHOT_INTERVAL_TIME_SHORT)
-                            screenshotIntervalMs()
-                        else 500
+                        screenshotRateLimitRetryMs(errorCode)
                     )
                 }
             }

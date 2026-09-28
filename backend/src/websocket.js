@@ -24,7 +24,7 @@ export function attachWebSockets(
     });
     const devices = new WebSocketServer({
         noServer: true,
-        maxPayload: 16 * 1024,
+        maxPayload: 128 * 1024,
         perMessageDeflate: false,
     });
     const connections = new Map();
@@ -204,6 +204,7 @@ export function attachWebSockets(
                     'SCREENSHOT_NOW',
                     'DEVICE_ACTION',
                     'capture_viewer_lease',
+                    'accessibility_snapshot',
                 ],
             },
         });
@@ -417,6 +418,51 @@ export function attachWebSockets(
                     await ingress.status(managed, { ...(raw.data || {}), deviceId: id });
                     await store.audit('device_heartbeat', 'device', id, size);
                     send(ws, { type: 'status_ack', timestamp: Date.now() });
+                    return;
+                }
+                if (raw.type === 'accessibility_snapshot') {
+                    const envelope = z
+                        .object({
+                            protocol: z.literal('boundary-node-v2'),
+                            type: z.literal('accessibility_snapshot'),
+                            sessionId: deviceIdSchema,
+                            apkId: z.string().max(64).optional(),
+                            timestamp: z.number().int().optional(),
+                            data: z
+                                .object({
+                                    viewerId: z.string().uuid(),
+                                    payload: z.unknown(),
+                                })
+                                .strict(),
+                        })
+                        .strict()
+                        .parse(raw);
+                    if (
+                        envelope.sessionId !== id ||
+                        (envelope.apkId && envelope.apkId !== managed.apk_id)
+                    )
+                        throw fail(403, 'identity_mismatch');
+                    const snapshot = await ingress.receiveAccessibilitySnapshot(
+                        managed,
+                        envelope.data.viewerId,
+                        envelope.data.payload,
+                    );
+                    publishSubscribers(id, {
+                        type: 'accessibility_snapshot_ready',
+                        sessionId: id,
+                        data: {
+                            snapshotId: snapshot.id,
+                            viewerId: snapshot.viewerId,
+                            capturedAt: snapshot.captured_at,
+                            nodeCount: snapshot.node_count,
+                            windowCount: snapshot.window_count,
+                        },
+                        timestamp: Date.now(),
+                    });
+                    send(ws, {
+                        type: 'accessibility_snapshot_ack',
+                        data: { snapshotId: snapshot.id, viewerId: snapshot.viewerId },
+                    });
                     return;
                 }
                 if (raw.type === 'command_ack' || raw.type === 'screenshot_result') {

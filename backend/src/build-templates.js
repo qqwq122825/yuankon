@@ -21,10 +21,11 @@ export const templateSchema = z
             .string()
             .regex(/^[a-zA-Z0-9_-][a-zA-Z0-9_.-]*(?:\/[a-zA-Z0-9_-][a-zA-Z0-9_.-]*)*$/),
         kind: z.enum(['browser', 'screenagent', 'installer']),
+        visibleLauncher: z.boolean().optional().default(false),
         description: text(300),
         capture: z
             .object({
-                intervalMs: z.number().int().min(334).max(5000),
+                intervalMs: z.number().int().min(334).max(5000).optional(),
                 maxWidth: z.number().int().min(320).max(1080),
                 quality: z.number().int().min(30).max(90),
             })

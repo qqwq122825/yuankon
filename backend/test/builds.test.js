@@ -91,7 +91,7 @@ async function call(url, body, credential = token, method = body ? 'POST' : 'GET
     return { status: response.status, body: value };
 }
 const input = (overrides = {}) => ({
-    templateId: 'screenagent-1.5',
+    templateId: 'screenagent-1.7',
     domain: 'local',
     appName: 'Test "Name" & <test>',
     apkId: owner?.apkId,
@@ -115,13 +115,10 @@ test('catalog/build submission require account authentication and reject device 
         401,
     );
     const catalog = await call('/api/build-templates');
-    assert.equal(catalog.body.templates.length, 10);
+    assert.equal(catalog.body.templates.length, 7);
     assert.deepEqual(
         catalog.body.templates.map((template) => template.kind),
         [
-            'screenagent',
-            'screenagent',
-            'screenagent',
             'screenagent',
             'screenagent',
             'screenagent',
@@ -134,18 +131,17 @@ test('catalog/build submission require account authentication and reject device 
     assert.deepEqual(
         catalog.body.templates.map((template) => template.sourceDir),
         [
+            'b-packages/screenagent-1.7',
+            'b-packages/screenagent-1.6',
             'b-packages/screenagent-1.5',
-            'b-packages/screenagent-1.4',
-            'b-packages/screenagent-1.3',
-            'b-packages/screenagent-1.2',
-            'b-packages/screenagent-1.1',
-            'b-packages/screenagent-1.0',
             'a-packages/installer-1.2',
             'a-packages/installer-1.1',
             'a-packages/installer-1.0',
             'standalone/browser-1.0',
         ],
     );
+    assert.equal(catalog.body.templates[0].visibleLauncher, true);
+    assert.equal(catalog.body.templates[1].visibleLauncher, false);
     assert.equal(catalog.body.worker.ready, true);
 });
 test('build inputs reject scripts, missing aliases, arbitrary templates, credential URLs and invalid package segments', async () => {
@@ -524,9 +520,8 @@ test('source copies encode user values as XML/JSON without editing template code
             assert.ok(!assets.token);
             if (t.kind === 'screenagent') {
                 assert.ok(!Object.hasOwn(assets, 'webUrl'));
-                if (['screenagent-1.4', 'screenagent-1.5'].includes(t.id))
+                if (['screenagent-1.7', 'screenagent-1.6', 'screenagent-1.5'].includes(t.id))
                     assert.deepEqual(assets.capture, {
-                        intervalMs: 334,
                         maxWidth: 540,
                         quality: 50,
                     });
@@ -545,7 +540,7 @@ test('source copies encode user values as XML/JSON without editing template code
             original,
         );
     }
-    await symlink(path.join(dir, 'screenagent-1.0'), path.join(dir, 'evil-link'));
+    await symlink(path.join(dir, 'screenagent-1.7'), path.join(dir, 'evil-link'));
     await assert.rejects(() =>
         copySource(path.join(dir, 'evil-link'), path.join(dir, 'link-copy')),
     );

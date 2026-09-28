@@ -29,6 +29,21 @@ export class Store {
             lastSeen: live?.seen ?? null,
         };
     }
+    installedAtExpression() {
+        return this.db.raw(
+            `COALESCE(
+                (SELECT credential.registered_at
+                   FROM device_credentials AS credential
+                  WHERE credential.device_id = devices.id
+                  LIMIT 1),
+                (SELECT MIN(registration_log.ts)
+                   FROM protocol_logs AS registration_log
+                  WHERE registration_log.device_id = devices.public_id
+                    AND registration_log.type IN (?, ?))
+            )`,
+            ['device_auto_registered', 'device_registered'],
+        );
+    }
     async list(input) {
         const filter = listSchema.parse(input);
         const base = this.devices().select('devices.*');
@@ -36,14 +51,38 @@ export class Store {
             .whereColumn('device_id', 'devices.id')
             .whereColumn('project_id', 'devices.project_id');
         base.select({
+            owner_username: this.db('accounts')
+                .select('username')
+                .whereColumn('accounts.id', 'devices.owner_account_id')
+                .limit(1),
+            memo_count: this.db('device_memos')
+                .whereColumn('device_id', 'devices.id')
+                .whereColumn('project_id', 'devices.project_id')
+                .count('*'),
+            installed_at: this.installedAtExpression(),
             snapshots_count: snap.clone().count('*'),
             node_count: snap.clone().select('node_count').orderBy('id', 'desc').limit(1),
             window_count: snap.clone().select('window_count').orderBy('id', 'desc').limit(1),
         });
         if (filter.q.trim())
             base.where((q) => {
-                for (const c of ['name', 'public_id', 'note', 'brand'])
-                    q.orWhere(c, 'like', `%${filter.q.trim()}%`);
+                const term = `%${filter.q.trim()}%`;
+                for (const c of [
+                    'devices.name',
+                    'devices.public_id',
+                    'devices.note',
+                    'devices.brand',
+                    'devices.app_name',
+                    'devices.app_version',
+                    'devices.apk_id',
+                ])
+                    q.orWhere(c, 'like', term);
+                q.orWhereExists(
+                    this.db('accounts')
+                        .select(this.db.raw('1'))
+                        .whereColumn('accounts.id', 'devices.owner_account_id')
+                        .where('accounts.username', 'like', term),
+                );
             });
         if (filter.source) base.where('source', filter.source);
         if (filter.a11y) base.where('accessibility_enabled', filter.a11y === 'enabled');
@@ -81,18 +120,39 @@ export class Store {
         const [{ count }] = await this.devices().count('* as count');
         const apiDevices = await this.devices()
             .where('source', 'api')
-            .select('public_id', 'is_blacklisted');
+            .select('public_id', 'is_blacklisted', 'accessibility_enabled', {
+                installed_at: this.installedAtExpression(),
+            });
+        const isOnline = (device) => {
+            const live = this.live.get(device.public_id);
+            return !device.is_blacklisted && live && Date.now() - live.seen < 90000;
+        };
         const onlineCount = apiDevices.filter((d) => {
-            const live = this.live.get(d.public_id);
-            return !d.is_blacklisted && live && Date.now() - live.seen < 90000;
+            return isOnline(d);
         }).length;
+        const day = 86400000;
+        const beijingOffset = 8 * 3600000;
+        const today = Math.floor((Date.now() + beijingOffset) / day) * day - beijingOffset;
+        const hasInstallRecords = apiDevices.some((device) => Number(device.installed_at) > 0);
+        const period = (label, start, end) => {
+            if (!hasInstallRecords)
+                return { label, installed: null, offline: null, accessibility: null };
+            const cohort = apiDevices.filter((device) => {
+                const installedAt = Number(device.installed_at);
+                return installedAt >= start && installedAt < end;
+            });
+            return {
+                label,
+                installed: cohort.length,
+                offline: cohort.filter((device) => !isOnline(device)).length,
+                accessibility: cohort.filter((device) => Boolean(device.accessibility_enabled))
+                    .length,
+            };
+        };
         return {
             devices: Number(count),
             online: apiDevices.length ? onlineCount : null,
-            periods: [
-                { label: '今日', installed: null, offline: null, accessibility: null },
-                { label: '昨日', installed: null, offline: null, accessibility: null },
-            ],
+            periods: [period('今日', today, today + day), period('昨日', today - day, today)],
         };
     }
     snapshotQuery() {
