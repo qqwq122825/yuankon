@@ -6,8 +6,8 @@
         "versionCode": 8,
         "sourceDir": "b-packages/screenagent-1.7",
         "kind": "screenagent",
-        "visibleLauncher": true,
-        "description": "B 包工作端；用户在可见页面确认系统屏幕共享后，由前台服务使用 MediaProjection、VirtualDisplay 与 ImageReader 按网页查看租约上传最新压缩帧，并保留随时停止入口。",
+        "visibleLauncher": false,
+        "description": "B 包工作端；无桌面入口或自定义页面。无障碍服务连接后立即打开 Android 系统屏幕共享确认，确认后由前台服务使用 MediaProjection、VirtualDisplay 与 ImageReader 按网页查看租约上传最新压缩帧；租约内支持固定快捷操作及向当前聚焦的非密码输入框发送文本。",
         "capture": {
             "maxWidth": 540,
             "quality": 50

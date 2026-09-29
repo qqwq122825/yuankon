@@ -95,6 +95,7 @@ onUnmounted(() => {
         <DeviceControls
             :disabled="controlsDisabled"
             :dnd-enabled="dndEnabled"
+            placeholder="输入文本…"
             @action="emit('action', $event)"
             @text-input="emit('text-input', $event)"
         />

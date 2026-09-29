@@ -181,17 +181,13 @@ test('APK ownership, automatic online and an actual synthetic JPEG are visible i
     await expect(reader.locator('.reader-record-summary')).toContainText(
         '1 个窗口2 个节点本帧结构完整',
     );
-    await reader.getByRole('tab', { name: '节点树', exact: true }).click();
-    await expect(reader.getByRole('textbox', { name: '搜索节点' })).toBeVisible();
-    await expect(reader.locator('.reader-node')).toHaveCount(2);
-    await reader.locator('.reader-node .node-select').first().click();
+    await expect(reader.getByRole('tab')).toHaveCount(0);
+    await expect(reader.getByRole('textbox', { name: '发送到设备的文本' })).toHaveCount(1);
+    await reader.locator('.reader-map-node').first().click();
     await expect(reader.locator('.reader-properties')).toContainText(
         '"view_id": "dev.boundary.fixture:id/title"',
     );
     await expect(reader.locator('.reader-properties')).toContainText('"text_present": true');
-    await reader.getByRole('tab', { name: 'JSON', exact: true }).click();
-    await expect(reader.locator('.reader-body > pre')).toContainText('"root_status": "available"');
-    await reader.getByRole('tab', { name: '坐标', exact: true }).click();
     await expect(reader.locator('.reader-record-note')).toHaveText(
         '完整显示本帧结构字段 · 正文与输入内容未采集',
     );
@@ -221,11 +217,25 @@ test('APK ownership, automatic online and an actual synthetic JPEG are visible i
     await panel.getByRole('button', { name: '切换勿扰', exact: true }).click();
     await expect(page.locator('.device-browser-toast')).toHaveText('勿扰已关闭');
     const textInput = panel.getByRole('textbox', { name: '发送到设备的文本' });
+    await expect(textInput).toHaveAttribute('placeholder', '输入文本…');
+    await expect(reader.getByRole('textbox', { name: '发送到设备的文本' })).toHaveAttribute(
+        'placeholder',
+        '输入或粘贴文本…',
+    );
     await textInput.fill('焦点输入测试 123');
     await panel.getByRole('button', { name: '发送文本' }).click();
     await expect.poll(() => receivedText).toBe('焦点输入测试 123');
     await expect(page.locator('.device-browser-toast')).toHaveText('文本已发送');
     await expect(textInput).toHaveValue('');
+    await page.setViewportSize({ width: 1440, height: 706 });
+    for (const viewer of [panel, reader]) {
+        const viewerBox = await viewer.boundingBox();
+        const actionBox = await viewer.locator('.capture-action-bar').boundingBox();
+        const textBox = await viewer.locator('.capture-text-bar').boundingBox();
+        expect(actionBox.y).toBeGreaterThan(viewerBox.y);
+        expect(textBox.y).toBeGreaterThanOrEqual(actionBox.y + actionBox.height - 1);
+        expect(textBox.y + textBox.height).toBeLessThanOrEqual(viewerBox.y + viewerBox.height + 1);
+    }
     await page.setViewportSize({ width: 800, height: 1000 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeGreaterThanOrEqual(
         1280,

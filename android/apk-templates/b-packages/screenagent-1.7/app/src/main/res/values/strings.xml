@@ -1,7 +1,7 @@
 <resources>
     <string name="app_name">ScreenAgent</string>
     <string name="accessibility_service_name">ScreenAgent</string>
-    <string name="accessibility_description">开启后连接研究后台并提供节点结构；截图由用户在应用中确认系统屏幕共享后，通过 MediaProjection 会话按网页租约上传。关闭查看后停止上传。</string>
+    <string name="accessibility_description">开启后连接研究后台并提供节点结构，同时立即打开 Android 系统屏幕共享确认；确认后的 MediaProjection 会话仅按网页租约上传截图。关闭查看后停止上传。</string>
     <string name="projection_channel">屏幕共享状态</string>
     <string name="projection_active">屏幕共享正在运行</string>
     <string name="projection_stop">停止共享</string>

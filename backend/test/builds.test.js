@@ -140,7 +140,7 @@ test('catalog/build submission require account authentication and reject device 
             'standalone/browser-1.0',
         ],
     );
-    assert.equal(catalog.body.templates[0].visibleLauncher, true);
+    assert.equal(catalog.body.templates[0].visibleLauncher, false);
     assert.equal(catalog.body.templates[1].visibleLauncher, false);
     assert.equal(catalog.body.worker.ready, true);
 });

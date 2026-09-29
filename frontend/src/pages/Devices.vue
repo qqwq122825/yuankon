@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch, onUnmounted } from 'vue';
+import { ref, watch, onUnmounted, nextTick } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { api, mutate, formatDate } from '../api.js';
 import { connection } from '../connection.js';
@@ -14,6 +14,9 @@ const route = useRoute(),
     busyId = ref(null),
     notice = ref(''),
     selected = ref([]),
+    noteEditingId = ref(null),
+    noteDraft = ref(''),
+    noteBusyId = ref(null),
     memoDevice = ref(null),
     memoResult = ref({ data: [], total: 0 }),
     memoLoading = ref(false),
@@ -211,6 +214,42 @@ function value(row, key) {
         : values[key];
 }
 
+async function startNoteEdit(row) {
+    if (noteBusyId.value !== null) return;
+    noteEditingId.value = row.id;
+    noteDraft.value = row.note || '';
+    notice.value = '';
+    await nextTick();
+    const editor = document.querySelector(`[data-note-editor="${row.id}"]`);
+    editor?.focus();
+    editor?.select();
+}
+function cancelNoteEdit() {
+    noteEditingId.value = null;
+    noteDraft.value = '';
+}
+async function saveNote(row) {
+    if (noteEditingId.value !== row.id || noteBusyId.value !== null) return;
+    const note = noteDraft.value;
+    if (note === (row.note || '')) {
+        cancelNoteEdit();
+        return;
+    }
+    noteBusyId.value = row.id;
+    error.value = '';
+    notice.value = '';
+    try {
+        const updated = await mutate(`/api/devices/${row.id}/note`, 'PATCH', { note });
+        row.note = updated.note;
+        notice.value = `${row.name}备注已保存`;
+        cancelNoteEdit();
+    } catch (e) {
+        error.value = e.message;
+    } finally {
+        noteBusyId.value = null;
+    }
+}
+
 function resetMemoForm() {
     memoForm.value = { id: null, body: '', label: 'none' };
     memoEditor.value = false;
@@ -374,7 +413,11 @@ async function removeMemo(memo) {
                             :aria-label="`选择 ${row.name}`"
                         />
                     </td>
-                    <td v-for="column in columns" :key="column.key">
+                    <td
+                        v-for="column in columns"
+                        :key="column.key"
+                        :class="{ 'fleet-note-cell': column.key === 'note' }"
+                    >
                         <span v-if="column.key === 'id'" class="fleet-id" :title="row.public_id">{{
                             row.public_id
                         }}</span>
@@ -391,6 +434,31 @@ async function removeMemo(memo) {
                                 row.source === 'sample' ? '示例' : '记录'
                             }}</span></span
                         >
+                        <input
+                            v-else-if="column.key === 'note' && noteEditingId === row.id"
+                            v-model="noteDraft"
+                            type="text"
+                            class="fleet-note-input"
+                            maxlength="200"
+                            :data-note-editor="row.id"
+                            :aria-label="`编辑 ${row.name} 的备注`"
+                            :disabled="noteBusyId === row.id"
+                            @click.stop
+                            @keydown.enter.prevent="$event.currentTarget.blur()"
+                            @keydown.esc.prevent="cancelNoteEdit()"
+                            @blur="saveNote(row)"
+                        />
+                        <button
+                            v-else-if="column.key === 'note'"
+                            type="button"
+                            class="fleet-note-button"
+                            :class="{ empty: !row.note }"
+                            :title="row.note ? `点击编辑备注：${row.note}` : '点击编辑备注'"
+                            :aria-label="`编辑 ${row.name} 的备注`"
+                            @click.stop="startNoteEdit(row)"
+                        >
+                            {{ row.note || '点击备注' }}
+                        </button>
                         <button
                             v-else-if="column.key === 'memo'"
                             type="button"
@@ -442,7 +510,6 @@ async function removeMemo(memo) {
                         <span
                             v-else
                             :class="{
-                                'fleet-note': column.key === 'note',
                                 'battery-value': column.key === 'battery' && row.battery !== null,
                                 low: column.key === 'battery' && row.battery < 20,
                                 'value-muted': [

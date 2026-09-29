@@ -192,7 +192,7 @@ const off = onMessage((message) => {
                 : '实时画面已更新';
     }
     if (message.type === 'accessibility_snapshot_ready' && message.data?.viewerId === viewerId) {
-        captureState.value = `已收到 ${message.data.nodeCount} 个脱敏节点`;
+        captureState.value = `已收到 ${message.data.nodeCount} 个结构节点`;
         loadLiveNodes();
     }
 });
@@ -542,7 +542,7 @@ function choose(value) {
                         {{
                             data.device.source === 'api'
                                 ? liveNodeSnapshot
-                                    ? `实时记录 ${liveNodeSnapshot.node_count} 个结构节点，可查看坐标、节点树和完整 JSON 字段；正文未采集。`
+                                    ? `实时记录 ${liveNodeSnapshot.node_count} 个结构节点，默认按坐标预览；正文未采集。`
                                     : '打开后由设备在有效查看租约内上报节点结构记录。'
                                 : data.snapshot
                                   ? `当前快照 ${data.snapshot.node_count} 个节点，正文已剔除。`

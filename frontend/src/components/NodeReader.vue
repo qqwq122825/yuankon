@@ -9,20 +9,12 @@ const props = defineProps({
     dndEnabled: Boolean,
 });
 const emit = defineEmits(['action', 'text-input']);
-const mode = ref('map'),
-    scale = ref(55),
-    q = ref(''),
+const scale = ref(55),
     selected = ref(null),
-    collapsed = ref(new Set()),
     translated = ref(null),
     useTranslation = ref(false),
     busy = ref(false),
     error = ref('');
-const tabs = [
-    ['map', '坐标'],
-    ['tree', '节点树'],
-    ['json', 'JSON'],
-];
 const live = computed(() => props.snapshot?.source === 'live');
 const nodes = computed(() =>
     (props.snapshot?.payload?.windows || []).flatMap((window) =>
@@ -32,25 +24,6 @@ const nodes = computed(() =>
             window: window.id,
         })),
     ),
-);
-const filtered = computed(() =>
-    nodes.value.filter((node) => {
-        if (q.value)
-            return `${node.class_name} ${node.view_id || ''} ${node.id}`
-                .toLowerCase()
-                .includes(q.value.toLowerCase());
-        let parent = node.parent_id;
-        const map = new Map(
-            nodes.value
-                .filter((item) => item.window === node.window)
-                .map((item) => [item.id, item]),
-        );
-        while (parent) {
-            if (collapsed.value.has(`${node.window}:${parent}`)) return false;
-            parent = map.get(parent)?.parent_id;
-        }
-        return true;
-    }),
 );
 const display = computed(() => props.snapshot?.payload?.display || { width: 1, height: 1 });
 const windows = computed(() => props.snapshot?.payload?.windows || []);
@@ -66,9 +39,6 @@ watch(
             selected.value = null;
             translated.value = null;
             useTranslation.value = live.value;
-            collapsed.value = new Set();
-            mode.value = 'map';
-            q.value = '';
             return;
         }
         if (selected.value)
@@ -102,11 +72,6 @@ function nodeStyle(node) {
         zIndex: Math.min(40, (node.depth || 0) + 1),
     };
 }
-function toggle(node) {
-    const next = new Set(collapsed.value);
-    next.has(node.key) ? next.delete(node.key) : next.add(node.key);
-    collapsed.value = next;
-}
 function nodeRecord(node) {
     const { key, ...record } = node;
     return record;
@@ -133,17 +98,6 @@ async function translate() {
     } finally {
         busy.value = false;
     }
-}
-function tabKey(event, index) {
-    let next;
-    if (event.key === 'ArrowRight') next = (index + 1) % tabs.length;
-    else if (event.key === 'ArrowLeft') next = (index + tabs.length - 1) % tabs.length;
-    else if (event.key === 'Home') next = 0;
-    else if (event.key === 'End') next = tabs.length - 1;
-    else return;
-    event.preventDefault();
-    mode.value = tabs[next][0];
-    event.currentTarget.parentNode.children[next].focus();
 }
 </script>
 
@@ -177,27 +131,6 @@ function tabKey(event, index) {
             ><RouterLink v-else to="/settings/translation">设置</RouterLink>
         </div>
         <p v-if="error" role="alert" class="reader-error">{{ error }}</p>
-        <div class="reader-tabs" role="tablist" aria-label="阅读器视图">
-            <button
-                v-for="([key, tabLabel], index) in tabs"
-                :key="key"
-                role="tab"
-                :aria-selected="mode === key"
-                :tabindex="mode === key ? 0 : -1"
-                :class="{ active: mode === key }"
-                @click="mode = key"
-                @keydown="tabKey($event, index)"
-            >
-                {{ tabLabel }}
-            </button>
-        </div>
-        <input
-            v-if="mode !== 'json'"
-            v-model="q"
-            class="form-control reader-search"
-            aria-label="搜索节点"
-            placeholder="搜索节点 ID / 类名 / View ID"
-        />
         <div v-if="live" class="reader-record-summary">
             <span>{{ windows.length }} 个窗口</span><span>{{ nodes.length }} 个节点</span
             ><strong v-if="diagnostics.truncated">设备遍历已截断</strong
@@ -205,14 +138,13 @@ function tabKey(event, index) {
         </div>
         <div class="reader-body" :style="{ '--reader-size': `${(16 * scale) / 100}px` }">
             <div
-                v-if="mode === 'map'"
                 class="reader-map-stage"
                 :style="{ aspectRatio: `${display.width} / ${display.height}` }"
                 role="img"
                 aria-label="无障碍节点坐标预览"
             >
                 <div
-                    v-for="node in filtered"
+                    v-for="node in nodes"
                     :key="node.key"
                     class="reader-map-node"
                     :class="{ selected: selected?.key === node.key }"
@@ -225,32 +157,7 @@ function tabKey(event, index) {
                     <span>{{ label(node) }}</span>
                 </div>
             </div>
-            <div v-else-if="mode === 'tree'">
-                <div
-                    v-for="node in filtered"
-                    :key="node.key"
-                    class="reader-node"
-                    :style="{ paddingLeft: `${8 + node.depth * 8}px` }"
-                >
-                    <button
-                        v-if="
-                            nodes.some((n) => n.window === node.window && n.parent_id === node.id)
-                        "
-                        class="node-toggle"
-                        :aria-label="`折叠或展开 ${node.id}`"
-                        :aria-expanded="!collapsed.has(node.key)"
-                        @click="toggle(node)"
-                    >
-                        {{ collapsed.has(node.key) ? '▸' : '▾' }}</button
-                    ><button class="node-select" @click="selected = node">
-                        <span
-                            >{{ label(node) }}<small>{{ node.view_id || node.id }}</small></span
-                        >
-                    </button>
-                </div>
-            </div>
-            <pre v-else>{{ JSON.stringify(snapshot.payload, null, 2) }}</pre>
-            <div v-if="selected && mode !== 'json'" class="reader-properties">
+            <div v-if="selected" class="reader-properties">
                 <strong>节点记录 {{ selected.id }}</strong>
                 <pre>{{ JSON.stringify(nodeRecord(selected), null, 2) }}</pre>
             </div>
@@ -273,5 +180,13 @@ function tabKey(event, index) {
             }}
         </footer>
     </div>
-    <div v-else class="reader-pending" role="status">正在等待设备上报脱敏节点结构…</div>
+    <div v-else class="node-reader node-reader-live node-reader-pending-shell">
+        <div class="reader-pending" role="status">正在等待设备上报节点结构…</div>
+        <DeviceControls
+            :disabled="controlsDisabled"
+            :dnd-enabled="dndEnabled"
+            @action="emit('action', $event)"
+            @text-input="emit('text-input', $event)"
+        />
+    </div>
 </template>

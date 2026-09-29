@@ -669,13 +669,48 @@
     color: var(--lab-ink);
     font-size: 11px;
 }
-.fleet-note {
+.fleet-note-cell {
+    padding: 0 9px !important;
+}
+.fleet-note-button {
     display: block;
-    max-width: 112px;
+    width: 100%;
+    max-width: 162px;
+    min-height: 32px;
+    padding: 5px 0;
+    border: 0;
+    border-radius: 5px;
+    background: transparent;
     overflow: hidden;
     text-overflow: ellipsis;
+    text-align: left;
+    white-space: nowrap;
+    color: #50586b;
+    font: inherit;
+    cursor: text;
+}
+.fleet-note-button.empty {
     color: #858a9a;
-    font-size: 10px;
+}
+.fleet-note-button:hover,
+.fleet-note-button:focus-visible {
+    padding-left: 7px;
+    color: #5268ef;
+    background: #f4f6ff;
+    outline: 1px solid #dce3ff;
+}
+.fleet-note-input {
+    width: 100%;
+    max-width: 162px;
+    height: 32px;
+    padding: 5px 7px;
+    color: #30394c;
+    background: #fff;
+    border: 1px solid #7185f5;
+    border-radius: 5px;
+    box-shadow: 0 0 0 2px #6a7df320;
+    font: inherit;
+    outline: 0;
 }
 .memo-count-button {
     min-width: 28px;

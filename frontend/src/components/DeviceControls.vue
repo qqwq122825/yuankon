@@ -1,7 +1,11 @@
 <script setup>
 import { ref } from 'vue';
 
-const props = defineProps({ disabled: Boolean, dndEnabled: Boolean });
+const props = defineProps({
+    disabled: Boolean,
+    dndEnabled: Boolean,
+    placeholder: { type: String, default: '输入或粘贴文本…' },
+});
 const emit = defineEmits(['action', 'text-input']);
 const inputText = ref('');
 const actions = [
@@ -52,7 +56,7 @@ function sendText() {
             maxlength="500"
             :disabled="disabled"
             aria-label="发送到设备的文本"
-            placeholder="输入文本…"
+            :placeholder="placeholder"
         />
         <button type="submit" :disabled="disabled || !inputText.trim()" aria-label="发送文本">
             发送

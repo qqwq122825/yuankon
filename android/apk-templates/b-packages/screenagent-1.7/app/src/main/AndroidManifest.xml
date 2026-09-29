@@ -22,17 +22,10 @@
 
         <activity
             android:name="com.zaka.screenagent.ProjectionActivity"
-            android:exported="true"
-            android:launchMode="singleTop">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="org.boundarylab.screenagent.PROJECTION_CONSENT" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-        </activity>
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:theme="@style/Theme.ScreenAgent.PermissionBridge" />
 
         <service
             android:name="com.zaka.screenagent.capture.ProjectionCaptureService"

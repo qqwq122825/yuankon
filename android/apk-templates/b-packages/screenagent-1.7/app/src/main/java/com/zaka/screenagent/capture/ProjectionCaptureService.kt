@@ -11,7 +11,6 @@ import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
-import com.zaka.screenagent.ProjectionActivity
 import com.zaka.screenagent.R
 import com.zaka.screenagent.accessibility.BoundaryAccessibilityService
 import java.util.concurrent.Executors
@@ -67,12 +66,6 @@ class ProjectionCaptureService : Service() {
                     NotificationManager.IMPORTANCE_LOW
                 )
             )
-        val open = PendingIntent.getActivity(
-            this,
-            1,
-            Intent(this, ProjectionActivity::class.java),
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
         val stop = PendingIntent.getService(
             this,
             2,
@@ -83,7 +76,6 @@ class ProjectionCaptureService : Service() {
             .setSmallIcon(android.R.drawable.stat_sys_warning)
             .setContentTitle(getString(R.string.app_name))
             .setContentText(getString(R.string.projection_active))
-            .setContentIntent(open)
             .setOngoing(true)
             .addAction(0, getString(R.string.projection_stop), stop)
             .build()

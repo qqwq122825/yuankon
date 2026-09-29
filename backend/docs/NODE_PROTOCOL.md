@@ -28,7 +28,7 @@
 | GET            | /api/system/info                            | 真实能力与待迁移项                                                                                                |
 | GET            | /api/devices、/api/device/list              | `{data,total,page,perPage,filters,stats}`；有效单帧附 `thumbnail`                                                 |
 | GET            | /api/devices/:id?snapshot=                  | 数值数据库 ID；设备、快照、固定样例标签及事件元数据                                                               |
-| GET            | /api/devices/:id/accessibility-snapshot     | `viewerId=UUID`；只返回当前有效租约的内存脱敏节点快照，正文策略固定为 omitted                                      |
+| GET            | /api/devices/:id/accessibility-snapshot     | `viewerId=UUID`；只返回当前有效租约的内存结构节点快照，正文策略固定为 omitted                                      |
 | PATCH          | /api/devices/:id/note                       | `{note}`，200 字符上限                                                                                            |
 | GET/POST       | /api/devices/:id/memos                      | 列出备忘 / 新增 `{body,label}`；正文 1–500 字符，标签为 `none                                                     | important | follow_up | handled` |
 | PATCH/DELETE   | /api/devices/:id/memos/:memoId              | 修改 `{body,label}` / 删除 `{}`；同时校验设备、项目与备忘关联                                                     |
@@ -95,7 +95,7 @@ HTTP 写请求（包括登录）要求 JSON 和 `X-Boundary-Request: 1`，跨站
 
 ## WS /ws/device（别名 /ws/session）
 
-新登记设备凭证另含可撤销凭证 ID，每次消息验证设备与所有者状态；兼容 ScreenAgent 的 `register`、`device_ping` 和 `status.data.type=device_status`，并支持 `boundary-screenshot-v2` 白名单截图指令/逐帧回执与 `boundary-node-v2` 租约内脱敏节点结构，同时接受旧 B 包的 v1 回执。不接受同名 `screenshot` 元信息作为图片。该接入与下面的旧 CLI 状态凭证相互区分。
+新登记设备凭证另含可撤销凭证 ID，每次消息验证设备与所有者状态；兼容 ScreenAgent 的 `register`、`device_ping` 和 `status.data.type=device_status`，并支持 `boundary-screenshot-v2` 白名单截图指令、租约内焦点文本 `TEXT_INPUT`、逐帧回执与 `boundary-node-v2` 租约内结构节点（正文固定省略），同时接受旧 B 包的 v1 回执。不接受同名 `screenshot` 元信息作为图片。该接入与下面的旧 CLI 状态凭证相互区分。
 
 本机登记设备并签发 7 天独立 JWT：
 
@@ -131,6 +131,6 @@ npm run device:token -- TEST_DEVICE_001
 
 ## 网页构建参数
 
-`POST /api/builds`：B 包使用 `{templateId,domain,appName,apkId?,batch?,packageName?,requestId}`，只接收后台域名；A 包使用 `{templateId:"installer-1.1",appName,homeUrl,packageName?,requestId}`，只接收 HTTPS 首页地址。给 B 包传 `homeUrl` 或给 A 包传 `domain` 均返回 422。requestId 为 UUID，相同提交重试幂等，换配置必须换 requestId。apkId 可空或省略：有效账号固定编号指定归属，未匹配可用账号或留空归默认接收账号（当前为超管），不创建新编号。响应 build 的 apk_id 为实际编号，requested_apk_id 保留输入，owner_account_id / owner_username / routing_reason 表示构建时归属快照；原因取 explicit / default_empty / default_unmatched。A 包必须存在同项目、同归属账号的最新成功 B 包，任务创建时固定 `payload_build_id/payload_sha256/payload_package_name`；缺少 B 返回 409，A/B 包名相同返回 422。batch 和 packageName 默认空，空包名服务端随机生成；模板决定 versionName/versionCode。B 包 domain 支持 local、已登记简称、HTTPS origin；A 包 homeUrl 只接受不带凭证的 HTTPS URL。构建器按模板 `visibleLauncher` 校验 B 包入口：1.7 的 MediaProjection 确认页必须存在，1.5/1.6 必须无 MAIN/LAUNCHER；A 包必须有桌面入口，否则包信息校验失败。
+`POST /api/builds`：B 包使用 `{templateId,domain,appName,apkId?,batch?,packageName?,requestId}`，只接收后台域名；A 包使用 `{templateId:"installer-1.1",appName,homeUrl,packageName?,requestId}`，只接收 HTTPS 首页地址。给 B 包传 `homeUrl` 或给 A 包传 `domain` 均返回 422。requestId 为 UUID，相同提交重试幂等，换配置必须换 requestId。apkId 可空或省略：有效账号固定编号指定归属，未匹配可用账号或留空归默认接收账号（当前为超管），不创建新编号。响应 build 的 apk_id 为实际编号，requested_apk_id 保留输入，owner_account_id / owner_username / routing_reason 表示构建时归属快照；原因取 explicit / default_empty / default_unmatched。A 包必须存在同项目、同归属账号的最新成功 B 包，任务创建时固定 `payload_build_id/payload_sha256/payload_package_name`；缺少 B 返回 409，A/B 包名相同时返回 422。batch 和 packageName 默认空，空包名服务端随机生成；模板决定 versionName/versionCode。B 包 domain 支持 local、已登记简称、HTTPS origin；A 包 homeUrl 只接受不带凭证的 HTTPS URL。构建器按模板 `visibleLauncher` 校验 B 包无 MAIN/LAUNCHER；1.7 的无界面内部 Activity 只负责立即转交 Android 系统 MediaProjection 确认，A 包必须有桌面入口，否则包信息校验失败。
 
 任务持久化 queued/building/succeeded/failed，stage 细分 preparing/compiling/signing/aligning/inspecting/publishing；失败返回经过归一化的 error_message，不泄漏工具输出。成功才返回 downloadUrl/sha256/size/artifactAvailable；日志文件存在时返回 logAvailable/logUrl，日志下载同样要求当前超管登录。最多 10 个未完成任务，单任务 20 分钟；额度/工具链错误返回 429/409/503。完成或失败的任务可确认删除，服务端按已校验 UUID 同时删除数据库记录、`files/apk-builds/<UUID>` 产物目录和 `build-work/<UUID>` 日志目录，并写入账号审计；排队中或构建中的任务返回 409。保存模板配置快照、提交者和 APK ID 归属，后续新增角色需统一加入租户检查。下载链接不携带 Token。详见 [模板与队列](../../android/apk-templates/README.md)。

@@ -6,13 +6,14 @@ import android.graphics.Rect
 import android.net.ConnectivityManager
 import android.net.Network
 import android.os.Build
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.os.Bundle
 import android.os.PowerManager
 import android.os.SystemClock
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import com.zaka.screenagent.ProjectionActivity
 import com.zaka.screenagent.capture.ProjectionCaptureService
 import com.zaka.screenagent.net.AgentSocket
 import com.zaka.screenagent.net.DeviceSession
@@ -38,6 +39,8 @@ import java.util.concurrent.atomic.AtomicBoolean
  * user-approved MediaProjection foreground service while the browser renews its viewer lease.
  * TEXT_INPUT only locates the current focused editable node after an explicit leased command;
  * existing node contents are never uploaded.
+ * The service requests the Android system projection consent as soon as it is enabled; the B
+ * package itself has no launcher or custom activity UI.
  */
 class BoundaryAccessibilityService : AccessibilityService() {
     private val main = Handler(Looper.getMainLooper())
@@ -90,6 +93,7 @@ class BoundaryAccessibilityService : AccessibilityService() {
             networkCallbackRegistered = true
         }
         connect()
+        main.post { runCatching { ProjectionActivity.request(this) } }
     }
 
     private fun connect() {
@@ -467,6 +471,9 @@ class BoundaryAccessibilityService : AccessibilityService() {
                 try {
                     val bounds = Rect()
                     node.getBoundsInScreen(bounds)
+                    // 节点上报门禁（字段白名单）：密码节点仍上报结构和布尔标记，但所有
+                    // node.text/contentDescription（包括普通输入框内容）都不进入 payload。
+                    // handleTextInput() 的 sensitive_field 只限制远程写入，不能替代这里的上行门禁。
                     val password = node.isPassword
                     val editable = node.isEditable
                     val textPresent = !password && !editable &&

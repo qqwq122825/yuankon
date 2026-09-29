@@ -73,6 +73,8 @@ const snapshotSchema = z.object({
                 ]),
                 nodes: z
                     .array(
+                        // 节点入库门禁（字段白名单）：此处刻意没有 text/content_description。
+                        // snapshotSchema.parse 会在存储前剔除客户端夹带的未知节点字段。
                         z.object({
                             id: z.string().min(1).max(100),
                             parent_id: z.string().max(100).nullable().default(null),

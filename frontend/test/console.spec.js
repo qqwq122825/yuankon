@@ -31,6 +31,29 @@ test('list, server sorting, query preservation, pagination, empty state and keyb
     await expect(page.locator('.fleet-table thead')).toContainText('AI');
     await expect(page.locator('.fleet-table thead')).toContainText('安装时间');
     await expect(page.locator('tbody tr').first()).toContainText('—');
+    const noteButton = page.getByRole('button', {
+        name: '编辑 测试设备 1 的备注',
+        exact: true,
+    });
+    await expect(noteButton).toHaveText('合成示例');
+    await noteButton.click();
+    await expect(page).toHaveURL('/');
+    const noteEditor = page.getByRole('textbox', {
+        name: '编辑 测试设备 1 的备注',
+        exact: true,
+    });
+    await expect(noteEditor).toBeFocused();
+    await page.screenshot({ path: 'test-results/device-note-inline-editor.png', fullPage: true });
+    await noteEditor.fill('');
+    await noteEditor.press('Enter');
+    await expect(page.getByRole('status')).toHaveText('测试设备 1备注已保存');
+    await expect(noteButton).toHaveText('点击备注');
+    await noteButton.click();
+    await noteEditor.fill('列表内联备注');
+    await noteEditor.press('Enter');
+    await expect(page.getByRole('status')).toHaveText('测试设备 1备注已保存');
+    await expect(noteButton).toHaveText('列表内联备注');
+    await expect(page).toHaveURL('/');
     await page.getByRole('button', { name: '查看 测试设备 1 的备忘（0 条）', exact: true }).click();
     const memos = page.getByRole('dialog', { name: '备忘录 — DEMO-001' });
     await expect(memos).toContainText('共 0 条');
@@ -116,14 +139,10 @@ test('detail saves notes, keeps screenshots at 300px, resizes reader, drags and 
     await reader.getByRole('button', { name: '放大阅读器', exact: true }).click();
     expect((await reader.boundingBox()).width).toBe(320);
     expect((await shot.boundingBox()).width).toBe(300);
-    await reader.getByRole('tab', { name: '坐标', exact: true }).focus();
-    await page.keyboard.press('ArrowRight');
-    await expect(reader.getByRole('tab', { name: '节点树', exact: true })).toHaveAttribute(
-        'aria-selected',
-        'true',
-    );
-    await reader.getByRole('textbox', { name: '搜索节点' }).fill('title');
-    await expect(reader.locator('.reader-node')).toHaveCount(2);
+    await expect(reader.getByRole('tab')).toHaveCount(0);
+    await expect(reader.getByRole('textbox')).toHaveCount(0);
+    await expect(reader.locator('.reader-map-stage')).toBeVisible();
+    await expect(reader.locator('.reader-map-node')).toHaveCount(19);
     const heading = shot.locator('header'),
         box = await heading.boundingBox();
     await page.mouse.move(box.x + 50, box.y + 15);

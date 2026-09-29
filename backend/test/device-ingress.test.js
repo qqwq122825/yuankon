@@ -574,6 +574,18 @@ test('accessibility first thumbnail and leased panel screenshot use the same bou
             type: 'command',
             sessionId: d.deviceId,
             data: {
+                command: 'TEXT_INPUT',
+                commandId: '00000000-0000-4000-8000-000000000445',
+                params: { viewerId, text: 'x'.repeat(501) },
+            },
+        }),
+    );
+    assert.equal((await panelNext('error')).code, 'invalid_message');
+    panel.send(
+        JSON.stringify({
+            type: 'command',
+            sessionId: d.deviceId,
+            data: {
                 command: 'DEVICE_ACTION',
                 commandId: '00000000-0000-4000-8000-000000000555',
                 params: { viewerId, action: 'TEXT_INPUT' },

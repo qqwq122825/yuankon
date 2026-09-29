@@ -1,6 +1,6 @@
 # 实时最新帧协议 · boundary-screenshot-v2
 
-日期：2026-09-29。**已实现于 Node、Vue 和 B 包 `screenagent-1.7`。** 1.0–1.4 已删除，1.5/1.6 作为兼容模板保留。本协议负责无障碍开启后的自动上线、用户确认 MediaProjection 后的首图、查看租约有效期间的串行最新帧、六个固定快捷操作，以及显式提交到当前焦点输入框的文本。截图通道不接受坐标、手势、脚本、节点正文、音频或视频流；1.7 的脱敏结构预览由独立 `boundary-node-v2` 处理。
+日期：2026-09-29。**已实现于 Node、Vue 和 B 包 `screenagent-1.7`。** 1.0–1.4 已删除，1.5/1.6 作为兼容模板保留。本协议负责无障碍开启后的自动上线、用户确认 MediaProjection 后的首图、查看租约有效期间的串行最新帧、六个固定快捷操作，以及显式提交到当前焦点输入框的文本。截图通道不接受坐标、手势、脚本、节点正文、音频或视频流；1.7 的结构预览由独立 `boundary-node-v2` 处理。
 
 ## 1. 取图时机
 
@@ -8,7 +8,7 @@
 
 1. 用户在 Android 系统设置显式开启与构建时 B 包 APP 名称相同的无障碍服务；构建器同时写入应用名称和无障碍服务名称。
 2. B 包建立认证设备 WS，立即上报 `accessibilityAlive:true`，之后每 20 秒发送状态心跳；此时尚不读取屏幕。
-3. 用户打开 B 包 1.7，点击「开始屏幕共享」，系统通过 `MediaProjectionManager.createScreenCaptureIntent()` 显示本次共享确认。确认成功后启动 `mediaProjection` 类型前台服务，并在显示持续通知后调用 `getMediaProjection()`。
+3. 无障碍服务连接后，B 包 1.7 通过无自定义内容的内部 Activity 立即调用 `MediaProjectionManager.createScreenCaptureIntent()`，由 Android 系统显示本次共享确认。确认成功后启动 `mediaProjection` 类型前台服务，并在显示持续通知后调用 `getMediaProjection()`；B 包没有 MAIN/LAUNCHER 或业务页面。
 4. 客户端先注册 `MediaProjection.Callback`，再创建一个 `VirtualDisplay` 和 `ImageReader.newInstance(..., maxImages=2)`；无障碍配置保持 `canTakeScreenshot=false`。
 5. 设备申请 `{reason:"initial_accessibility"}` 的一次性上传许可；从 `ImageReader.acquireLatestImage()` 取得第一张非空帧并关闭 `Image`。JPEG 经解码、转正、去除元数据并重编码后，仅在有界内存保留最新一帧 5 分钟。
 
@@ -71,7 +71,7 @@
 
 ## 3. 焦点文本发送
 
-截图浮窗的文本框最多输入 500 个字符。用户点击「发送」后，Vue 在同一查看租约内发送：
+截图与阅读器浮窗各自保留一行文本框，最多输入 500 个字符。用户点击「发送」后，Vue 在同一查看租约内发送：
 
 ```json
 {
@@ -85,7 +85,7 @@
 }
 ```
 
-Node 校验登录面板、订阅、在线设备、文本长度和查看租约后转发；`command_dispatched`、设备回执与审计日志均不回显文本。B 包只在收到该指令时查找当前 `FOCUS_INPUT`，确认节点可编辑且不是密码字段，再调用 `ACTION_SET_TEXT`。无焦点、不可编辑、密码字段、空文本、超过 500 字符或租约失效都会拒绝，并仅返回固定 `reasonCode`。此指令不读取或上传输入框原有内容；节点预览是独立、受租约约束的脱敏结构通道。
+Node 校验登录面板、订阅、在线设备、文本长度和查看租约后转发；`command_dispatched`、设备回执与审计日志均不回显文本。B 包只在收到该指令时查找当前 `FOCUS_INPUT`，确认节点可编辑且不是密码字段，再调用 `ACTION_SET_TEXT`。无焦点、不可编辑、密码字段、空文本、超过 500 字符或租约失效都会拒绝，并仅返回固定 `reasonCode`。此指令不读取或上传输入框原有内容；节点预览仍只上传结构字段。
 
 ## 4. 停止条件
 

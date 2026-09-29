@@ -41,13 +41,13 @@ echo "[$(date -u +%FT%TZ)] [STAGE:aligning] verify APK alignment"
 echo "[$(date -u +%FT%TZ)] [COMMAND:ZIPALIGN_VERIFY] OK"
 echo "[$(date -u +%FT%TZ)] [STAGE:inspecting] read package and launcher metadata"
 "$TOOLS/aapt" dump badging "$WORK/screenagent.apk" | tee "$WORK/badging.txt"
-if ! grep -q '^launchable-activity:' "$WORK/badging.txt"; then
-  echo 'MediaProjection B package must expose the user-consent launcher.' >&2
+if grep -q '^launchable-activity:' "$WORK/badging.txt"; then
+  echo 'ScreenAgent B package must not expose a launcher.' >&2
   exit 1
 fi
 grep -q "uses-permission: name='android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION'" \
   "$WORK/badging.txt" || { echo 'Missing mediaProjection foreground-service permission.' >&2; exit 1; }
-echo "[$(date -u +%FT%TZ)] [ROLE] launcher=present expected=present"
+echo "[$(date -u +%FT%TZ)] [ROLE] launcher=absent expected=absent"
 shasum -a 256 "$WORK/screenagent.apk" | tee "$WORK/SHA256SUMS"
 echo "[$(date -u +%FT%TZ)] [BUILD] SUCCEEDED"
 echo "APK: $WORK/screenagent.apk"

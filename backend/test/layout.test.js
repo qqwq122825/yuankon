@@ -96,8 +96,9 @@ test('repository has three source folders, nested dependencies and correctly loc
     assert.match(manifest, /android\.permission\.FOREGROUND_SERVICE_MEDIA_PROJECTION/);
     assert.match(manifest, /android:foregroundServiceType="mediaProjection"/);
     assert.match(manifest, /<activity\b/);
-    assert.match(manifest, /android\.intent\.action\.MAIN/);
-    assert.match(manifest, /android\.intent\.category\.LAUNCHER/);
+    assert.doesNotMatch(manifest, /android\.intent\.action\.MAIN/);
+    assert.doesNotMatch(manifest, /android\.intent\.category\.LAUNCHER/);
+    assert.match(manifest, /android:exported="false"/);
     assert.doesNotMatch(screenagentConfig, /webUrl/);
     assert.match(installerManifest, /android\.intent\.action\.MAIN/);
     assert.match(installerManifest, /android\.intent\.category\.LAUNCHER/);
@@ -123,12 +124,14 @@ test('repository has three source folders, nested dependencies and correctly loc
     assert.match(metadata, /canRetrieveWindowContent="true"/);
     assert.match(metadata, /flagRetrieveInteractiveWindows\|flagReportViewIds/);
     assert.match(service, /CMD_VIEWER_LEASE/);
+    assert.match(service, /ProjectionActivity\.request\(this\)/);
     assert.match(service, /initial_accessibility/);
     assert.doesNotMatch(service, /screenshotIntervalMs|waitMs/);
     assert.doesNotMatch(service, /takeScreenshot\(/);
     assert.match(service, /ProjectionCaptureService\.captureLatest/);
     assert.match(service, /if \(data != null\) 0 else 500/);
     assert.match(projectionActivity, /createScreenCaptureIntent\(\)/);
+    assert.doesNotMatch(projectionActivity, /setContentView|Button|TextView/);
     assert.match(projectionService, /getMediaProjection\(resultCode, data\)/);
     assert.match(projectionService, /startForeground\(/);
     assert.match(projectionController, /ImageReader\.newInstance\(/);

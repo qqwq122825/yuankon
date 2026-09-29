@@ -203,6 +203,7 @@ export function attachWebSockets(
                     'GET_DEVICE_STATE',
                     'SCREENSHOT_NOW',
                     'DEVICE_ACTION',
+                    'TEXT_INPUT',
                     'capture_viewer_lease',
                     'accessibility_snapshot',
                 ],
@@ -347,7 +348,7 @@ export function attachWebSockets(
                     })
                 )
                     throw fail(409, '设备当前离线');
-                // The panel only receives routing metadata; typed text is never echoed or audited.
+                // 面板回执和审计仅记录路由元数据，不回显或单独记录本次文本正文。
                 send(ws, {
                     type: 'command_dispatched',
                     sessionId: device.public_id,
