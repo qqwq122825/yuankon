@@ -173,11 +173,20 @@ select:focus-visible,
     border-color: #e1e4eb;
     box-shadow: 0 13px 35px #202b4a26;
 }
+.floating-viewer-live:not(.floating-viewer-reader) {
+    height: auto;
+    max-height: none;
+}
 .floating-viewer-live .floating-content {
     display: flex;
     flex: 1 1 auto;
     min-height: 0;
     overflow: hidden;
+}
+.floating-viewer-live:not(.floating-viewer-reader) .floating-content,
+.floating-viewer-live:not(.floating-viewer-reader) .device-screenshot-viewer,
+.floating-viewer-live:not(.floating-viewer-reader) .live-screenshot-stage {
+    flex: 0 0 auto;
 }
 .floating-viewer-live .floating-heading {
     min-height: 40px;

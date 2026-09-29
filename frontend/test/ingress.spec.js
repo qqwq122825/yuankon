@@ -228,6 +228,10 @@ test('APK ownership, automatic online and an actual synthetic JPEG are visible i
     await expect(page.locator('.device-browser-toast')).toHaveText('文本已发送');
     await expect(textInput).toHaveValue('');
     await page.setViewportSize({ width: 1440, height: 706 });
+    const compactStage = await stage.boundingBox();
+    expect(compactStage.width).toBe(298);
+    expect(compactStage.height).toBeGreaterThan(640);
+    expect(compactStage.width / compactStage.height).toBeCloseTo(360 / 800, 2);
     for (const viewer of [panel, reader]) {
         const viewerBox = await viewer.boundingBox();
         const actionBox = await viewer.locator('.capture-action-bar').boundingBox();
