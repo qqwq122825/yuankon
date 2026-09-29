@@ -31,6 +31,34 @@ test('list, server sorting, query preservation, pagination, empty state and keyb
     await expect(page.locator('.fleet-table thead')).toContainText('AI');
     await expect(page.locator('.fleet-table thead')).toContainText('安装时间');
     await expect(page.locator('tbody tr').first()).toContainText('—');
+    const tableMetrics = await page
+        .locator('.fleet-table tbody tr')
+        .first()
+        .evaluate((row) => {
+            const table = row.closest('table');
+            const header = table.querySelector('thead tr');
+            const headerCell = header.querySelector('th');
+            const bodyCell = row.querySelector('td');
+            const preview = row.querySelector('.phone-preview');
+            const box = (element) => {
+                const rect = element.getBoundingClientRect();
+                return { width: Math.round(rect.width), height: Math.round(rect.height) };
+            };
+            return {
+                row: box(row),
+                header: box(header),
+                preview: box(preview),
+                headerFont: getComputedStyle(headerCell).fontSize,
+                bodyFont: getComputedStyle(bodyCell).fontSize,
+                bodyPadding: getComputedStyle(bodyCell).padding,
+            };
+        });
+    expect(tableMetrics.row.height).toBe(85);
+    expect(tableMetrics.header.height).toBe(36);
+    expect(tableMetrics.preview).toEqual({ width: 36, height: 64 });
+    expect(tableMetrics.headerFont).toBe('11px');
+    expect(tableMetrics.bodyFont).toBe('13px');
+    expect(tableMetrics.bodyPadding).toBe('10px 14px');
     const noteButton = page.getByRole('button', {
         name: '编辑 测试设备 1 的备注',
         exact: true,
