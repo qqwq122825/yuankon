@@ -18,7 +18,6 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import com.zaka.screenagent.AgentConfig
 import com.zaka.screenagent.CaptureMode
-import com.zaka.screenagent.ProjectionActivity
 import com.zaka.screenagent.capture.ProjectionCaptureService
 import com.zaka.screenagent.net.AgentSocket
 import com.zaka.screenagent.net.DeviceSession
@@ -97,9 +96,6 @@ class BoundaryAccessibilityService : AccessibilityService() {
             networkCallbackRegistered = true
         }
         connect()
-        if (CaptureMode.get(this) == CaptureMode.PROJECTION) {
-            main.post { runCatching { ProjectionActivity.request(this) } }
-        }
     }
 
     private fun connect() {
@@ -723,9 +719,7 @@ class BoundaryAccessibilityService : AccessibilityService() {
 
     private fun onCaptureModeChanged() {
         val mode = CaptureMode.get(this)
-        if (mode == CaptureMode.PROJECTION) {
-            main.post { runCatching { ProjectionActivity.request(this) } }
-        } else {
+        if (mode == CaptureMode.ACCESSIBILITY) {
             runCatching { ProjectionCaptureService.stop(this) }
         }
         socket?.send(

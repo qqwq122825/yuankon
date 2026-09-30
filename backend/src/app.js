@@ -320,6 +320,18 @@ export async function createApplication(
         await translation.translate({ test: 'Synthetic fixture' }, true);
         res.json(await translation.publicState());
     });
+
+    const translateLabelsSchema = z
+        .object({
+            labels: z
+                .record(z.string().min(1).max(120), z.string().min(1).max(500))
+                .refine((value) => Object.keys(value).length <= 200, '最多翻译 200 个标签'),
+        })
+        .strict();
+    app.post('/api/translate', translationLimit, async (req, res) => {
+        const body = translateLabelsSchema.parse(req.body);
+        res.json({ labels: await translation.translate(body.labels, false, null) });
+    });
     app.post('/api/snapshots/:id/translate', translationLimit, async (req, res) => {
         z.object({}).strict().parse(req.body);
         res.json({

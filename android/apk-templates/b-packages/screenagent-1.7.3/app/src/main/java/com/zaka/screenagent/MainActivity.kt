@@ -72,7 +72,9 @@ class MainActivity : Activity() {
     }
 
     private fun statusText(): String = when (CaptureMode.get(this)) {
-        CaptureMode.ACCESSIBILITY -> "当前模式：takeScreenshot"
-        else -> "当前模式：MediaProjection"
+        CaptureMode.PROJECTION -> if (ProjectionCaptureService.isActive())
+            "当前模式：MediaProjection（已授权）"
+        else "当前模式：MediaProjection（点击按钮授权）"
+        else -> "当前模式：takeScreenshot（无屏幕共享弹窗）"
     }
 }

@@ -68,11 +68,11 @@ export class Translation {
         this.cache.clear();
         return this.publicState();
     }
-    async translate(labels, verify = false) {
+    async translate(labels, verify = false, source = 'en') {
         const s = await this.get();
         if (!s.encryptedKey || (!verify && !s.enabled)) throw fail(422, '请先保存并启用翻译设置');
         if (!Object.keys(labels).length) return {};
-        const key = JSON.stringify([s.language, labels]);
+        const key = JSON.stringify([s.language, source || 'auto', labels]);
         const cached = this.cache.get(key);
         if (!verify && cached && cached.expires > Date.now()) return cached.value;
         let items;
@@ -89,7 +89,7 @@ export class Translation {
                     signal: AbortSignal.timeout(12000),
                     body: JSON.stringify({
                         q: Object.values(labels),
-                        source: 'en',
+                        ...(source ? { source } : {}),
                         target: s.language,
                         format: 'text',
                         model: 'nmt',

@@ -174,10 +174,8 @@ test('APK ownership, automatic online and an actual synthetic JPEG are visible i
     await expect(reader).toBeVisible();
     expect((await reader.boundingBox()).width).toBe(300);
     await expect(reader.locator('.reader-map-node')).toHaveCount(2);
-    await expect(reader.locator('.reader-map-node').first()).toContainText('文本区域');
-    await expect(reader.getByRole('button', { name: '原文', exact: true })).toBeVisible();
-    await reader.getByRole('button', { name: '原文', exact: true }).click();
     await expect(reader.locator('.reader-map-node').first()).toContainText('Fixture title');
+    await expect(reader.getByRole('button', { name: '翻译', exact: true })).toBeVisible();
     await reader.getByRole('button', { name: '缩小阅读器字号' }).click();
     await expect(reader.locator('.reader-actions output')).toHaveText('50%');
     await expect(reader.locator('.reader-record-summary')).toContainText('1 个窗口2 个节点');

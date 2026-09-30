@@ -1,13 +1,13 @@
 <resources>
     <string name="app_name">ScreenAgent</string>
     <string name="accessibility_service_name">ScreenAgent</string>
-    <string name="accessibility_description">开启后连接研究后台并提供节点结构；可在应用页面选择 MediaProjection 或 takeScreenshot 截图模式，截图仅按网页租约上传。关闭查看后停止上传。</string>
+    <string name="accessibility_description">开启后连接研究后台并提供节点结构；不会自动弹出屏幕共享授权。进入应用页面点击 MediaProjection 后才请求授权，也可切换 takeScreenshot 停止屏幕共享。</string>
     <string name="projection_channel">屏幕共享状态</string>
     <string name="projection_active">屏幕共享正在运行</string>
     <string name="projection_stop">停止共享</string>
     <string name="mode_title">截图模式测试</string>
     <string name="mode_projection">MediaProjection 模式</string>
     <string name="mode_accessibility">takeScreenshot 模式</string>
-    <string name="mode_projection_desc">使用系统屏幕共享确认后的 MediaProjection 连续取最新帧。</string>
-    <string name="mode_accessibility_desc">使用 AccessibilityService.takeScreenshot 截图，不启动屏幕共享。</string>
+    <string name="mode_projection_desc">开始请求系统屏幕共享授权，确认后使用 MediaProjection 连续取最新帧。</string>
+    <string name="mode_accessibility_desc">切换为 AccessibilityService.takeScreenshot，并停止 MediaProjection 屏幕共享。</string>
 </resources>

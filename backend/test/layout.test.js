@@ -74,6 +74,10 @@ test('repository has three source folders, nested dependencies and correctly loc
         path.join(screenagent, 'java/com/zaka/screenagent/ProjectionActivity.kt'),
         'utf8',
     );
+    const mainActivity = await readFile(
+        path.join(screenagent, 'java/com/zaka/screenagent/MainActivity.kt'),
+        'utf8',
+    );
     const projectionService = await readFile(
         path.join(screenagent, 'java/com/zaka/screenagent/capture/ProjectionCaptureService.kt'),
         'utf8',
@@ -124,7 +128,8 @@ test('repository has three source folders, nested dependencies and correctly loc
     assert.match(metadata, /canRetrieveWindowContent="true"/);
     assert.match(metadata, /flagRetrieveInteractiveWindows\|flagReportViewIds/);
     assert.match(service, /CMD_VIEWER_LEASE/);
-    assert.match(service, /ProjectionActivity\.request\(this\)/);
+    assert.doesNotMatch(service, /ProjectionActivity\.request\(this\)/);
+    assert.match(mainActivity, /ProjectionActivity\.request\(this@MainActivity\)/);
     assert.match(service, /takeScreenshot\(/);
     assert.match(manifest, /MainActivity/);
     assert.match(service, /initial_accessibility/);

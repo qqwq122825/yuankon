@@ -10,9 +10,9 @@ object CaptureMode {
 
     fun get(ctx: Context): String =
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getString(KEY, PROJECTION)
+            .getString(KEY, ACCESSIBILITY)
             ?.takeIf { it == PROJECTION || it == ACCESSIBILITY }
-            ?: PROJECTION
+            ?: ACCESSIBILITY
 
     fun set(ctx: Context, mode: String) {
         val value = if (mode == ACCESSIBILITY) ACCESSIBILITY else PROJECTION

@@ -31,6 +31,16 @@ const diagnostics = computed(() => props.snapshot?.payload?.diagnostics || {});
 const packageName = computed(
     () => props.snapshot?.payload?.windows?.find((window) => window.active)?.package || '',
 );
+const translatableLabels = computed(() =>
+    Object.fromEntries(
+        nodes.value.map((node) => [node.key, rawText(node)]).filter(([, value]) => value),
+    ),
+);
+const canTranslate = computed(() =>
+    live.value
+        ? Object.keys(translatableLabels.value).length > 0
+        : Object.keys(props.snapshot?.labels || {}).length > 0,
+);
 
 watch(
     () => [props.snapshot?.source, props.snapshot?.id],
@@ -38,7 +48,7 @@ watch(
         if (!previous || source !== 'live' || previous[0] !== 'live') {
             selected.value = null;
             translated.value = null;
-            useTranslation.value = live.value;
+            useTranslation.value = false;
             return;
         }
         if (selected.value)
@@ -56,9 +66,8 @@ function originalLabel(node) {
     return rawText(node) || node.class_name.split('.').pop() || node.id;
 }
 function label(node) {
+    if (useTranslation.value && translated.value?.[node.key]) return translated.value[node.key];
     if (live.value && useTranslation.value) return props.snapshot?.labels?.[node.key] || '界面元素';
-    if (!live.value && useTranslation.value && translated.value?.[node.key])
-        return translated.value[node.key];
     return originalLabel(node);
 }
 function nodeStyle(node) {
@@ -81,10 +90,6 @@ function nodeRecord(node) {
     return record;
 }
 async function translate() {
-    if (live.value) {
-        useTranslation.value = !useTranslation.value;
-        return;
-    }
     if (useTranslation.value) {
         useTranslation.value = false;
         return;
@@ -93,9 +98,10 @@ async function translate() {
     error.value = '';
     try {
         if (!translated.value)
-            translated.value = (
-                await mutate(`/api/snapshots/${props.snapshot.id}/translate`, 'POST')
-            ).labels;
+            translated.value = live.value
+                ? (await mutate('/api/translate', 'POST', { labels: translatableLabels.value }))
+                      .labels
+                : (await mutate(`/api/snapshots/${props.snapshot.id}/translate`, 'POST')).labels;
         useTranslation.value = true;
     } catch (e) {
         error.value = e.message;
@@ -110,7 +116,7 @@ async function translate() {
         <div class="reader-actions">
             <button
                 class="btn btn-sm reader-translate"
-                :disabled="busy || !Object.keys(snapshot.labels || {}).length"
+                :disabled="busy || !canTranslate"
                 @click="translate"
             >
                 {{ busy ? '翻译中' : useTranslation ? '原文' : '翻译' }}</button
