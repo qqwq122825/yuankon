@@ -13,9 +13,10 @@ const result = ref(null),
     copyLink = ref(''),
     logPre = ref(null);
 const logPanel = reactive({ buildId: '', text: '', status: '', loading: false, error: '' });
+const currentOrigin = window.location.origin;
 const bForm = reactive({
     templateId: '',
-    domain: 'local',
+    domain: currentOrigin,
     appName: '',
     apkId: '',
     batch: '',
@@ -272,8 +273,9 @@ onBeforeUnmount(() => {
                             required
                             maxlength="255"
                             list="build-domains"
-                            placeholder="local 或 https://后台域名"
+                            placeholder="当前页面地址、local 或 https://后台域名"
                         /><datalist id="build-domains">
+                            <option :value="currentOrigin">当前页面地址</option>
                             <option value="local">本机 {{ catalog?.localOrigin }}</option>
                         </datalist></label
                     >

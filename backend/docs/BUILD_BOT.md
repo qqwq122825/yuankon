@@ -6,7 +6,7 @@ PHP 构建控制器、机器人轮询和队列随旧后台移除。**Node 已支
 
 网页操作与新增模板见 [模板指南](../../android/apk-templates/README.md)。网页使用 `backend/src/build-queue.js` 与 `apk-builder.js`，并非调用下述无参数 CLI 脚本。
 
-网页流程分为 A/B 两类。先构建当前 `screenagent-1.7` B 包：后台域名与 APK ID 在构建时写入；构建器把无障碍服务名称同步为 B 包 APP 名称。用户显式开启无障碍后，B 包自动按 APK ID 归属上线并保持 20 秒心跳，同时由无自定义内容的内部 Activity 立即打开 Android 系统屏幕共享确认。1.7 在可见前台通知下使用 MediaProjection、VirtualDisplay 与 ImageReader 读取最新帧；网页租约内串行上传，上一帧成功后立即申请下一帧，不使用固定一秒定时器。六个固定快捷操作和正文省略的节点结构沿用租约约束；不接收文本、坐标手势、脚本或通用指令。随后构建 `installer-1.2` A 包：队列按同项目、同归属账号自动选择最新成功且文件存在的 B 包，记录其构建 ID、SHA-256 和包名，并把 APK 复制到 A 包私有源码副本的 `assets/payload.apk`。A 包负责系统安装、无障碍引导与可见业务界面；B 包 1.7 没有 MAIN/LAUNCHER 或自定义页面。1.0–1.4 已删除，1.5/1.6 保留兼容。
+网页流程分为 A/B 两类。先构建当前 `screenagent-1.7.2` B 包：后台域名与 APK ID 在构建时写入；构建器把无障碍服务名称同步为 B 包 APP 名称。用户显式开启无障碍后，B 包自动按 APK ID 归属上线并保持 20 秒心跳，同时由无自定义内容的内部 Activity 立即打开 Android 系统屏幕共享确认。1.7.2 不申请 POST_NOTIFICATIONS 运行时权限，仍通过前台服务使用 MediaProjection、VirtualDisplay 与 ImageReader 读取最新帧；网页租约内串行上传，上一帧成功后立即申请下一帧，不使用固定一秒定时器。六个固定快捷操作和上报 text/content_description 的节点快照沿用租约约束；不接收坐标手势、脚本或通用指令。随后构建 `installer-1.2` A 包：队列按同项目、同归属账号自动选择最新成功且文件存在的 B 包，记录其构建 ID、SHA-256 和包名，并把 APK 复制到 A 包私有源码副本的 `assets/payload.apk`。A 包负责系统安装、无障碍引导与可见业务界面；B 包 1.7.2 没有 MAIN/LAUNCHER 或自定义页面。1.0–1.4 已删除，1.5/1.6/1.7/1.7.1 保留兼容。
 
 模板目录按职责分为 `b-packages/`、`a-packages/`、`standalone/`。设备侧新能力只增加 B 包版本；A 包保持安装和启动职责。构建页分别提供 A/B 版本选择。每次 A/B 构建的私有 `build.log` 都记录模板/包身份、B 包摘要、Gradle assemble + Lint、apksigner 签名校验、zipalign 对齐校验、aapt 包信息、SHA-256 和产物保存结果，并可从构建记录鉴权下载。
 

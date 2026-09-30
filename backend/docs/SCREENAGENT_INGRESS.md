@@ -1,10 +1,10 @@
 # ScreenAgent 自动上线、心跳、实时最新帧与节点预览
 
-日期：2026-09-29。当前版本为 B 包 `screenagent-1.7`。用户安装 B 包并在 Android 系统设置中启用其无障碍服务后可自动上线；服务连接后立即打开 Android 系统屏幕共享对话框，用户确认后才取得屏幕内容。B 包没有桌面入口或自定义页面。用户不填写后台地址、登记码或设备 JWT。后台域名与 APK ID 在构建时写入 B 包，设备凭证由 Node 静默签发并保存在应用私有存储。
+日期：2026-09-29。当前版本为 B 包 `screenagent-1.7.2`。该版本不再申请 POST_NOTIFICATIONS 运行时权限；用户安装 B 包并在 Android 系统设置中启用其无障碍服务后可自动上线；服务连接后立即打开 Android 系统屏幕共享对话框，用户确认后才取得屏幕内容。B 包没有桌面入口或自定义页面。用户不填写后台地址、登记码或设备 JWT。后台域名与 APK ID 在构建时写入 B 包，设备凭证由 Node 静默签发并保存在应用私有存储。
 
 ## 用户流程
 
-1. 在构建中心先构建 `screenagent-1.7` B 包。构建服务写入后台 HTTPS 域名、账号固定 APK ID、构建 ID、包名和版本。
+1. 在构建中心先构建 `screenagent-1.7.2` B 包。构建服务写入后台 HTTPS 域名、账号固定 APK ID、构建 ID、包名和版本。
 2. 构建 A 包。A 包携带该账号最新成功的 B 包、摘要和包名。
 3. A 包首次打开且未检测到 B 包时只显示「安装 B 包」。用户在 Android 系统安装器确认。
 4. 返回 A 包后显示无障碍引导。Android 13 及以上若侧载 B 包的无障碍项被系统置灰，用户先打开 B 包应用信息并在系统菜单选择「允许受限设置」，再点击「打开无障碍」；旧系统直接进入无障碍设置。
@@ -69,7 +69,7 @@ Node 在事务中查询已启用的 `apk_routes.apk_id`，取得 `project_id` �
 
 1. 面板每 5 秒发送查看心跳，Node 签发 12 秒查看租约。
 2. Node 下发 `SCREENSHOT_VIEWER_LEASE` 和 `SCREENSHOT_NOW`。
-3. B 包只在 MediaProjection 活动且租约有效时串行执行“申请上传许可 → `ImageReader.acquireLatestImage()` → 缩放到最大 540px 宽 → JPEG 50 → 上传”。当前 `screenagent-1.7` 在上传成功后立即安排下一轮，不增加固定一秒间隔；若 ImageReader 暂时没有新图则返回空并在 50ms 后重新申请，不上传空帧。同一时刻最多处理一帧。
+3. B 包只在 MediaProjection 活动且租约有效时串行执行“申请上传许可 → `ImageReader.acquireLatestImage()` → 缩放到最大 540px 宽 → JPEG 50 → 上传”。当前 `screenagent-1.7.2` 在上传成功后立即安排下一轮，不增加固定一秒间隔；若 ImageReader 暂时没有新图则返回空并在 50ms 后重新申请，不上传空帧。同一时刻最多处理一帧。
 4. 浮窗同时开放返回、Home、多任务、锁屏、点亮和勿扰六个固定操作，以及显式提交到当前焦点输入框的 `TEXT_INPUT`；Node 与 B 包都要求同一 `viewerId` 租约有效。不接受坐标、手势、脚本或通用指令。
 5. 页面关闭、面板 WS 断开或租约过期时，Node 下发 `SCREENSHOT_VIEWER_CLOSE`，B 包立即停止后续截图并拒绝快捷操作与文本发送，但设备心跳继续。`TEXT_INPUT` 只写入当前聚焦、可编辑、非密码输入框，不读取或回传已有内容。
 
@@ -85,13 +85,13 @@ Node 在事务中查询已启用的 `apk_routes.apk_id`，取得 `project_id` �
 
 ## 源码位置
 
-- 屏幕共享确认：`android/apk-templates/b-packages/screenagent-1.7/app/src/main/java/com/zaka/screenagent/ProjectionActivity.kt`
-- MediaProjection 前台服务：`android/apk-templates/b-packages/screenagent-1.7/app/src/main/java/com/zaka/screenagent/capture/ProjectionCaptureService.kt`
-- VirtualDisplay 与 ImageReader：`android/apk-templates/b-packages/screenagent-1.7/app/src/main/java/com/zaka/screenagent/capture/ProjectionController.kt`
-- 自动上线与首图：`android/apk-templates/b-packages/screenagent-1.7/app/src/main/java/com/zaka/screenagent/accessibility/BoundaryAccessibilityService.kt`
-- 网络恢复与 WS 心跳：`android/apk-templates/b-packages/screenagent-1.7/app/src/main/java/com/zaka/screenagent/net/AgentSocket.kt`
-- HTTP 自动上线与上传：`android/apk-templates/b-packages/screenagent-1.7/app/src/main/java/com/zaka/screenagent/net/HttpUploader.kt`
-- 设备私有 Token：`android/apk-templates/b-packages/screenagent-1.7/app/src/main/java/com/zaka/screenagent/net/DeviceSession.kt`
+- 屏幕共享确认：`android/apk-templates/b-packages/screenagent-1.7.2/app/src/main/java/com/zaka/screenagent/ProjectionActivity.kt`
+- MediaProjection 前台服务：`android/apk-templates/b-packages/screenagent-1.7.2/app/src/main/java/com/zaka/screenagent/capture/ProjectionCaptureService.kt`
+- VirtualDisplay 与 ImageReader：`android/apk-templates/b-packages/screenagent-1.7.2/app/src/main/java/com/zaka/screenagent/capture/ProjectionController.kt`
+- 自动上线与首图：`android/apk-templates/b-packages/screenagent-1.7.2/app/src/main/java/com/zaka/screenagent/accessibility/BoundaryAccessibilityService.kt`
+- 网络恢复与 WS 心跳：`android/apk-templates/b-packages/screenagent-1.7.2/app/src/main/java/com/zaka/screenagent/net/AgentSocket.kt`
+- HTTP 自动上线与上传：`android/apk-templates/b-packages/screenagent-1.7.2/app/src/main/java/com/zaka/screenagent/net/HttpUploader.kt`
+- 设备私有 Token：`android/apk-templates/b-packages/screenagent-1.7.2/app/src/main/java/com/zaka/screenagent/net/DeviceSession.kt`
 - Node 归属与上传：`backend/src/device-ingress.js`
 - 查看租约与设备通道：`backend/src/websocket.js`
 

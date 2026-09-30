@@ -1,5 +1,33 @@
 [
     {
+        "id": "screenagent-1.7.2",
+        "name": "v1.7.2 · ScreenAgent 无通知权限弹窗",
+        "versionName": "1.7.2",
+        "versionCode": 10,
+        "sourceDir": "b-packages/screenagent-1.7.2",
+        "kind": "screenagent",
+        "visibleLauncher": false,
+        "description": "B 包工作端；在 1.7.1 节点正文上报基础上，移除 POST_NOTIFICATIONS 运行时权限申请，开启无障碍后直接进入 Android 系统屏幕共享确认。",
+        "capture": {
+            "maxWidth": 540,
+            "quality": 50
+        }
+    },
+    {
+        "id": "screenagent-1.7.1",
+        "name": "v1.7.1 · ScreenAgent 节点正文上报",
+        "versionName": "1.7.1",
+        "versionCode": 9,
+        "sourceDir": "b-packages/screenagent-1.7.1",
+        "kind": "screenagent",
+        "visibleLauncher": false,
+        "description": "B 包工作端；在 1.7 MediaProjection、租约截图、固定快捷操作和焦点文本发送基础上，租约内无障碍节点快照直接保留客户端上报字段，包括节点 text 与 content_description。",
+        "capture": {
+            "maxWidth": 540,
+            "quality": 50
+        }
+    },
+    {
         "id": "screenagent-1.7",
         "name": "v1.7 · ScreenAgent MediaProjection",
         "versionName": "1.7.0",

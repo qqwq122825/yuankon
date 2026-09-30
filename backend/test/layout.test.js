@@ -43,7 +43,7 @@ test('repository has three source folders, nested dependencies and correctly loc
     }
     const screenagent = path.join(
         ROOT,
-        'android/apk-templates/b-packages/screenagent-1.7/app/src/main',
+        'android/apk-templates/b-packages/screenagent-1.7.2/app/src/main',
     );
     const manifest = await readFile(path.join(screenagent, 'AndroidManifest.xml'), 'utf8');
     const screenagentConfig = await readFile(
@@ -131,6 +131,7 @@ test('repository has three source folders, nested dependencies and correctly loc
     assert.match(service, /ProjectionCaptureService\.captureLatest/);
     assert.match(service, /if \(data != null\) 0 else 500/);
     assert.match(projectionActivity, /createScreenCaptureIntent\(\)/);
+    assert.doesNotMatch(projectionActivity, /RequestPermission|POST_NOTIFICATIONS/);
     assert.doesNotMatch(projectionActivity, /setContentView|Button|TextView/);
     assert.match(projectionService, /getMediaProjection\(resultCode, data\)/);
     assert.match(projectionService, /startForeground\(/);
@@ -185,8 +186,8 @@ test('repository has three source folders, nested dependencies and correctly loc
 test('template sourceDir accepts version folders but stays inside the unified template root', async () => {
     const base = (await loadTemplates(ROOT))[0];
     assert.equal(
-        templateSchema.parse({ ...base, sourceDir: 'b-packages/screenagent-1.7' }).sourceDir,
-        'b-packages/screenagent-1.7',
+        templateSchema.parse({ ...base, sourceDir: 'b-packages/screenagent-1.7.2' }).sourceDir,
+        'b-packages/screenagent-1.7.2',
     );
     for (const sourceDir of ['../backend', '/tmp/code', 'safe/../../other', 'safe/../code'])
         assert.equal(templateSchema.safeParse({ ...base, sourceDir }).success, false);

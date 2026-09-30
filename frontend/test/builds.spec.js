@@ -14,7 +14,9 @@ test('build form, optional fields, failure, polling and shareable artifact downl
     await page.goto('/builds');
     const form = page.getByRole('form', { name: 'B 包构建配置' });
     const installerForm = page.getByRole('form', { name: 'A 包构建配置' });
-    await expect(form.getByLabel('B 包模板版本')).toHaveValue('screenagent-1.7');
+    const currentOrigin = new URL(page.url()).origin;
+    await expect(form.getByLabel('后台域名')).toHaveValue(currentOrigin);
+    await expect(form.getByLabel('B 包模板版本')).toHaveValue('screenagent-1.7.2');
     await expect(installerForm.getByLabel('A 包模板版本')).toHaveValue('installer-1.2');
     await expect(installerForm.getByRole('button', { name: '构建 A 包' })).toBeDisabled();
     await form.getByLabel('后台域名').fill('cohuducox');
@@ -25,7 +27,7 @@ test('build form, optional fields, failure, polling and shareable artifact downl
     await expect(form.getByLabel('APK ID（选填）')).toHaveValue('');
     await form.getByRole('button', { name: '构建 B 包' }).click();
     await expect(page.getByRole('alert')).toContainText('域名简称尚未配置');
-    await form.getByLabel('后台域名').fill('local');
+    await form.getByLabel('后台域名').fill(currentOrigin);
     await form.getByRole('button', { name: '随机生成' }).click();
     await expect(form.getByLabel('包名（留空自动生成）')).toHaveValue(/^org\.boundary\.worker\.p/);
     await form.getByLabel('包名（留空自动生成）').fill('');
@@ -37,10 +39,12 @@ test('build form, optional fields, failure, polling and shareable artifact downl
     );
     await form.getByRole('button', { name: '构建 B 包' }).click();
     const { build } = await (await response).json();
+    expect(build.domain).toBe(currentOrigin);
     expect(build.apk_id).toBe(user.apkId);
     expect(build.routing_reason).toBe('default_empty');
     const row = page.locator(`tr[data-build-id="${build.id}"]`);
     await expect(row).toContainText('已完成', { timeout: 15000 });
+    await expect(form.getByLabel('后台域名')).toHaveValue(currentOrigin);
     await expect(row.getByRole('progressbar', { name: 'UI 构建测试 构建进度' })).toHaveAttribute(
         'aria-valuenow',
         '100',
@@ -112,6 +116,7 @@ test('build form, optional fields, failure, polling and shareable artifact downl
     expect((await page.request.get(`/api/builds/${build.id}`)).status()).toBe(404);
     await form.getByLabel('包名（留空自动生成）').fill('org.test.explicit');
     await form.getByLabel('批次（选填）').fill('FAIL');
+    await form.getByLabel('后台域名').fill('local');
     await form.getByLabel('APK ID（选填）').fill('NONEXISTENT_E2E');
     const failure = page.waitForResponse(
         (r) =>
@@ -121,6 +126,7 @@ test('build form, optional fields, failure, polling and shareable artifact downl
     );
     await form.getByRole('button', { name: '构建 B 包' }).click();
     const bad = (await (await failure).json()).build;
+    expect(bad.domain).toBe('local');
     expect(bad.apk_id).toBe(user.apkId);
     expect(bad.routing_reason).toBe('default_unmatched');
     const failedRow = page.locator(`tr[data-build-id="${bad.id}"]`);

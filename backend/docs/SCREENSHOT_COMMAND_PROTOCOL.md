@@ -1,6 +1,6 @@
 # 实时最新帧协议 · boundary-screenshot-v2
 
-日期：2026-09-29。**已实现于 Node、Vue 和 B 包 `screenagent-1.7`。** 1.0–1.4 已删除，1.5/1.6 作为兼容模板保留。本协议负责无障碍开启后的自动上线、用户确认 MediaProjection 后的首图、查看租约有效期间的串行最新帧、六个固定快捷操作，以及显式提交到当前焦点输入框的文本。截图通道不接受坐标、手势、脚本、节点正文、音频或视频流；1.7 的结构预览由独立 `boundary-node-v2` 处理。
+日期：2026-09-29。**已实现于 Node、Vue 和 B 包 `screenagent-1.7.2`。** 1.0–1.4 已删除，1.5/1.6/1.7/1.7.1 作为兼容模板保留。本协议负责无障碍开启后的自动上线、用户确认 MediaProjection 后的首图、查看租约有效期间的串行最新帧、六个固定快捷操作，以及显式提交到当前焦点输入框的文本。截图通道不接受坐标、手势、脚本、音频或视频流；1.7.2 的节点预览可上报 text/content_description，由独立 `boundary-node-v2` 处理。
 
 ## 1. 取图时机
 
@@ -8,7 +8,7 @@
 
 1. 用户在 Android 系统设置显式开启与构建时 B 包 APP 名称相同的无障碍服务；构建器同时写入应用名称和无障碍服务名称。
 2. B 包建立认证设备 WS，立即上报 `accessibilityAlive:true`，之后每 20 秒发送状态心跳；此时尚不读取屏幕。
-3. 无障碍服务连接后，B 包 1.7 通过无自定义内容的内部 Activity 立即调用 `MediaProjectionManager.createScreenCaptureIntent()`，由 Android 系统显示本次共享确认。确认成功后启动 `mediaProjection` 类型前台服务，并在显示持续通知后调用 `getMediaProjection()`；B 包没有 MAIN/LAUNCHER 或业务页面。
+3. 无障碍服务连接后，B 包 1.7.2 通过无自定义内容的内部 Activity 立即调用 `MediaProjectionManager.createScreenCaptureIntent()`，由 Android 系统显示本次共享确认。确认成功后启动 `mediaProjection` 类型前台服务，并在显示持续通知后调用 `getMediaProjection()`；B 包没有 MAIN/LAUNCHER 或业务页面。
 4. 客户端先注册 `MediaProjection.Callback`，再创建一个 `VirtualDisplay` 和 `ImageReader.newInstance(..., maxImages=2)`；无障碍配置保持 `canTakeScreenshot=false`。
 5. 设备申请 `{reason:"initial_accessibility"}` 的一次性上传许可；从 `ImageReader.acquireLatestImage()` 取得第一张非空帧并关闭 `Image`。JPEG 经解码、转正、去除元数据并重编码后，仅在有界内存保留最新一帧 5 分钟。
 
@@ -48,7 +48,7 @@
 
 4. Node 校验面板订阅、账号、查看租约和在线设备，建立与 `commandId/viewerId` 绑定的待执行项，并将指令转发给设备。
 5. B 包确认后，在查看租约持续有效时串行执行“申请一次性上传许可 → `acquireLatestImage()` → 缩放到最大 540px 宽 → JPEG 50 压缩 → 上传 → 下一帧”。同一设备始终只有一帧在截图、编码或上传，不积压旧帧。
-6. 当前 `screenagent-1.7` 使用完成驱动的串行循环：一帧成功上传后立即申请并读取下一张最新帧，不加固定一秒间隔。`acquireLatestImage()` 暂时返回空时不上传，在 50ms 后重新走下一轮；实际刷新率由显示产帧、许可请求、JPEG 压缩、上传和服务端解码共同决定。
+6. 当前 `screenagent-1.7.2` 使用完成驱动的串行循环：一帧成功上传后立即申请并读取下一张最新帧，不加固定一秒间隔。`acquireLatestImage()` 暂时返回空时不上传，在 50ms 后重新走下一轮；实际刷新率由显示产帧、许可请求、JPEG 压缩、上传和服务端解码共同决定。
 7. 每帧仍独立申请 60 秒一次性上传许可。HTTP 201 后 Node 用 `screenshot_ready` 通知订阅面板，Vue 立即读取鉴权的最新图片地址；新帧替换旧帧。
 
 ## 2. 固定快捷操作
@@ -113,4 +113,4 @@ Node 校验登录面板、订阅、在线设备、文本长度和查看租约后
 - `command_ack:accepted` 仅表示设备开始受租约控制的循环；每个 `screenshot_ready` 才表示一张图片已由服务端接收并校验。
 - `screenshot_result` 可在同一 `commandId` 下重复出现，分别报告各帧的 `uploaded|failed`。
 - `reasonCode` 使用受限字符串，例如 `viewer_lease_expired`、`projection_permission_required`、`projection_frame_unavailable`、`upload_failed`，不透传异常正文。
-- 安全窗口、锁屏或厂商系统限制仍可能导致截图失败。协议不上传无障碍节点正文；独立节点通道只保留类名、坐标、层级和布尔属性。系统不实现任意手势、按键序列或脚本执行；文本只写入用户当前已聚焦的非密码输入框。
+- 安全窗口、锁屏或厂商系统限制仍可能导致截图失败。协议的节点通道可上报无障碍节点 text/content_description，同时保留类名、坐标、层级和布尔属性。系统不实现任意手势、按键序列或脚本执行；文本只写入用户当前已聚焦的非密码输入框。
