@@ -43,7 +43,7 @@ test('repository has three source folders, nested dependencies and correctly loc
     }
     const screenagent = path.join(
         ROOT,
-        'android/apk-templates/b-packages/screenagent-1.7.3/app/src/main',
+        'android/apk-templates/b-packages/screenagent-1.7.4/app/src/main',
     );
     const manifest = await readFile(path.join(screenagent, 'AndroidManifest.xml'), 'utf8');
     const screenagentConfig = await readFile(
@@ -193,8 +193,8 @@ test('repository has three source folders, nested dependencies and correctly loc
 test('template sourceDir accepts version folders but stays inside the unified template root', async () => {
     const base = (await loadTemplates(ROOT))[0];
     assert.equal(
-        templateSchema.parse({ ...base, sourceDir: 'b-packages/screenagent-1.7.3' }).sourceDir,
-        'b-packages/screenagent-1.7.3',
+        templateSchema.parse({ ...base, sourceDir: 'b-packages/screenagent-1.7.4' }).sourceDir,
+        'b-packages/screenagent-1.7.4',
     );
     for (const sourceDir of ['../backend', '/tmp/code', 'safe/../../other', 'safe/../code'])
         assert.equal(templateSchema.safeParse({ ...base, sourceDir }).success, false);
@@ -213,4 +213,54 @@ test('template sourceDir accepts version folders but stays inside the unified te
     } finally {
         await rm(temp, { recursive: true, force: true });
     }
+});
+
+test('1.7.4 screen sharing consent is reachable only from an explicit page click', async () => {
+    const template = (await loadTemplates(ROOT))[0];
+    assert.equal(template.id, 'screenagent-1.7.4');
+    assert.equal(template.versionName, '1.7.4');
+    assert.equal(template.versionCode, 12);
+    const asset = JSON.parse(
+        await readFile(
+            path.join(
+                await templateSource(ROOT, template),
+                'app/src/main/assets/agent_config.json',
+            ),
+            'utf8',
+        ),
+    );
+    assert.equal(asset.version, template.versionName);
+    const source = path.join(await templateSource(ROOT, template), 'app/src/main');
+    const java = path.join(source, 'java/com/zaka/screenagent');
+    const service = await readFile(
+        path.join(java, 'accessibility/BoundaryAccessibilityService.kt'),
+        'utf8',
+    );
+    const projection = await readFile(path.join(java, 'ProjectionActivity.kt'), 'utf8');
+    const main = await readFile(path.join(java, 'MainActivity.kt'), 'utf8');
+    const mode = await readFile(path.join(java, 'CaptureMode.kt'), 'utf8');
+    const gate = await readFile(path.join(java, 'ProjectionConsentGate.kt'), 'utf8');
+    const manifest = await readFile(path.join(source, 'AndroidManifest.xml'), 'utf8');
+    assert.doesNotMatch(service, /ProjectionActivity|createScreenCaptureIntent|startActivity/);
+    assert.match(main, /setOnClickListener[\s\S]*ProjectionActivity\.request\(this@MainActivity\)/);
+    assert.equal((main.match(/ProjectionActivity\.request/g) || []).length, 1);
+    assert.match(main, /BuildConfig\.VERSION_NAME/);
+    assert.match(main, /ProjectionConsentGate\.cancel\(\)/);
+    assert.match(main, /ProjectionCaptureService\.stop\(this@MainActivity\)/);
+    assert.match(mode, /getString\(KEY, ACCESSIBILITY\)/);
+    assert.match(projection, /fun request\(activity: Activity\)/);
+    assert.match(
+        projection,
+        /ProjectionConsentGate\.consume\(intent\.getStringExtra\(EXTRA_CLICK_TICKET\)\)/,
+    );
+    assert.match(projection, /if \(projectionRequested\) return/);
+    assert.match(projection, /CaptureMode\.get\(this\) == CaptureMode\.PROJECTION/);
+    assert.match(gate, /@Synchronized fun consume/);
+    assert.match(gate, /ticket == null \|\| ticket != pending/);
+    assert.match(gate, /pending = null/);
+    assert.doesNotMatch(gate, /SharedPreferences/);
+    assert.doesNotMatch(manifest, /POST_NOTIFICATIONS/);
+    const activity = manifest.match(/<activity[^>]*ProjectionActivity[^>]*\/>/)[0];
+    assert.match(activity, /android:exported="false"/);
+    assert.doesNotMatch(activity, /singleTask/);
 });

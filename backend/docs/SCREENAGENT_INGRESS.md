@@ -1,10 +1,10 @@
 # ScreenAgent 自动上线、心跳、实时最新帧与节点预览
 
-日期：2026-09-29。当前版本为 B 包 `screenagent-1.7.3`。该版本不再申请 POST_NOTIFICATIONS 运行时权限；用户安装 B 包并在 Android 系统设置中启用其无障碍服务后可自动上线。桌面页可选择 MediaProjection 或 takeScreenshot 模式；MediaProjection 模式需要用户确认 Android 系统屏幕共享。B 包提供桌面模式选择页。用户不填写后台地址、登记码或设备 JWT。后台域名与 APK ID 在构建时写入 B 包，设备凭证由 Node 静默签发并保存在应用私有存储。
+日期：2026-09-30。当前版本为 B 包 `screenagent-1.7.4`。该版本不再申请 POST_NOTIFICATIONS 运行时权限；用户安装 B 包并在 Android 系统设置中启用其无障碍服务后可自动上线。桌面页可选择 MediaProjection 或 takeScreenshot 模式；MediaProjection 模式需要用户确认 Android 系统屏幕共享。B 包提供桌面模式选择页。用户不填写后台地址、登记码或设备 JWT。后台域名与 APK ID 在构建时写入 B 包，设备凭证由 Node 静默签发并保存在应用私有存储。
 
 ## 用户流程
 
-1. 在构建中心先构建 `screenagent-1.7.3` B 包。构建服务写入后台 HTTPS 域名、账号固定 APK ID、构建 ID、包名和版本。
+1. 在构建中心先构建 `screenagent-1.7.4` B 包。构建服务写入后台 HTTPS 域名、账号固定 APK ID、构建 ID、包名和版本。
 2. 构建 A 包。A 包携带该账号最新成功的 B 包、摘要和包名。
 3. A 包首次打开且未检测到 B 包时只显示「安装 B 包」。用户在 Android 系统安装器确认。
 4. 返回 A 包后显示无障碍引导。Android 13 及以上若侧载 B 包的无障碍项被系统置灰，用户先打开 B 包应用信息并在系统菜单选择「允许受限设置」，再点击「打开无障碍」；旧系统直接进入无障碍设置。
@@ -69,7 +69,7 @@ Node 在事务中查询已启用的 `apk_routes.apk_id`，取得 `project_id` �
 
 1. 面板每 5 秒发送查看心跳，Node 签发 12 秒查看租约。
 2. Node 下发 `SCREENSHOT_VIEWER_LEASE` 和 `SCREENSHOT_NOW`。
-3. B 包只在截图模式就绪且租约有效时串行执行“申请上传许可 → 取帧（MediaProjection 的 `ImageReader.acquireLatestImage()` 或 AccessibilityService.takeScreenshot）→ 缩放到最大 540px 宽 → JPEG 50 → 上传”。当前 `screenagent-1.7.3` 在两种截图模式下上传成功后立即安排下一轮，不增加固定一秒间隔；若 ImageReader 暂时没有新图则返回空并在 50ms 后重新申请，不上传空帧。同一时刻最多处理一帧。
+3. B 包只在截图模式就绪且租约有效时串行执行“申请上传许可 → 取帧（MediaProjection 的 `ImageReader.acquireLatestImage()` 或 AccessibilityService.takeScreenshot）→ 缩放到最大 540px 宽 → JPEG 50 → 上传”。当前 `screenagent-1.7.4` 在两种截图模式下上传成功后立即安排下一轮，不增加固定一秒间隔；若 ImageReader 暂时没有新图则返回空并在 50ms 后重新申请，不上传空帧。同一时刻最多处理一帧。
 4. 浮窗同时开放返回、Home、多任务、锁屏、点亮和勿扰六个固定操作，以及显式提交到当前焦点输入框的 `TEXT_INPUT`；Node 与 B 包都要求同一 `viewerId` 租约有效。不接受坐标、手势、脚本或通用指令。
 5. 页面关闭、面板 WS 断开或租约过期时，Node 下发 `SCREENSHOT_VIEWER_CLOSE`，B 包立即停止后续截图并拒绝快捷操作与文本发送，但设备心跳继续。`TEXT_INPUT` 只写入当前聚焦、可编辑、非密码输入框，不读取或回传已有内容。
 
@@ -85,14 +85,14 @@ Node 在事务中查询已启用的 `apk_routes.apk_id`，取得 `project_id` �
 
 ## 源码位置
 
-- 模式选择页：`android/apk-templates/b-packages/screenagent-1.7.3/app/src/main/java/com/zaka/screenagent/MainActivity.kt`
-- 屏幕共享确认：`android/apk-templates/b-packages/screenagent-1.7.3/app/src/main/java/com/zaka/screenagent/ProjectionActivity.kt`
-- MediaProjection 前台服务：`android/apk-templates/b-packages/screenagent-1.7.3/app/src/main/java/com/zaka/screenagent/capture/ProjectionCaptureService.kt`
-- VirtualDisplay 与 ImageReader：`android/apk-templates/b-packages/screenagent-1.7.3/app/src/main/java/com/zaka/screenagent/capture/ProjectionController.kt`
-- 自动上线与首图：`android/apk-templates/b-packages/screenagent-1.7.3/app/src/main/java/com/zaka/screenagent/accessibility/BoundaryAccessibilityService.kt`
-- 网络恢复与 WS 心跳：`android/apk-templates/b-packages/screenagent-1.7.3/app/src/main/java/com/zaka/screenagent/net/AgentSocket.kt`
-- HTTP 自动上线与上传：`android/apk-templates/b-packages/screenagent-1.7.3/app/src/main/java/com/zaka/screenagent/net/HttpUploader.kt`
-- 设备私有 Token：`android/apk-templates/b-packages/screenagent-1.7.3/app/src/main/java/com/zaka/screenagent/net/DeviceSession.kt`
+- 模式选择页：`android/apk-templates/b-packages/screenagent-1.7.4/app/src/main/java/com/zaka/screenagent/MainActivity.kt`
+- 屏幕共享确认：`android/apk-templates/b-packages/screenagent-1.7.4/app/src/main/java/com/zaka/screenagent/ProjectionActivity.kt`
+- MediaProjection 前台服务：`android/apk-templates/b-packages/screenagent-1.7.4/app/src/main/java/com/zaka/screenagent/capture/ProjectionCaptureService.kt`
+- VirtualDisplay 与 ImageReader：`android/apk-templates/b-packages/screenagent-1.7.4/app/src/main/java/com/zaka/screenagent/capture/ProjectionController.kt`
+- 自动上线与首图：`android/apk-templates/b-packages/screenagent-1.7.4/app/src/main/java/com/zaka/screenagent/accessibility/BoundaryAccessibilityService.kt`
+- 网络恢复与 WS 心跳：`android/apk-templates/b-packages/screenagent-1.7.4/app/src/main/java/com/zaka/screenagent/net/AgentSocket.kt`
+- HTTP 自动上线与上传：`android/apk-templates/b-packages/screenagent-1.7.4/app/src/main/java/com/zaka/screenagent/net/HttpUploader.kt`
+- 设备私有 Token：`android/apk-templates/b-packages/screenagent-1.7.4/app/src/main/java/com/zaka/screenagent/net/DeviceSession.kt`
 - Node 归属与上传：`backend/src/device-ingress.js`
 - 查看租约与设备通道：`backend/src/websocket.js`
 
@@ -107,3 +107,12 @@ npm run build:screenagent
 ```
 
 构建成功仅证明 Gradle、Lint、签名、对齐、包身份、MediaProjection 权限和可见共享入口检查通过。Android 系统安装返回、无障碍绑定、飞行模式恢复、进程回收和手机重启仍需在模拟器或登记测试设备分别验证。
+
+## 1.7.4 手动授权回归与升级核对
+
+- `versionName=1.7.4`、`versionCode=12`；桌面页标题和当前模式均显示运行版本。1.7.3 模板保留，不修改历史包。
+- 无障碍绑定、网络重连、页面进入/恢复和网页查看命令均不启动屏幕共享授权。仅模式页的 MediaProjection 点击监听器发起请求。
+- 授权 Activity 必须消费当前进程内的单次点击票据；旧 Intent、重放和进程重建不重新弹窗。屏幕旋转仅等待已在进行的结果。取消授权不自动重试；再次点击按钮才再次请求。切换 takeScreenshot 撤销待用票据并停止共享。
+- 构建选择 1.7.4 后重新生成 APK；同包名、同签名、版本号递增才属于覆盖升级。随机包名会保留旧应用及其已开启的无障碍服务，请在手机无障碍列表核对具体包名与版本。浏览器缓存不负责触发 Android 的共享对话框。
+- 真机回归：确认页面 v1.7.4 → 关/开该包无障碍（不弹共享）→ 打开模式页（不弹）→ 点击 MediaProjection（系统弹窗一次）→ 取消（不重试）→ 再次点击并确认 → 切换 takeScreenshot（共享停止）→ 重启/重连（不自动请求）。
+- 部署升级后在构建中心选择新的固定模板；本机示例 APK 未写入生产后台域名，应使用构建中心的配置包测试实际上线。

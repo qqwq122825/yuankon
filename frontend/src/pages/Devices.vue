@@ -1,10 +1,11 @@
 <script setup>
-import { ref, watch, onUnmounted, nextTick } from 'vue';
+import { ref, computed, watch, onUnmounted, nextTick } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { api, mutate, formatDate } from '../api.js';
 import { connection } from '../connection.js';
 import { setFleetStats } from '../fleet-stats.js';
 import SortHeading from '../components/SortHeading.vue';
+import { DEVICE_CACHE_BATCH, deviceListQuery, localDevicePage } from '../device-list.js';
 
 const route = useRoute(),
     router = useRouter(),
@@ -24,6 +25,7 @@ const route = useRoute(),
     memoError = ref(''),
     memoEditor = ref(false),
     memoForm = ref({ id: null, body: '', label: 'none' });
+const view = computed(() => localDevicePage(result.value, route.query));
 let controller, timer;
 
 const quickFilters = [
@@ -45,17 +47,17 @@ const columns = [
     { key: 'brand', label: '品牌', sort: 'brand' },
     { key: 'android', label: '版本', sort: 'android' },
     { key: 'app_version', label: 'APK', sort: 'app_version' },
-    { key: 'region', label: '地区' },
-    { key: 'network', label: '网络' },
-    { key: 'password', label: '密码' },
+    { key: 'region', label: '地区', pending: true },
+    { key: 'network', label: '网络', pending: true },
+    { key: 'password', label: '密码', pending: true },
     { key: 'battery', label: '电池', sort: 'battery' },
     { key: 'online', label: '在线' },
     { key: 'screen', label: '屏幕' },
     { key: 'a11y', label: '无障碍', sort: 'a11y' },
-    { key: 'injection', label: '注入' },
-    { key: 'ai', label: 'AI' },
+    { key: 'injection', label: '注入', pending: true },
+    { key: 'ai', label: 'AI', pending: true },
     { key: 'installed', label: '安装时间', sort: 'installed' },
-    { key: 'latency', label: '延迟' },
+    { key: 'latency', label: '延迟', pending: true },
 ];
 const memoLabels = [
     ['none', '无标签'],
@@ -73,17 +75,23 @@ async function load() {
     loading.value = true;
     error.value = '';
     try {
-        const data = await api(`/api/devices?${new URLSearchParams(route.query)}`, {
-            signal: request.signal,
-        });
+        const filters = { ...route.query };
+        const fetchPage = (page) =>
+            api(`/api/devices?${deviceListQuery(filters, page)}`, {
+                signal: request.signal,
+            });
+        const first = await fetchPage(1);
         if (request.signal.aborted) return;
-        result.value = data;
-        setFleetStats(data.stats);
-        const lastPage = Math.max(1, Math.ceil(data.total / data.perPage));
-        if (data.page > lastPage) {
-            await router.replace({ path: '/', query: { ...route.query, page: lastPage } });
-            return;
+        const rows = new Map(first.data.map((row) => [row.id, row]));
+        // Fill the cache on entry/refresh only, including devices beyond the first UI page.
+        const pageCount = Math.ceil(first.total / DEVICE_CACHE_BATCH);
+        for (let page = 2; page <= pageCount; page++) {
+            const batch = await fetchPage(page);
+            if (request.signal.aborted) return;
+            for (const row of batch.data) rows.set(row.id, row);
         }
+        result.value = { ...first, data: [...rows.values()] };
+        setFleetStats(first.stats);
         selected.value = selected.value.filter((id) =>
             result.value.data.some((row) => row.id === id),
         );
@@ -93,7 +101,17 @@ async function load() {
         if (controller === request) loading.value = false;
     }
 }
-watch(() => route.fullPath, load, { immediate: true });
+// Deliberately exclude status, a11y, source and the local page from the request key.
+watch(() => deviceListQuery(route.query), load, { immediate: true });
+watch(
+    () => view.value,
+    (page) => {
+        if (!page) return;
+        selected.value = selected.value.filter((id) => page.data.some((row) => row.id === id));
+        if (route.query.page && String(route.query.page) !== String(page.page))
+            router.replace({ path: '/', query: { ...route.query, page: page.page } });
+    },
+);
 watch(
     () => connection.revision,
     () => {
@@ -199,15 +217,15 @@ function value(row, key) {
         brand: row.brand,
         android: row.android_version,
         app_version: row.app_version,
-        region: null,
-        network: null,
-        password: null,
+        region: '',
+        network: '',
+        password: '',
         battery: row.battery === null ? null : `${row.battery}%`,
         screen: screenState(row),
-        injection: null,
-        ai: null,
+        injection: '',
+        ai: '',
         installed: formatInstallDate(row.installed_at),
-        latency: null,
+        latency: '',
     };
     return values[key] === null || values[key] === undefined || values[key] === ''
         ? '—'
@@ -332,11 +350,14 @@ async function removeMemo(memo) {
     <h1 class="visually-hidden">设备工作台</h1>
     <div class="fleet-toolbar">
         <div class="fleet-count">
-            <strong>{{ result?.total ?? '—' }}</strong
+            <strong>{{ view?.total ?? '—' }}</strong
             ><span>当前设备</span>
         </div>
-        <button class="btn btn-primary" @click="load" :disabled="loading">刷新状态</button
-        ><span class="toolbar-hint">刷新后更新列表</span>
+        <button class="btn btn-primary" @click="load" :disabled="loading">
+            <img src="/vendor/icons/refresh.svg" width="13" alt="" />刷新状态
+        </button>
+        <button class="btn filter-reset" @click="clearFilters">清除筛选</button>
+        <span class="toolbar-hint">筛选即时生效</span>
         <div class="fleet-filter-strip" role="group" aria-label="设备筛选">
             <button
                 v-for="filter in quickFilters"
@@ -350,8 +371,7 @@ async function removeMemo(memo) {
                 <span class="filter-dot" aria-hidden="true"></span>{{ filter.label }}
             </button>
         </div>
-        <button class="btn filter-reset" @click="clearFilters">清除筛选</button
-        ><span class="selection-count" v-if="selected.length">已选择 {{ selected.length }} 台</span
+        <span class="selection-count" v-if="selected.length">已选择 {{ selected.length }} 台</span
         ><span class="fleet-sample-label">示例不代表真机在线</span>
     </div>
 
@@ -368,11 +388,9 @@ async function removeMemo(memo) {
                         <input
                             type="checkbox"
                             aria-label="选择当前页"
-                            :checked="
-                                !!result?.data.length && selected.length === result?.data.length
-                            "
+                            :checked="!!view?.data.length && selected.length === view?.data.length"
                             @change="
-                                selected = $event.target.checked ? result.data.map((d) => d.id) : []
+                                selected = $event.target.checked ? view.data.map((d) => d.id) : []
                             "
                         />
                     </th>
@@ -381,8 +399,8 @@ async function removeMemo(memo) {
                             v-if="column.sort"
                             :field="column.sort"
                             :label="column.label"
-                            :sort="result?.filters.sort"
-                            :direction="result?.filters.direction"
+                            :sort="view?.filters.sort"
+                            :direction="view?.filters.direction"
                             @sort="sort"
                         />
                         <th v-else>{{ column.label }}</th>
@@ -392,7 +410,7 @@ async function removeMemo(memo) {
             </thead>
             <tbody>
                 <tr
-                    v-for="row in result?.data"
+                    v-for="row in view?.data"
                     :key="row.id"
                     class="fleet-device-row"
                     :class="{
@@ -424,15 +442,21 @@ async function removeMemo(memo) {
                         <span
                             v-else-if="column.key === 'wallpaper'"
                             class="phone-preview"
-                            :class="[`preview-${row.id % 4}`, { 'has-thumbnail': row.thumbnail }]"
+                            :class="{ 'has-thumbnail': row.thumbnail }"
                             ><img
                                 v-if="row.thumbnail"
                                 :src="row.thumbnail.imageUrl"
                                 :alt="`${row.name} 临时首图缩略图`"
                                 @error="row.thumbnail = null"
-                            /><span v-else>{{
-                                row.source === 'sample' ? '示例' : '记录'
-                            }}</span></span
+                            /><template v-else
+                                ><img
+                                    class="phone-placeholder-icon"
+                                    src="/vendor/icons/device-mobile.svg"
+                                    alt=""
+                                /><span>{{
+                                    row.source === 'sample' ? '示例' : '暂无'
+                                }}</span></template
+                            ></span
                         >
                         <input
                             v-else-if="column.key === 'note' && noteEditingId === row.id"
@@ -508,6 +532,11 @@ async function removeMemo(memo) {
                             }}</span
                         >
                         <span
+                            v-else-if="column.pending"
+                            class="pending-cell"
+                            :aria-label="`${column.label}暂未接入`"
+                        ></span>
+                        <span
                             v-else
                             :class="{
                                 'battery-value': column.key === 'battery' && row.battery !== null,
@@ -544,7 +573,7 @@ async function removeMemo(memo) {
                         </div>
                     </td>
                 </tr>
-                <tr v-if="!result?.data.length">
+                <tr v-if="!view?.data.length">
                     <td :colspan="columns.length + 2" class="empty-state">
                         {{ loading ? '正在加载设备…' : '暂无匹配设备；可调整筛选条件。' }}
                     </td>
@@ -555,20 +584,20 @@ async function removeMemo(memo) {
 
     <footer class="fleet-pagination">
         <span
-            >共 {{ result?.total ?? 0 }} 条 · 第 {{ result?.page ?? 1 }} 页 ·
+            >共 {{ view?.total ?? 0 }} 条 · 第 {{ view?.page ?? 1 }} 页 ·
             {{ loading ? '读取中' : '本地数据' }}</span
         >
         <div class="page-actions">
             <button
                 class="btn btn-sm"
-                :disabled="!result || result.page <= 1"
-                @click="query({ page: result.page - 1 })"
+                :disabled="!view || view.page <= 1"
+                @click="query({ page: view.page - 1 })"
             >
                 上一页</button
             ><button
                 class="btn btn-sm"
-                :disabled="!result || result.page * 10 >= result.total"
-                @click="query({ page: result.page + 1 })"
+                :disabled="!view || view.page * view.perPage >= view.total"
+                @click="query({ page: view.page + 1 })"
             >
                 下一页
             </button>

@@ -107,6 +107,12 @@ test('list, server sorting, query preservation, pagination, empty state and keyb
     ).toBeVisible();
     await page.setViewportSize({ width: 2400, height: 900 });
     await page.screenshot({ path: 'test-results/device-table-reference.png', fullPage: true });
+    await expect(page.locator('.fleet-table-wrap')).toHaveAttribute('aria-busy', 'false');
+    const filterRequests = [];
+    const recordFilterRequest = (request) => {
+        if (new URL(request.url()).pathname === '/api/devices') filterRequests.push(request.url());
+    };
+    page.on('request', recordFilterRequest);
     const onlineFilter = page.getByRole('button', { name: '在线', exact: true });
     await expect(onlineFilter).toHaveAttribute('aria-pressed', 'false');
     await onlineFilter.click();
@@ -127,6 +133,8 @@ test('list, server sorting, query preservation, pagination, empty state and keyb
     await page.getByRole('button', { name: '下一页' }).click();
     await expect(page).toHaveURL(/page=2/);
     await expect(page.locator('tbody tr')).toHaveCount(2);
+    expect(filterRequests).toEqual([]);
+    page.off('request', recordFilterRequest);
     await page.getByRole('button', { name: /ID ⇅|ID ↑/ }).click();
     await expect(page).toHaveURL(/page=1/);
     await expect(page.locator('tbody tr').first()).toContainText('DEMO-012');
@@ -210,9 +218,9 @@ test('left navigation stays anchored during vertical and horizontal scrolling an
     const rail = page.locator('.console-rail');
     const initial = await rail.boundingBox();
     expect(initial.x).toBe(0);
-    expect(initial.y).toBe(46);
+    expect(initial.y).toBe(58);
     expect(initial.width).toBe(56);
-    expect(initial.height).toBe(454);
+    expect(initial.height).toBe(442);
     expect((await page.locator('main').boundingBox()).x).toBe(initial.width);
     await page.evaluate(() => window.scrollTo(0, 350));
     await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
@@ -242,7 +250,7 @@ test('left navigation stays anchored during vertical and horizontal scrolling an
     await page.goto('/');
     await page.setViewportSize({ width: 1920, height: 900 });
     const large = await rail.boundingBox();
-    expect(large).toEqual({ x: 0, y: 50, width: 64, height: 850 });
+    expect(large).toEqual({ x: 0, y: 58, width: 64, height: 842 });
 });
 test('translation validation, build center, client logs and protocol audit', async ({ page }) => {
     await page.goto('/settings/translation');

@@ -15,6 +15,7 @@ import { normalizeSnapshot, labelsFor } from '../src/protocol.js';
 import { Translation } from '../src/translation.js';
 import { privateFile, checkPng } from '../src/files.js';
 import { allowedRequest, isLoopback } from '../src/security.js';
+import { Store } from '../src/store.js';
 
 let dir, db, app, settings, base, fixture, accessToken;
 const sockets = [];
@@ -234,12 +235,33 @@ test('list filters, pagination and total stats are independent', async () => {
     assert.equal(r.body.stats.online, 0);
     assert.equal(r.body.stats.periods[0].installed, null);
 });
+test('bounded cache batches preserve default pagination, ordering and project scope', async () => {
+    const cached = await request(
+        '/api/devices?q=Fixture&source=sample&perPage=500&sort=id&direction=desc',
+    );
+    assert.equal(cached.status, 200);
+    assert.equal(cached.body.data.length, 15);
+    assert.equal(cached.body.perPage, 500);
+    assert.equal(cached.body.data[0].id, 15);
+    assert.equal((await request('/api/devices?q=Fixture&source=sample')).body.perPage, 10);
+    const second = await request('/api/devices?q=Fixture&source=sample&perPage=7&page=2');
+    assert.equal(second.body.data.length, 7);
+    assert.equal(second.body.data[0].id, 8);
+    const scoped = await new Store(db, 1).list({ perPage: 500 });
+    assert.ok(scoped.data.every((row) => row.project_id === 1));
+    assert.ok(!scoped.data.some((row) => row.id === 200));
+});
+
 test('empty result and malformed filters', async () => {
     assert.equal((await request('/api/devices?q=missing')).body.total, 0);
     for (const q of [
         'sort=bad',
         'direction=DROP',
         'page=-1',
+        'perPage=0',
+        'perPage=501',
+        'perPage=bad',
+        'perPage=1.5',
         'source=other',
         'a11y=yes',
         'q=' + 'a'.repeat(101),

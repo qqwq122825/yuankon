@@ -1,0 +1,13 @@
+{
+  "serverUrl": "wss://example.com",
+  "apkId": "1",
+  "batch": "",
+  "buildId": "5412ce7f",
+  "appName": "ScreenAgent",
+  "packageName": "com.zaka.screenagent",
+  "version": "1.7.4",
+  "capture": {
+    "maxWidth": 540,
+    "quality": 50
+  }
+}

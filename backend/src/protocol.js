@@ -236,6 +236,7 @@ export const listSchema = z.object({
     sort: z.enum(Object.keys(SORT_COLUMNS)).default('id'),
     direction: z.enum(['asc', 'desc']).default('asc'),
     page: z.coerce.number().int().min(1).max(100000).default(1),
+    perPage: z.coerce.number().int().min(1).max(500).default(10),
 });
 const viewerIdSchema = z.string().uuid();
 export const DEVICE_ACTIONS = Object.freeze([

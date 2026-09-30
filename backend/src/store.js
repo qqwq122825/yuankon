@@ -106,12 +106,12 @@ export class Store {
         } else query.orderBy(column, filter.direction);
         query.orderBy('id', 'asc');
         return {
-            data: (await query.offset((filter.page - 1) * 10).limit(10)).map((row) =>
-                this.dto(row),
-            ),
+            data: (
+                await query.offset((filter.page - 1) * filter.perPage).limit(filter.perPage)
+            ).map((row) => this.dto(row)),
             total: Number(count),
             page: filter.page,
-            perPage: 10,
+            perPage: filter.perPage,
             filters: filter,
             stats: await this.stats(),
         };
