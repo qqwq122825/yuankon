@@ -73,6 +73,8 @@ test('APK ownership, automatic online and an actual synthetic JPEG are visible i
                                             bounds: [20, 40, 260, 92],
                                             flags: { visible: true, enabled: true },
                                             text_present: true,
+                                            text: 'Fixture title',
+                                            content_description: null,
                                         },
                                         {
                                             id: 'n1',
@@ -175,12 +177,11 @@ test('APK ownership, automatic online and an actual synthetic JPEG are visible i
     await expect(reader.locator('.reader-map-node').first()).toContainText('文本区域');
     await expect(reader.getByRole('button', { name: '原文', exact: true })).toBeVisible();
     await reader.getByRole('button', { name: '原文', exact: true }).click();
-    await expect(reader.locator('.reader-map-node').first()).toContainText('TextView');
+    await expect(reader.locator('.reader-map-node').first()).toContainText('Fixture title');
     await reader.getByRole('button', { name: '缩小阅读器字号' }).click();
     await expect(reader.locator('.reader-actions output')).toHaveText('50%');
-    await expect(reader.locator('.reader-record-summary')).toContainText(
-        '1 个窗口2 个节点本帧结构完整',
-    );
+    await expect(reader.locator('.reader-record-summary')).toContainText('1 个窗口2 个节点');
+    await expect(reader.locator('.reader-record-summary')).not.toContainText('本帧结构完整');
     await expect(reader.getByRole('tab')).toHaveCount(0);
     await expect(reader.getByRole('textbox', { name: '发送到设备的文本' })).toHaveCount(1);
     await reader.locator('.reader-map-node').first().click();
@@ -188,6 +189,7 @@ test('APK ownership, automatic online and an actual synthetic JPEG are visible i
         '"view_id": "dev.boundary.fixture:id/title"',
     );
     await expect(reader.locator('.reader-properties')).toContainText('"text_present": true');
+    await expect(reader.locator('.reader-properties')).toContainText('"text": "Fixture title"');
     await expect(reader.locator('.reader-record-note')).toHaveText(
         '完整显示本帧节点字段 · 正文与输入内容随节点上报',
     );

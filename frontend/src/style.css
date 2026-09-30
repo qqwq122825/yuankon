@@ -62,6 +62,15 @@ select:focus-visible,
     color: #219774;
     background: #e6f7ef;
 }
+
+.latency-chip {
+    border: 0;
+    color: #5363f6;
+    background: #eef1ff;
+}
+.latency-chip:disabled {
+    opacity: 0.7;
+}
 .empty-state {
     text-align: center;
     padding: 45px !important;
@@ -449,11 +458,10 @@ select:focus-visible,
     font-size: 9px;
 }
 .reader-record-summary strong {
-    margin-left: auto;
     color: #d88719;
     font-weight: 600;
 }
-.reader-record-summary span:last-child {
+.reader-record-summary .reader-summary-status {
     margin-left: auto;
 }
 .reader-record-note {
@@ -698,4 +706,12 @@ select:focus-visible,
     font-size: 10px;
     margin-top: 18px;
     letter-spacing: 0.5px;
+}
+.node-info-card {
+    gap: 12px;
+}
+.node-info-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
 }

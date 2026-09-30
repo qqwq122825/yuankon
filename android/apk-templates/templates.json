@@ -1,5 +1,19 @@
 [
     {
+        "id": "screenagent-1.7.3",
+        "name": "v1.7.3 · ScreenAgent 双截图模式测试",
+        "versionName": "1.7.3",
+        "versionCode": 11,
+        "sourceDir": "b-packages/screenagent-1.7.3",
+        "kind": "screenagent",
+        "visibleLauncher": true,
+        "description": "B 包测试端；提供桌面页面按钮切换 MediaProjection 模式与 AccessibilityService.takeScreenshot 模式，两种模式均在网页租约内上一帧上传完成后立即继续取下一帧。",
+        "capture": {
+            "maxWidth": 540,
+            "quality": 50
+        }
+    },
+    {
         "id": "screenagent-1.7.2",
         "name": "v1.7.2 · ScreenAgent 无通知权限弹窗",
         "versionName": "1.7.2",

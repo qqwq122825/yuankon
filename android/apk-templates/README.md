@@ -2,7 +2,7 @@
 
 ## 当前源码
 
-- `android/apk-templates/b-packages/`：工作端版本区。当前 `screenagent-1.7.2/` 没有桌面入口或自定义页面；无障碍服务连接后立即打开 Android 系统 MediaProjection 确认，确认后通过 `VirtualDisplay + ImageReader.acquireLatestImage()` 读取最新帧，系统通知保留停止入口；无障碍配置不声明截图能力。1.0–1.4 已删除，保留 1.5、1.6、1.7、1.7.1 兼容目录。
+- `android/apk-templates/b-packages/`：工作端版本区。当前 `screenagent-1.7.3/` 有桌面模式选择页；可在 MediaProjection（`VirtualDisplay + ImageReader.acquireLatestImage()`）和 AccessibilityService.takeScreenshot 两种截图模式间切换。MediaProjection 确认仍由 Android 系统界面完成；1.0–1.4 已删除，保留 1.5、1.6、1.7、1.7.1、1.7.2 兼容目录。
 - `android/apk-templates/a-packages/`：安装器版本区。当前 `installer-1.2/` 清单 ID 为 `installer-1.2`，有桌面入口和 HTTPS 内置浏览器；构建副本写入首页、最新成功 B 包和摘要配置。未安装 B 包时只显示安装入口；安装成功后，Android 13 及以上可先打开 B 包应用信息并由用户选择「允许受限设置」，再打开无障碍，用户开启与 B 包同名的服务并返回后进入首页；完成首次引导后检测到已安装便直接进入首页。旧 `installer-1.0/1.1` 保留。A 包不复制 B 包工作逻辑。
 - `android/apk-templates/standalone/`：不参与 A/B 依赖的独立模板。当前 `browser-1.0/` 只打开可见 WebView。
 - `android/apk-templates/templates.json`：后台模板选择框的数据源。显示名和实际 Android 版本分开；当前没有名为 v4.0 的源码，勿只改标题就描述为新增功能。
@@ -15,7 +15,7 @@
 以下命令在项目根目录执行。先确认新目录尚不存在：
 
 ```bash
-cp -R android/apk-templates/b-packages/screenagent-1.7.2 android/apk-templates/b-packages/screenagent-1.8
+cp -R android/apk-templates/b-packages/screenagent-1.7.3 android/apk-templates/b-packages/screenagent-1.8
 ```
 
 在新目录修改 Android 源码。向 `android/apk-templates/templates.json` 的数组追加：
@@ -43,7 +43,7 @@ cp -R android/apk-templates/b-packages/screenagent-1.7.2 android/apk-templates/b
 - 复制范围为根目录 `build.gradle[.kts]`、`settings.gradle[.kts]`、`gradle.properties`，以及 `app/build.gradle[.kts]`、`app/proguard-rules.pro`、`app/src/`。不复制缓存、签名、local.properties、任意额外模块或符号链接。
 - 保留 `app/src/main/res/values/strings.xml` 的 `app_name`；浏览器还需 `home_url`。名称与网址经过 XML/Android 字符串转义，原模板不改。
 - ScreenAgent 从 `app/src/main/assets/agent_config.json` 读取后台 `serverUrl` 等运行时参数，不包含 `homeUrl/webUrl`；Gradle 不应再次覆盖这个文件。支持属性 `appId`、`versionName`、`versionCode`。
-- ScreenAgent 1.7.2 保留 `boundary-node-v2` 规则并上报节点 text/content_description；1.7 保留 MediaProjection 与节点预览基线，并移除 POST_NOTIFICATIONS 权限申请。1.7.2 接收六个固定系统动作和租约内的 `TEXT_INPUT`；TEXT_INPUT 只写入当前聚焦、可编辑、非密码输入框，不接受坐标手势、脚本或通用指令。截图只来自用户确认后的 MediaProjection 会话。客户端最多遍历 250 节点 / 24 层，服务端再校验 400 节点 / 32 层和 128 KiB 设备 WS 上限；网页只读取内存中与 viewerId 绑定的最新一帧。
+- ScreenAgent 1.7.3 保留 `boundary-node-v2` 规则并上报节点 text/content_description；页面可切换 MediaProjection 与 takeScreenshot 截图模式。1.7.3 接收六个固定系统动作和租约内的 `TEXT_INPUT`；TEXT_INPUT 只写入当前聚焦、可编辑、非密码输入框，不接受坐标手势、脚本或通用指令。客户端最多遍历 250 节点 / 24 层，服务端再校验 400 节点 / 32 层和 128 KiB 设备 WS 上限；网页只读取内存中与 viewerId 绑定的最新一帧。
 - Installer 从 `app/src/main/assets/installer_config.json` 读取 A 包 HTTPS 首页，以及被锁定的 B 包构建 ID、摘要与包名，并携带 `payload.apk`；这些文件只能由 Node 从已完成构建复制，不接受网页上传或任意路径。1.1 在构建副本的 `<queries>` 中写入 B 包包名并直接检查安装状态，不要求 B 包暴露 Activity；A 包只在自己刚完成 B 包安装的返回路径中显示无障碍引导，用户点击按钮后才打开 Android 系统无障碍设置。
 - 浏览器支持 `shellApplicationId`、`shellVersionName`、`shellVersionCode`，元数据写入 `assets/build_config.json`，主页写入 `home_url`。
 - 输出约定 `app/build/outputs/apk/debug/app-debug.apk`；固定执行 `assembleDebug lintDebug`。保持 JDK 17、AGP 8.9.2 / Gradle 8.11.1 与 API 35 工具链兼容。
@@ -71,7 +71,7 @@ APK ID 在创建账号时自动分配，一个账号一个固定编号。构建�
 
 网页构建产物：`backend/.node-private/files/apk-builds/<构建 UUID>/application.apk`。
 
-构建日志：`backend/.node-private/build-work/<UUID>/build.log`，最多 1 MiB。构建记录的“构建日志”按钮通过登录鉴权下载。A/B 两类日志均记录模板路径、包身份、B 包摘要（A 包）、源码准备、Gradle assemble/Lint、`apksigner verify`、`zipalign`、`aapt badging`、桌面入口断言、SHA-256、产物保存、失败和源码清理步骤。构建器按模板 `visibleLauncher` 断言 B 包无桌面入口，A 包必须有桌面入口，否则构建直接失败。每次源码副本在成功或失败后清理；异常断电留下的 source 可在确认队列空闲、服务停止后由维护者清理。模板原目录保留。
+构建日志：`backend/.node-private/build-work/<UUID>/build.log`，最多 1 MiB。构建记录的“构建日志”按钮通过登录鉴权下载。A/B 两类日志均记录模板路径、包身份、B 包摘要（A 包）、源码准备、Gradle assemble/Lint、`apksigner verify`、`zipalign`、`aapt badging`、桌面入口断言、SHA-256、产物保存、失败和源码清理步骤。构建器按模板 `visibleLauncher` 断言 B 包是否有桌面入口，A 包必须有桌面入口，否则构建直接失败。每次源码副本在成功或失败后清理；异常断电留下的 source 可在确认队列空闲、服务停止后由维护者清理。模板原目录保留。
 
 单实例、单任务执行，最多 10 个未完成任务，每任务 20 分钟；工具链缺失直接报错，执行失败不显示下载按钮。重启将执行中任务标记失败，排队任务继续；提交 requestId 防止网络重试重复建包。不要让两个 Node 实例共用同一数据库和构建目录。
 

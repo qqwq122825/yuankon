@@ -13,6 +13,7 @@ import {
     requestScreenshot,
     requestDeviceAction,
     requestTextInput,
+    requestDevicePing,
 } from '../connection.js';
 import FloatingViewer from '../components/FloatingViewer.vue';
 import NodeReader from '../components/NodeReader.vue';
@@ -36,8 +37,15 @@ const route = useRoute(),
     captureState = ref(''),
     actionToast = ref(''),
     actionToastTone = ref('success'),
-    dndEnabled = ref(false);
-let controller, subscribed, viewerId, viewerTimer, activeCommandId, actionToastTimer;
+    dndEnabled = ref(false),
+    latency = ref({ status: '未测量', ms: null, at: null });
+let controller,
+    subscribed,
+    viewerId,
+    viewerTimer,
+    activeCommandId,
+    actionToastTimer,
+    activeLatencyCommandId;
 const activeReaderSnapshot = computed(() =>
     data.value?.device.source === 'api' ? liveNodeSnapshot.value : data.value?.snapshot,
 );
@@ -154,6 +162,19 @@ const off = onMessage((message) => {
                 };
                 showActionToast(failure[message.data.reasonCode] || '设备未执行该操作', 'error');
             }
+        }
+    }
+    if (message.type === 'command_ack' && message.data?.command === 'DEVICE_PING') {
+        if (message.data.commandId === activeLatencyCommandId) {
+            latency.value = {
+                status:
+                    message.data.result === 'accepted'
+                        ? '已测量'
+                        : `测量失败：${message.data.reasonCode || 'rejected'}`,
+                ms: message.data.latencyMs ?? null,
+                at: Date.now(),
+            };
+            activeLatencyCommandId = null;
         }
     }
     if (message.type === 'command_ack' && message.data?.command === 'TEXT_INPUT') {
@@ -287,6 +308,7 @@ function stopLiveSession() {
     activeCommandId = null;
     pendingActions.clear();
     pendingTextInputs.clear();
+    activeLatencyCommandId = null;
     clearTimeout(actionToastTimer);
     actionToast.value = '';
     reportedShot.value = false;
@@ -311,6 +333,24 @@ function runDeviceAction(action) {
     const commandId = requestDeviceAction(data.value.device.public_id, viewerId, action);
     pendingActions.set(commandId, action);
     showActionToast(actionProgress[action] || '正在发送');
+}
+async function copyLiveNodeReport() {
+    if (!liveNodeSnapshot.value) await loadLiveNodes();
+    if (!liveNodeSnapshot.value) {
+        showActionToast('当前还没有手机上报的节点数据', 'error');
+        return;
+    }
+    const payload = JSON.stringify(liveNodeSnapshot.value, null, 2);
+    await navigator.clipboard.writeText(payload);
+    showActionToast('已复制当前手机上报节点数据');
+}
+function measureLatency() {
+    if (!data.value || data.value.device.status !== 'online') {
+        latency.value = { status: '设备离线，无法测量', ms: null, at: Date.now() };
+        return;
+    }
+    activeLatencyCommandId = requestDevicePing(data.value.device.public_id);
+    latency.value = { status: '测量中', ms: null, at: Date.now() };
 }
 function runTextInput(text) {
     if (!viewerId || !data.value || data.value.device.status !== 'online') {
@@ -347,7 +387,14 @@ function choose(value) {
             /><button class="btn btn-primary" :disabled="saving">保存备注</button>
         </form>
         <span class="device-badges"
-            ><span class="status-chip">{{ data ? sourceLabel(data.device.source) : '读取中' }}</span
+            ><button
+                v-if="data?.device.source === 'api'"
+                class="status-chip latency-chip"
+                :disabled="latency.status === '测量中' || data.device.status !== 'online'"
+                title="点击测量服务器和手机通信延迟"
+                @click="measureLatency"
+            >
+                延迟 {{ latency.ms === null ? '—' : `${latency.ms}ms` }}</button
             ><span class="status-chip" :class="data?.device.status">{{
                 data?.device.status === 'online' ? '在线' : '历史记录 / 离线'
             }}</span
@@ -537,7 +584,7 @@ function choose(value) {
                 </div></template
             ><template v-else
                 ><div class="workspace-section-heading"><h2>节点信息</h2></div>
-                <div class="card card-body">
+                <div class="card card-body node-info-card">
                     <p>
                         {{
                             data.device.source === 'api'
@@ -549,13 +596,22 @@ function choose(value) {
                                   : '暂无节点快照。'
                         }}
                     </p>
-                    <button
-                        class="btn"
-                        :disabled="data.device.source !== 'api' && !data.snapshot"
-                        @click="openReader"
-                    >
-                        打开节点阅读器
-                    </button>
+                    <div class="node-info-actions">
+                        <button
+                            class="btn"
+                            :disabled="data.device.source !== 'api' && !data.snapshot"
+                            @click="openReader"
+                        >
+                            打开节点阅读器</button
+                        ><button
+                            v-if="data.device.source === 'api'"
+                            class="btn"
+                            :disabled="!liveNodeSnapshot"
+                            @click="copyLiveNodeReport"
+                        >
+                            复制当前上报数据
+                        </button>
+                    </div>
                 </div></template
             >
         </div>

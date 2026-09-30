@@ -28,6 +28,7 @@ export function attachWebSockets(
         perMessageDeflate: false,
     });
     const connections = new Map();
+    const pendingDevicePings = new Map();
     const send = (ws, value) => {
         if (ws.readyState === WebSocket.OPEN) {
             if (ws.bufferedAmount > 1024 * 1024) ws.close(1013, 'slow_consumer');
@@ -274,6 +275,25 @@ export function attachWebSockets(
                     sessionId: device.public_id,
                     data: { viewerId: message.data.viewerId },
                 });
+            } else if (message.type === 'command' && message.data.command === 'DEVICE_PING') {
+                if (!connections.has(device.public_id)) throw fail(409, '设备当前离线');
+                const sentAt = Date.now();
+                pendingDevicePings.set(message.data.commandId, sentAt);
+                if (
+                    !sendDeviceCommand(device.public_id, 'DEVICE_PING', message.data.commandId, {})
+                ) {
+                    pendingDevicePings.delete(message.data.commandId);
+                    throw fail(409, '设备当前离线');
+                }
+                send(ws, {
+                    type: 'command_dispatched',
+                    sessionId: device.public_id,
+                    data: {
+                        command: 'DEVICE_PING',
+                        commandId: message.data.commandId,
+                        sentAt,
+                    },
+                });
             } else if (message.type === 'command' && message.data.command === 'SCREENSHOT_NOW') {
                 const viewer = ws.viewers.get(device.public_id);
                 if (
@@ -506,6 +526,20 @@ export function attachWebSockets(
                                     type: z.literal('command_ack'),
                                     data: z
                                         .object({
+                                            command: z.literal('DEVICE_PING'),
+                                            commandId: z.string().uuid(),
+                                            result: z.enum(['accepted', 'rejected']),
+                                            reasonCode,
+                                        })
+                                        .strict(),
+                                })
+                                .strict(),
+                            z
+                                .object({
+                                    ...metadata,
+                                    type: z.literal('command_ack'),
+                                    data: z
+                                        .object({
                                             command: z.literal('DEVICE_ACTION'),
                                             commandId: z.string().uuid(),
                                             result: z.enum(['accepted', 'rejected']),
@@ -533,11 +567,17 @@ export function attachWebSockets(
                         .parse(raw);
                     if (envelope.sessionId && envelope.sessionId !== id)
                         throw fail(403, 'identity_mismatch');
+                    const receivedAt = Date.now();
+                    if (envelope.data.command === 'DEVICE_PING') {
+                        const sentAt = pendingDevicePings.get(envelope.data.commandId);
+                        pendingDevicePings.delete(envelope.data.commandId);
+                        if (sentAt) envelope.data.latencyMs = receivedAt - sentAt;
+                    }
                     publishSubscribers(id, {
                         type: envelope.type,
                         sessionId: id,
                         data: envelope.data,
-                        timestamp: Date.now(),
+                        timestamp: receivedAt,
                     });
                     await store.audit(envelope.type, 'device', id, size);
                     return;

@@ -274,6 +274,13 @@ export const panelSchema = z.discriminatedUnion('type', [
                     .strict(),
                 z
                     .object({
+                        command: z.literal('DEVICE_PING'),
+                        commandId: z.string().uuid(),
+                        params: z.object({}).strict().default({}),
+                    })
+                    .strict(),
+                z
+                    .object({
                         command: z.literal('SCREENSHOT_NOW'),
                         commandId: z.string().uuid(),
                         params: z.object({ viewerId: viewerIdSchema }).strict(),

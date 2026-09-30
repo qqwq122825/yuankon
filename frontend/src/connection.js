@@ -27,6 +27,14 @@ export const unsubscribe = (id) => {
 };
 export const queryState = (id) =>
     send({ type: 'command', sessionId: id, data: { command: 'GET_DEVICE_STATE', params: {} } });
+export const requestDevicePing = (id, commandId = crypto.randomUUID()) => {
+    send({
+        type: 'command',
+        sessionId: id,
+        data: { command: 'DEVICE_PING', commandId, params: {} },
+    });
+    return commandId;
+};
 export const captureViewerHeartbeat = (id, viewerId) =>
     send({ type: 'capture_viewer_heartbeat', sessionId: id, data: { viewerId } });
 export const captureViewerClose = (id, viewerId) =>

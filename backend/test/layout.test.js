@@ -43,7 +43,7 @@ test('repository has three source folders, nested dependencies and correctly loc
     }
     const screenagent = path.join(
         ROOT,
-        'android/apk-templates/b-packages/screenagent-1.7.2/app/src/main',
+        'android/apk-templates/b-packages/screenagent-1.7.3/app/src/main',
     );
     const manifest = await readFile(path.join(screenagent, 'AndroidManifest.xml'), 'utf8');
     const screenagentConfig = await readFile(
@@ -96,8 +96,8 @@ test('repository has three source folders, nested dependencies and correctly loc
     assert.match(manifest, /android\.permission\.FOREGROUND_SERVICE_MEDIA_PROJECTION/);
     assert.match(manifest, /android:foregroundServiceType="mediaProjection"/);
     assert.match(manifest, /<activity\b/);
-    assert.doesNotMatch(manifest, /android\.intent\.action\.MAIN/);
-    assert.doesNotMatch(manifest, /android\.intent\.category\.LAUNCHER/);
+    assert.match(manifest, /android\.intent\.action\.MAIN/);
+    assert.match(manifest, /android\.intent\.category\.LAUNCHER/);
     assert.match(manifest, /android:exported="false"/);
     assert.doesNotMatch(screenagentConfig, /webUrl/);
     assert.match(installerManifest, /android\.intent\.action\.MAIN/);
@@ -120,14 +120,16 @@ test('repository has three source folders, nested dependencies and correctly loc
     assert.match(installerActivity, /ACCESSIBILITY_AFTER_INSTALL/);
     assert.doesNotMatch(installerActivity, /打开 B 包设置/);
     assert.doesNotMatch(installerActivity, /openHomePage/);
-    assert.match(metadata, /canTakeScreenshot="false"/);
+    assert.match(metadata, /canTakeScreenshot="true"/);
     assert.match(metadata, /canRetrieveWindowContent="true"/);
     assert.match(metadata, /flagRetrieveInteractiveWindows\|flagReportViewIds/);
     assert.match(service, /CMD_VIEWER_LEASE/);
     assert.match(service, /ProjectionActivity\.request\(this\)/);
+    assert.match(service, /takeScreenshot\(/);
+    assert.match(manifest, /MainActivity/);
     assert.match(service, /initial_accessibility/);
     assert.doesNotMatch(service, /screenshotIntervalMs|waitMs/);
-    assert.doesNotMatch(service, /takeScreenshot\(/);
+    assert.match(service, /takeScreenshot\(/);
     assert.match(service, /ProjectionCaptureService\.captureLatest/);
     assert.match(service, /if \(data != null\) 0 else 500/);
     assert.match(projectionActivity, /createScreenCaptureIntent\(\)/);
@@ -186,8 +188,8 @@ test('repository has three source folders, nested dependencies and correctly loc
 test('template sourceDir accepts version folders but stays inside the unified template root', async () => {
     const base = (await loadTemplates(ROOT))[0];
     assert.equal(
-        templateSchema.parse({ ...base, sourceDir: 'b-packages/screenagent-1.7.2' }).sourceDir,
-        'b-packages/screenagent-1.7.2',
+        templateSchema.parse({ ...base, sourceDir: 'b-packages/screenagent-1.7.3' }).sourceDir,
+        'b-packages/screenagent-1.7.3',
     );
     for (const sourceDir of ['../backend', '/tmp/code', 'safe/../../other', 'safe/../code'])
         assert.equal(templateSchema.safeParse({ ...base, sourceDir }).success, false);

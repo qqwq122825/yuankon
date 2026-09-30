@@ -47,15 +47,19 @@ watch(
     { immediate: true },
 );
 
+function rawText(node) {
+    return [node.text, node.content_description, node.contentDescription]
+        .map((value) => (typeof value === 'string' ? value.trim() : ''))
+        .find(Boolean);
+}
+function originalLabel(node) {
+    return rawText(node) || node.class_name.split('.').pop() || node.id;
+}
 function label(node) {
     if (live.value && useTranslation.value) return props.snapshot?.labels?.[node.key] || '界面元素';
     if (!live.value && useTranslation.value && translated.value?.[node.key])
         return translated.value[node.key];
-    return (
-        (!live.value ? props.snapshot?.labels?.[node.key] : '') ||
-        node.class_name.split('.').pop() ||
-        node.id
-    );
+    return originalLabel(node);
 }
 function nodeStyle(node) {
     const width = display.value.width || 1,
@@ -133,8 +137,9 @@ async function translate() {
         <p v-if="error" role="alert" class="reader-error">{{ error }}</p>
         <div v-if="live" class="reader-record-summary">
             <span>{{ windows.length }} 个窗口</span><span>{{ nodes.length }} 个节点</span
-            ><strong v-if="diagnostics.truncated">设备遍历已截断</strong
-            ><span v-else>本帧结构完整</span>
+            ><strong v-if="diagnostics.truncated" class="reader-summary-status"
+                >设备遍历已截断</strong
+            >
         </div>
         <div class="reader-body" :style="{ '--reader-size': `${(16 * scale) / 100}px` }">
             <div
@@ -158,7 +163,7 @@ async function translate() {
                 </div>
             </div>
             <div v-if="selected" class="reader-properties">
-                <strong>节点记录 {{ selected.id }}</strong>
+                <strong>原始节点记录 {{ selected.id }}</strong>
                 <pre>{{ JSON.stringify(nodeRecord(selected), null, 2) }}</pre>
             </div>
         </div>
