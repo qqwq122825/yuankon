@@ -33,9 +33,6 @@ const quickFilters = [
     { key: 'status', value: 'offline', label: '离线', tone: 'offline' },
     { key: 'a11y', value: 'enabled', label: '无障碍', tone: 'a11y' },
     { key: 'a11y', value: 'disabled', label: '未开无障碍', tone: 'offline' },
-    { key: 'source', value: 'api', label: '设备上报', tone: 'source' },
-    { key: 'source', value: 'import', label: '历史记录', tone: 'source' },
-    { key: 'source', value: 'sample', label: '合成示例', tone: 'source' },
 ];
 const columns = [
     { key: 'id', label: 'ID', sort: 'id' },
@@ -134,7 +131,7 @@ function toggleFilter(filter) {
     query({ [filter.key]: filterActive(filter) ? '' : filter.value, page: 1 });
 }
 function clearFilters() {
-    query({ q: '', source: '', a11y: '', status: '', page: 1 });
+    query({ q: '', source: '', a11y: '', status: '', installedDate: '', page: 1 });
 }
 function sort(field) {
     query({
@@ -349,15 +346,17 @@ async function removeMemo(memo) {
 <template>
     <h1 class="visually-hidden">设备工作台</h1>
     <div class="fleet-toolbar">
-        <div class="fleet-count">
-            <strong>{{ view?.total ?? '—' }}</strong
-            ><span>当前设备</span>
+        <div class="fleet-toolbar-primary">
+            <div class="fleet-count">
+                <strong>{{ view?.total ?? '—' }}</strong
+                ><span>当前设备</span>
+            </div>
+            <button class="btn btn-primary" @click="load" :disabled="loading">
+                <img src="/vendor/icons/refresh.svg" width="14" alt="" />刷新状态
+            </button>
+            <button class="btn filter-reset" @click="clearFilters">清除筛选</button>
         </div>
-        <button class="btn btn-primary" @click="load" :disabled="loading">
-            <img src="/vendor/icons/refresh.svg" width="13" alt="" />刷新状态
-        </button>
-        <button class="btn filter-reset" @click="clearFilters">清除筛选</button>
-        <span class="toolbar-hint">筛选即时生效</span>
+        <span class="toolbar-hint"><i aria-hidden="true"></i>刷新后更新列表</span>
         <div class="fleet-filter-strip" role="group" aria-label="设备筛选">
             <button
                 v-for="filter in quickFilters"
@@ -371,8 +370,15 @@ async function removeMemo(memo) {
                 <span class="filter-dot" aria-hidden="true"></span>{{ filter.label }}
             </button>
         </div>
-        <span class="selection-count" v-if="selected.length">已选择 {{ selected.length }} 台</span
-        ><span class="fleet-sample-label">示例不代表真机在线</span>
+        <label class="fleet-date-filter" :class="{ 'has-value': route.query.installedDate }">
+            <img src="/vendor/icons/calendar.svg" width="14" height="14" alt="" />
+            <input
+                type="date"
+                aria-label="按安装日期筛选"
+                :value="route.query.installedDate || ''"
+                @change="query({ installedDate: $event.target.value, page: 1 })"
+            />
+        </label>
     </div>
 
     <div v-if="error" role="alert" class="alert alert-danger m-3">
@@ -587,6 +593,8 @@ async function removeMemo(memo) {
             >共 {{ view?.total ?? 0 }} 条 · 第 {{ view?.page ?? 1 }} 页 ·
             {{ loading ? '读取中' : '本地数据' }}</span
         >
+        <span class="selection-count" v-if="selected.length">已选择 {{ selected.length }} 台</span>
+        <span class="fleet-sample-label">示例不代表真机在线</span>
         <div class="page-actions">
             <button
                 class="btn btn-sm"

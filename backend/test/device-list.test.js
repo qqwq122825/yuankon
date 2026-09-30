@@ -1,6 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { deviceListQuery, localDevicePage } from '../../frontend/src/device-list.js';
+import {
+    deviceListQuery,
+    localDevicePage,
+    installationDate,
+} from '../../frontend/src/device-list.js';
 
 const rows = Array.from({ length: 24 }, (_, index) => ({
     id: index + 1,
@@ -22,6 +26,7 @@ test('quick filters and local paging never change the server request key', () =>
             a11y: 'enabled',
             source: 'api',
             page: 9,
+            installedDate: '2026-10-01',
         }),
         base,
     );
@@ -29,6 +34,31 @@ test('quick filters and local paging never change the server request key', () =>
     assert.equal(new URLSearchParams(base).has('status'), false);
     assert.notEqual(deviceListQuery({ q: 'different' }), deviceListQuery({}));
     assert.notEqual(deviceListQuery({ sort: 'brand' }), deviceListQuery({}));
+});
+
+test('date filter uses Beijing installation day, ignores unknown times and combines with online', () => {
+    const before = Date.UTC(2026, 8, 30, 15, 59, 59);
+    const after = Date.UTC(2026, 8, 30, 16);
+    assert.equal(installationDate(before), '2026-09-30');
+    assert.equal(installationDate(after), '2026-10-01');
+    for (const unknown of [null, '', 0, 'invalid', Infinity])
+        assert.equal(installationDate(unknown), '');
+    const fixture = {
+        data: [
+            { id: 1, installed_at: before, status: 'online' },
+            { id: 2, installed_at: after, status: 'online' },
+            { id: 3, installed_at: null, status: 'online' },
+            { id: 4, installed_at: after, status: 'offline' },
+        ],
+    };
+    assert.deepEqual(
+        localDevicePage(fixture, { installedDate: '2026-10-01', status: 'online' }).data.map(
+            (r) => r.id,
+        ),
+        [2],
+    );
+    assert.equal(localDevicePage(fixture, { installedDate: '2026-10-02' }).total, 0);
+    assert.equal(localDevicePage(fixture, { installedDate: '' }).total, 4);
 });
 test('online filter covers devices beyond UI page one and excludes blacklisted devices', () => {
     const page = localDevicePage(result, { status: 'online' });

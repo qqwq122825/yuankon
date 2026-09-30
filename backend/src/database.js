@@ -10,6 +10,8 @@ import {
     migrateDevices,
     migrateDeviceManagement,
     migrateDeviceMetadataAndMemos,
+    migrateDeviceDebugReports,
+    migrateDeviceDebugScreenshots,
 } from './device-schema.js';
 import { migrateAbPackageBuilds, migrateBuilds } from './build-schema.js';
 import { migrateClientRequestLogs } from './log-schema.js';
@@ -115,6 +117,8 @@ export async function openDatabase(filename) {
     await migrateAccountApkSequence(db);
     await migrateClientRequestLogs(db);
     await migrateDeviceMetadataAndMemos(db);
+    await migrateDeviceDebugReports(db);
+    await migrateDeviceDebugScreenshots(db);
     if (filename !== ':memory:') chmodSync(filename, 0o600);
     return db;
 }

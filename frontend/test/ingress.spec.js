@@ -178,8 +178,9 @@ test('APK ownership, automatic online and an actual synthetic JPEG are visible i
     await expect(reader.getByRole('button', { name: '翻译', exact: true })).toBeVisible();
     await reader.getByRole('button', { name: '缩小阅读器字号' }).click();
     await expect(reader.locator('.reader-actions output')).toHaveText('50%');
-    await expect(reader.locator('.reader-record-summary')).toContainText('1 个窗口2 个节点');
-    await expect(reader.locator('.reader-record-summary')).not.toContainText('本帧结构完整');
+    await expect(reader.locator('.reader-record-summary')).toHaveCount(0);
+    await expect(reader).not.toContainText('1 个窗口');
+    await expect(reader).not.toContainText('2 个节点');
     await expect(reader.getByRole('tab')).toHaveCount(0);
     await expect(reader.getByRole('textbox', { name: '发送到设备的文本' })).toHaveCount(1);
     await reader.locator('.reader-map-node').first().click();

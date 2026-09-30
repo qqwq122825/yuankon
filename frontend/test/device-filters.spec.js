@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-test('single-line toolbar and cached online filtering across pages send zero requests or commands', async ({
+test('responsive toolbar and cached online/date filtering send zero requests or commands', async ({
     page,
 }) => {
     const rows = Array.from({ length: 18 }, (_, i) => ({
@@ -19,7 +19,7 @@ test('single-line toolbar and cached online filtering across pages send zero req
         android_version: '14',
         app_name: 'Fixture',
         app_version: '1.7.4',
-        installed_at: null,
+        installed_at: i === 16 ? Date.UTC(2026, 8, 30, 15, 59, 59) : Date.UTC(2026, 8, 30, 16),
     }));
     await page.route('**/api/devices?*perPage=500*', (route) => {
         const query = new URL(route.request().url()).searchParams;
@@ -76,33 +76,51 @@ test('single-line toolbar and cached online filtering across pages send zero req
     expect(requests).toEqual([]);
     expect(sockets).toEqual([]);
     console.log('LOCAL_FILTER PASS: HTTP requests=0; WS frames=0; cross-page online rows=2');
+    const date = page.getByLabel('按安装日期筛选', { exact: true });
+    await date.fill('2026-10-01');
+    await expect(page).toHaveURL(/installedDate=2026-10-01/);
+    await expect(page.locator('.fleet-device-row')).toHaveCount(1);
+    await expect(page.locator('.fleet-device-row').first()).toHaveAttribute('data-device-id', '16');
+    expect(requests).toEqual([]);
+    expect(sockets).toEqual([]);
     await page.getByRole('button', { name: '清除筛选', exact: true }).click();
+    await expect(date).toHaveValue('');
     const row = page.locator('.fleet-device-row').first();
     await expect(row.locator('.pending-cell')).toHaveCount(6);
     expect(await row.locator('.pending-cell').allTextContents()).toEqual(['', '', '', '', '', '']);
     for (const viewport of [
         { width: 1920, height: 900 },
         { width: 1280, height: 800 },
+        { width: 1181, height: 800 },
+        { width: 1180, height: 800 },
         { width: 800, height: 800 },
     ]) {
         await page.setViewportSize(viewport);
         await page.evaluate(() => window.scrollTo(0, 0));
         const toolbar = page.locator('.fleet-toolbar');
-        const boxes = await toolbar
-            .locator(':scope > div, :scope > button, .fleet-filter-chip')
-            .evaluateAll((elements) =>
-                elements.map((element) => {
-                    const rect = element.getBoundingClientRect();
-                    return { center: rect.top + rect.height / 2 };
-                }),
-            );
-        const centers = boxes.map((box) => box.center);
-        expect(Math.max(...centers) - Math.min(...centers)).toBeLessThanOrEqual(1);
-        expect((await toolbar.boundingBox()).height).toBe(50);
+        const primary = await page.locator('.fleet-toolbar-primary').boundingBox();
+        const filters = await page.locator('.fleet-filter-strip').boundingBox();
+        const dateBox = await page.locator('.fleet-date-filter').boundingBox();
+        const toolbarBox = await toolbar.boundingBox();
+        expect(Math.abs(dateBox.y - primary.y)).toBeLessThanOrEqual(1);
+        expect(toolbarBox.x + toolbarBox.width).toBeLessThanOrEqual(viewport.width + 1);
+        if (viewport.width <= 1180) {
+            expect(filters.y).toBeGreaterThanOrEqual(primary.y + primary.height + 6);
+            expect(dateBox.x + dateBox.width).toBeCloseTo(toolbarBox.x + toolbarBox.width - 12, 0);
+            expect(toolbarBox.height).toBe(90);
+        } else {
+            expect(Math.abs(filters.y - primary.y)).toBeLessThanOrEqual(1);
+            expect(toolbarBox.height).toBe(50);
+        }
         await page.screenshot({
             path: `test-results/device-toolbar-${viewport.width}.png`,
             fullPage: true,
         });
+        if (viewport.width === 800)
+            await page.screenshot({
+                path: 'test-results/device-toolbar-narrow-preview.png',
+                clip: { x: 0, y: 0, width: 800, height: 160 },
+            });
     }
     await filter.focus();
     await page.keyboard.press('Enter');
@@ -112,4 +130,7 @@ test('single-line toolbar and cached online filtering across pages send zero req
     // An explicit refresh is still real, unlike a quick filter.
     await page.getByRole('button', { name: '刷新状态', exact: true }).click();
     await expect.poll(() => requests.filter((url) => url.includes('perPage=500')).length).toBe(1);
+    console.log(
+        'RESPONSIVE PASS: wide=50px; narrow=90px/two rows; date top-right; date filter HTTP=0 WS=0',
+    );
 });

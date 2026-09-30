@@ -26,7 +26,6 @@ const nodes = computed(() =>
     ),
 );
 const display = computed(() => props.snapshot?.payload?.display || { width: 1, height: 1 });
-const windows = computed(() => props.snapshot?.payload?.windows || []);
 const diagnostics = computed(() => props.snapshot?.payload?.diagnostics || {});
 const packageName = computed(
     () => props.snapshot?.payload?.windows?.find((window) => window.active)?.package || '',
@@ -141,11 +140,8 @@ async function translate() {
             ><RouterLink v-else to="/settings/translation">设置</RouterLink>
         </div>
         <p v-if="error" role="alert" class="reader-error">{{ error }}</p>
-        <div v-if="live" class="reader-record-summary">
-            <span>{{ windows.length }} 个窗口</span><span>{{ nodes.length }} 个节点</span
-            ><strong v-if="diagnostics.truncated" class="reader-summary-status"
-                >设备遍历已截断</strong
-            >
+        <div v-if="live && diagnostics.truncated" class="reader-record-summary">
+            <strong class="reader-summary-status">设备遍历已截断</strong>
         </div>
         <div class="reader-body" :style="{ '--reader-size': `${(16 * scale) / 100}px` }">
             <div

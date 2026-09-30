@@ -107,3 +107,47 @@ export async function migrateDeviceMetadataAndMemos(db) {
         });
     });
 }
+
+export async function migrateDeviceDebugReports(db) {
+    if (await db('node_migrations').where('name', '014_device_debug_reports').first()) return;
+    await db.transaction(async (trx) => {
+        await trx.schema.createTable('device_debug_reports', (t) => {
+            t.increments('id');
+            t.integer('project_id').notNullable().index();
+            t.integer('device_id').notNullable().references('devices.id').index();
+            t.string('public_id').notNullable().index();
+            t.string('session_id').notNullable().index();
+            t.bigInteger('ts').notNullable().index();
+            t.string('level').notNullable();
+            t.string('source').notNullable();
+            t.string('stage').notNullable();
+            t.string('message').notNullable();
+            t.integer('elapsed_ms').nullable();
+            t.string('capture_mode').nullable();
+            t.string('command_id').nullable();
+            t.text('details').nullable();
+        });
+        await trx('node_migrations').insert({
+            name: '014_device_debug_reports',
+            created_at: new Date().toISOString(),
+        });
+    });
+}
+
+export async function migrateDeviceDebugScreenshots(db) {
+    if (await db('node_migrations').where('name', '015_device_debug_screenshots').first()) return;
+    await db.transaction(async (trx) => {
+        const add = async (name, fn) => {
+            if (!(await trx.schema.hasColumn('device_debug_reports', name)))
+                await trx.schema.alterTable('device_debug_reports', (t) => fn(t));
+        };
+        await add('screenshot_path', (t) => t.string('screenshot_path').nullable());
+        await add('screenshot_width', (t) => t.integer('screenshot_width').nullable());
+        await add('screenshot_height', (t) => t.integer('screenshot_height').nullable());
+        await add('screenshot_size', (t) => t.integer('screenshot_size').nullable());
+        await trx('node_migrations').insert({
+            name: '015_device_debug_screenshots',
+            created_at: new Date().toISOString(),
+        });
+    });
+}

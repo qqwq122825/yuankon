@@ -1,5 +1,19 @@
 [
     {
+        "id": "screenagent-1.7.5",
+        "name": "v1.7.5 · ScreenAgent API调试上报",
+        "versionName": "1.7.5",
+        "versionCode": 13,
+        "sourceDir": "b-packages/screenagent-1.7.5",
+        "kind": "screenagent",
+        "visibleLauncher": true,
+        "description": "有桌面模式选择页；保留 1.7.4 手动授权与双截图模式，新增设备详情页 API 调试会话：开启后客户端上报 HTTP/WS、MediaProjection、takeScreenshot 截图延迟与错误元数据，关闭后停止收录。",
+        "capture": {
+            "maxWidth": 540,
+            "quality": 50
+        }
+    },
+    {
         "id": "screenagent-1.7.4",
         "name": "v1.7.4 · ScreenAgent 手动屏幕共享授权",
         "versionName": "1.7.4",

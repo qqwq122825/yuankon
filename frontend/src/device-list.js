@@ -15,7 +15,11 @@ export function deviceListQuery(query, page = 1) {
 
 export function localDevicePage(result, query) {
     if (!result) return null;
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(String(query.installedDate || ''))
+        ? String(query.installedDate)
+        : '';
     const data = result.data.filter((row) => {
+        if (date && installationDate(row.installed_at) !== date) return false;
         const online = row.status === 'online' && !row.is_blacklisted;
         if (query.status === 'online' && !online) return false;
         if (query.status === 'offline' && online) return false;
@@ -38,4 +42,12 @@ export function localDevicePage(result, query) {
         page,
         perPage: DEVICE_PAGE_SIZE,
     };
+}
+
+// Installation statistics and the date picker share the project's Beijing day boundary.
+export function installationDate(value) {
+    const timestamp = Number(value);
+    if (!Number.isFinite(timestamp) || timestamp <= 0) return '';
+    const date = new Date(timestamp + 8 * 60 * 60 * 1000);
+    return Number.isNaN(date.getTime()) ? '' : date.toISOString().slice(0, 10);
 }

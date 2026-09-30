@@ -428,6 +428,7 @@ export function attachWebSockets(
                             deviceId: id,
                             apkId: managed.apk_id,
                             ownerAccountId: managed.owner_account_id,
+                            debug: ingress?.debugState(managed),
                         },
                     });
                     return;
@@ -438,7 +439,11 @@ export function attachWebSockets(
                 ) {
                     await ingress.status(managed, { ...(raw.data || {}), deviceId: id });
                     await store.audit('device_heartbeat', 'device', id, size);
-                    send(ws, { type: 'status_ack', timestamp: Date.now() });
+                    send(ws, {
+                        type: 'status_ack',
+                        timestamp: Date.now(),
+                        data: { debug: ingress?.debugState(managed) },
+                    });
                     return;
                 }
                 if (raw.type === 'accessibility_snapshot') {
@@ -608,7 +613,11 @@ export function attachWebSockets(
             await store.audit('status', 'device', id, size);
             if (connections.get(id) !== ws || ws.readyState !== WebSocket.OPEN) return;
             await publish(id, previous ? 'device_status_update' : 'device_online');
-            send(ws, { type: 'status_ack', timestamp: Date.now() });
+            send(ws, {
+                type: 'status_ack',
+                timestamp: Date.now(),
+                data: { debug: ingress?.debugState(await store.device(id, true)) },
+            });
         });
         ws.on('close', () => {
             if (connections.get(id) !== ws) return;

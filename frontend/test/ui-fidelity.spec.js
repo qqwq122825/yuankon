@@ -34,6 +34,17 @@ test('reference CSS geometry, header alignment, placeholders and desktop-only la
                 toolbar: height('.fleet-toolbar'),
                 button: height('.fleet-toolbar .btn'),
                 filter: height('.fleet-filter-chip'),
+                count: height('.fleet-count'),
+                countFont: getComputedStyle(document.querySelector('.fleet-count span')).fontSize,
+                countWeight: getComputedStyle(document.querySelector('.fleet-count span'))
+                    .fontWeight,
+                filterFont: getComputedStyle(document.querySelector('.fleet-filter-chip')).fontSize,
+                filterPadding: getComputedStyle(document.querySelector('.fleet-filter-chip'))
+                    .padding,
+                filterColor: getComputedStyle(document.querySelector('.fleet-filter-chip')).color,
+                primaryGap: getComputedStyle(document.querySelector('.fleet-toolbar-primary')).gap,
+                toolbarGap: getComputedStyle(document.querySelector('.fleet-toolbar')).gap,
+                headingSpacing: getComputedStyle(table.querySelector('th')).letterSpacing,
                 heading: height('.fleet-table thead tr'),
                 row: height('.fleet-device-row'),
                 preview: height('.phone-preview'),
@@ -48,9 +59,18 @@ test('reference CSS geometry, header alignment, placeholders and desktop-only la
         });
         expect(metrics).toMatchObject({
             header: 58,
-            toolbar: 50,
+            toolbar: size.width <= 1180 ? 90 : 50,
             button: 34,
-            filter: 34,
+            filter: 30,
+            count: 34,
+            countFont: '9px',
+            countWeight: '650',
+            filterFont: '9px',
+            filterPadding: size.width <= 1500 ? '0px 7px' : '0px 8px',
+            filterColor: 'rgb(105, 115, 134)',
+            primaryGap: '7px',
+            toolbarGap: size.width <= 1500 ? '7px' : '10px',
+            headingSpacing: '0.5px',
             heading: 36,
             row: 85,
             preview: 64,
@@ -79,6 +99,6 @@ test('reference CSS geometry, header alignment, placeholders and desktop-only la
     await page.getByRole('button', { name: '切换明暗主题' }).click();
     await expect(page.locator('html')).toHaveAttribute('data-bs-theme', 'light');
     console.log(
-        'FIDELITY PASS: header=58; toolbar=50; buttons=34; heading=36; row=85; preview=36x64; widths=1837,1440,1280,800; dark=pass',
+        'FIDELITY PASS: header=58; toolbar=50/90 narrow; buttons=34; filters=30/9px; count=34/9px; heading=36; row=85; preview=36x64; widths=1837,1440,1280,800; dark=pass',
     );
 });

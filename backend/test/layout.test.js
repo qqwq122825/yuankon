@@ -215,11 +215,11 @@ test('template sourceDir accepts version folders but stays inside the unified te
     }
 });
 
-test('1.7.4 screen sharing consent is reachable only from an explicit page click', async () => {
+test('1.7.5 screen sharing consent and API debug are explicit', async () => {
     const template = (await loadTemplates(ROOT))[0];
-    assert.equal(template.id, 'screenagent-1.7.4');
-    assert.equal(template.versionName, '1.7.4');
-    assert.equal(template.versionCode, 12);
+    assert.equal(template.id, 'screenagent-1.7.5');
+    assert.equal(template.versionName, '1.7.5');
+    assert.equal(template.versionCode, 13);
     const asset = JSON.parse(
         await readFile(
             path.join(
@@ -242,6 +242,9 @@ test('1.7.4 screen sharing consent is reachable only from an explicit page click
     const gate = await readFile(path.join(java, 'ProjectionConsentGate.kt'), 'utf8');
     const manifest = await readFile(path.join(source, 'AndroidManifest.xml'), 'utf8');
     assert.doesNotMatch(service, /ProjectionActivity|createScreenCaptureIntent|startActivity/);
+    assert.match(service, /debugReport/);
+    assert.match(service, /mediaprojection/);
+    assert.match(service, /taskscreenshot/);
     assert.match(main, /setOnClickListener[\s\S]*ProjectionActivity\.request\(this@MainActivity\)/);
     assert.equal((main.match(/ProjectionActivity\.request/g) || []).length, 1);
     assert.match(main, /BuildConfig\.VERSION_NAME/);

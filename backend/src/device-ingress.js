@@ -1,8 +1,11 @@
 import { randomUUID } from 'node:crypto';
+import path from 'node:path';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { Router } from 'express';
 import multer from 'multer';
 import sharp from 'sharp';
 import { z } from 'zod';
+import { privateFile } from './files.js';
 import {
     deviceIdSchema,
     fail,
@@ -35,6 +38,64 @@ const profileMetadata = (profile, current = {}) => ({
     batch: profile.batch ?? current.batch ?? '',
     build_id: profile.buildId ?? current.build_id ?? '',
 });
+const debugReportSchema = z
+    .object({
+        sessionId: z.string().uuid(),
+        events: z
+            .array(
+                z
+                    .object({
+                        ts: z.number().int().min(0).optional(),
+                        level: z.enum(['info', 'warn', 'error']).default('info'),
+                        source: z.enum([
+                            'http',
+                            'websocket',
+                            'mediaprojection',
+                            'taskscreenshot',
+                            'capture',
+                            'service',
+                        ]),
+                        stage: z.string().regex(/^[A-Za-z0-9_.:-]{1,80}$/),
+                        message: z.string().max(300).default(''),
+                        elapsedMs: z.number().int().min(0).max(3600000).nullable().optional(),
+                        captureMode: z
+                            .enum(['PROJECTION', 'ACCESSIBILITY', 'projection', 'accessibility'])
+                            .nullable()
+                            .optional(),
+                        commandId: z.string().uuid().nullable().optional(),
+                        details: z
+                            .record(
+                                z.string(),
+                                z.union([z.string(), z.number(), z.boolean(), z.null()]),
+                            )
+                            .default({}),
+                    })
+                    .strict(),
+            )
+            .min(1)
+            .max(50),
+    })
+    .strict();
+const debugPublicState = (state) =>
+    state
+        ? { active: true, sessionId: state.sessionId, startedAt: state.startedAt }
+        : { active: false, sessionId: null, startedAt: null };
+const debugScreenshotSchema = z
+    .object({
+        sessionId: z.string().uuid(),
+        source: z.enum(['mediaprojection', 'taskscreenshot']),
+        stage: z
+            .string()
+            .regex(/^[A-Za-z0-9_.:-]{1,80}$/)
+            .default('debug_screenshot'),
+        elapsedMs: z.coerce.number().int().min(0).max(3600000).nullable().optional(),
+        captureMode: z
+            .enum(['PROJECTION', 'ACCESSIBILITY', 'projection', 'accessibility'])
+            .optional(),
+        commandId: z.string().uuid().optional(),
+        ts: z.coerce.number().int().min(0).optional(),
+    })
+    .strict();
 
 // ScreenAgent accepts one JPEG per explicit grant. Grants are either local-user initiated,
 // the first accessibility-service thumbnail, or tied to a short-lived panel viewer command.
@@ -47,6 +108,7 @@ export class DeviceIngress {
         this.viewerLeases = new Map();
         this.pendingCaptures = new Map();
         this.autoCaptureAt = new Map();
+        this.debugSessions = new Map();
         this.inflight = new Set();
         this.timer = setInterval(() => this.prune(), 5000);
         this.timer.unref();
@@ -69,6 +131,7 @@ export class DeviceIngress {
         this.viewerLeases.clear();
         this.pendingCaptures.clear();
         this.autoCaptureAt.clear();
+        this.debugSessions.clear();
     }
     async owner(id, db = this.db) {
         const row = await db('accounts').where({ id, enabled: true, role: 'superadmin' }).first();
@@ -276,7 +339,168 @@ export class DeviceIngress {
             patch.accessibility_enabled = status.accessibilityAlive;
         await this.db('devices').where('id', device.id).update(patch);
         await this.publish?.(device.public_id, previous ? 'device_status_update' : 'device_online');
-        return { ok: true, deviceId: device.public_id, ownerAccountId: device.owner_account_id };
+        return {
+            ok: true,
+            deviceId: device.public_id,
+            ownerAccountId: device.owner_account_id,
+            debug: this.debugState(device),
+        };
+    }
+
+    debugState(device) {
+        const state = this.debugSessions.get(device.id);
+        if (!state || state.ownerId !== device.owner_account_id) return debugPublicState(null);
+        return debugPublicState(state);
+    }
+
+    async debugSession(id, active) {
+        const device = await this.store.device(id);
+        if (active) {
+            const previous = this.debugSessions.get(device.id);
+            if (previous?.ownerId === device.owner_account_id)
+                return this.debugSummary(device, previous);
+            const state = {
+                sessionId: randomUUID(),
+                ownerId: device.owner_account_id,
+                startedAt: Date.now(),
+            };
+            this.debugSessions.set(device.id, state);
+            await this.store.audit('device_debug_started', 'panel', device.public_id);
+            return this.debugSummary(device, state);
+        }
+        this.debugSessions.delete(device.id);
+        await this.store.audit('device_debug_stopped', 'panel', device.public_id);
+        return this.debugSummary(device, null);
+    }
+
+    async debugSummary(device, state = this.debugSessions.get(device.id)) {
+        return {
+            ...debugPublicState(state?.ownerId === device.owner_account_id ? state : null),
+            retention: 'debug-screenshots-private',
+            events: await this.debugEvents(device.id, { limit: 100 }),
+        };
+    }
+
+    async debugEvents(id, { afterId = 0, limit = 100 } = {}) {
+        await this.store.device(id);
+        const rows = await this.db('device_debug_reports')
+            .where('device_id', id)
+            .where('id', '>', afterId)
+            .orderBy('id', 'asc')
+            .limit(limit);
+        return rows.map((row) => ({
+            ...row,
+            imageUrl: row.screenshot_path ? `/api/devices/${id}/debug-screenshot/${row.id}` : null,
+        }));
+    }
+
+    async recordDebugReport(device, input) {
+        const report = debugReportSchema.parse(input);
+        const state = this.debugSessions.get(device.id);
+        if (
+            !state ||
+            state.sessionId !== report.sessionId ||
+            state.ownerId !== device.owner_account_id
+        )
+            return { ok: true, stored: 0, active: false };
+        const now = Date.now();
+        const rows = report.events.map((event) => ({
+            project_id: device.project_id,
+            device_id: device.id,
+            public_id: device.public_id,
+            session_id: state.sessionId,
+            ts: event.ts || now,
+            level: event.level,
+            source: event.source,
+            stage: event.stage,
+            message: event.message,
+            elapsed_ms: event.elapsedMs ?? null,
+            capture_mode: event.captureMode ?? null,
+            command_id: event.commandId ?? null,
+            details: Object.keys(event.details || {}).length
+                ? JSON.stringify(event.details).slice(0, 4096)
+                : null,
+            screenshot_path: null,
+            screenshot_width: null,
+            screenshot_height: null,
+            screenshot_size: null,
+        }));
+        await this.db('device_debug_reports').insert(rows);
+        await this.store.audit('device_debug_report', 'device', device.public_id, rows.length);
+        return { ok: true, stored: rows.length, active: true };
+    }
+
+    async recordDebugScreenshot(req) {
+        const { device } = req.deviceIdentity;
+        const body = debugScreenshotSchema.parse(req.body);
+        const state = this.debugSessions.get(device.id);
+        if (
+            !state ||
+            state.sessionId !== body.sessionId ||
+            state.ownerId !== device.owner_account_id
+        )
+            return { ok: true, stored: 0, active: false };
+        if (!req.file?.buffer || req.file.mimetype !== 'image/jpeg')
+            throw fail(415, '仅接收 JPEG 调试截图');
+        let output;
+        try {
+            const image = sharp(req.file.buffer, { limitInputPixels: 4000000, failOn: 'warning' });
+            const meta = await image.metadata();
+            if (
+                meta.format !== 'jpeg' ||
+                !meta.width ||
+                !meta.height ||
+                Math.max(meta.width, meta.height) > 4096
+            )
+                throw new Error('image');
+            output = await image
+                .rotate()
+                .jpeg({ quality: 75 })
+                .toBuffer({ resolveWithObject: true });
+        } catch {
+            throw fail(422, '调试截图损坏或像素超限');
+        }
+        if (output.data.length > MAX_FILE) throw fail(413, '调试截图体积超限');
+        const dir = path.join(this.config.privateDir, 'debug-screenshots', String(device.id));
+        await mkdir(dir, { recursive: true, mode: 0o700 });
+        const filename = `${Date.now()}-${randomUUID()}.jpg`;
+        const relative = `debug-screenshots/${device.id}/${filename}`;
+        await writeFile(path.join(dir, filename), output.data, { mode: 0o600 });
+        const [id] = await this.db('device_debug_reports').insert({
+            project_id: device.project_id,
+            device_id: device.id,
+            public_id: device.public_id,
+            session_id: state.sessionId,
+            ts: body.ts || Date.now(),
+            level: 'info',
+            source: body.source,
+            stage: body.stage,
+            message: 'debug screenshot uploaded',
+            elapsed_ms: body.elapsedMs ?? null,
+            capture_mode: body.captureMode ?? null,
+            command_id: body.commandId ?? null,
+            details: JSON.stringify({ content: 'jpeg', retained: 'private-debug' }),
+            screenshot_path: relative,
+            screenshot_width: output.info.width,
+            screenshot_height: output.info.height,
+            screenshot_size: output.data.length,
+        });
+        await this.store.audit(
+            'device_debug_screenshot',
+            'device',
+            device.public_id,
+            output.data.length,
+        );
+        return {
+            ok: true,
+            stored: 1,
+            active: true,
+            id,
+            imageUrl: `/api/devices/${device.id}/debug-screenshot/${id}`,
+            width: output.info.width,
+            height: output.info.height,
+            size: output.data.length,
+        };
     }
     requestCapture(device, { commandId, viewerId, actorId }) {
         this.prune();
@@ -518,6 +742,8 @@ export class DeviceIngress {
             '/sync/status',
             '/device/screenshot-session',
             '/device/screenshot',
+            '/device/debug-report',
+            '/device/debug-screenshot',
         ]);
         router.use((req, res, next) => {
             if (!requestPaths.has(req.path)) return next();
@@ -590,12 +816,35 @@ export class DeviceIngress {
             limits: {
                 fileSize: MAX_FILE,
                 files: 1,
-                fields: 5,
-                parts: 6,
+                fields: 8,
+                parts: 9,
                 fieldSize: 256,
                 fieldNameSize: 40,
             },
         }).single('file');
+        router.post('/device/debug-report', requireDevice, async (req, res) => {
+            res.json(await this.recordDebugReport(req.deviceIdentity.device, req.body));
+        });
+        router.post('/device/debug-screenshot', requireDevice, async (req, res) => {
+            const timeout = setTimeout(() => req.destroy(), 10000);
+            try {
+                await new Promise((resolve, reject) =>
+                    parser(req, res, (e) =>
+                        e
+                            ? reject(
+                                  fail(
+                                      e.code === 'LIMIT_FILE_SIZE' ? 413 : 422,
+                                      '调试截图上传格式或大小不符合要求',
+                                  ),
+                              )
+                            : resolve(),
+                    ),
+                );
+                res.status(201).json(await this.recordDebugScreenshot(req));
+            } finally {
+                clearTimeout(timeout);
+            }
+        });
         router.post('/device/screenshot', requireDevice, async (req, res) => {
             const { device } = req.deviceIdentity;
             this.validGrant(device, req.headers['x-capture-upload']);
@@ -686,6 +935,7 @@ export class DeviceIngress {
             this.grants.delete(device.id);
             this.pendingCaptures.delete(device.id);
             this.autoCaptureAt.delete(device.id);
+            this.debugSessions.delete(device.id);
             this.store.live.delete(device.public_id);
             await this.publish?.(device.public_id, 'device_offline');
             await this.store.audit('device_revoked', 'http', device.public_id);
@@ -698,6 +948,38 @@ export class DeviceIngress {
                 mode: 'leased-latest-frame',
                 retentionSeconds: 300,
             });
+        });
+        router.get('/devices/:id/debug-session', async (req, res) => {
+            const device = await this.store.device(idSchema.parse(req.params.id));
+            res.json(await this.debugSummary(device));
+        });
+        router.post('/devices/:id/debug-session', async (req, res) => {
+            const input = z.object({ active: z.boolean() }).strict().parse(req.body);
+            res.json(await this.debugSession(idSchema.parse(req.params.id), input.active));
+        });
+        router.get('/devices/:id/debug-events', async (req, res) => {
+            const query = z
+                .object({
+                    afterId: z.coerce.number().int().min(0).default(0),
+                    limit: z.coerce.number().int().min(1).max(200).default(100),
+                })
+                .parse(req.query);
+            res.json({ data: await this.debugEvents(idSchema.parse(req.params.id), query) });
+        });
+        router.get('/devices/:id/debug-screenshot/:debugId', async (req, res) => {
+            const id = idSchema.parse(req.params.id);
+            await this.store.device(id);
+            const row = await this.db('device_debug_reports')
+                .where({ id: idSchema.parse(req.params.debugId), device_id: id })
+                .first();
+            if (!row?.screenshot_path) throw fail(404, '调试截图不存在');
+            res.type('jpeg').send(
+                await privateFile(
+                    this.config.privateDir,
+                    row.screenshot_path,
+                    'debug-screenshots/',
+                ),
+            );
         });
         router.get('/devices/:id/accessibility-snapshot', async (req, res) => {
             const id = idSchema.parse(req.params.id);

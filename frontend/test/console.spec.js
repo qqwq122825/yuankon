@@ -125,9 +125,8 @@ test('list, server sorting, query preservation, pagination, empty state and keyb
     await page.getByRole('button', { name: '无障碍', exact: true }).click();
     await expect(page).toHaveURL(/a11y=enabled/);
     await expect(page.locator('tbody tr')).toHaveCount(10);
-    await page.getByRole('button', { name: '设备上报', exact: true }).click();
-    await expect(page).toHaveURL(/source=api/);
-    await expect(page.getByText('暂无匹配设备；可调整筛选条件。')).toBeVisible();
+    for (const name of ['设备上报', '历史记录', '合成示例'])
+        await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0);
     await page.getByRole('button', { name: '清除筛选', exact: true }).click();
     await expect(page.locator('tbody tr')).toHaveCount(10);
     await page.getByRole('button', { name: '下一页' }).click();

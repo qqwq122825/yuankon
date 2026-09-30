@@ -38,7 +38,10 @@ const route = useRoute(),
     actionToast = ref(''),
     actionToastTone = ref('success'),
     dndEnabled = ref(false),
-    latency = ref({ status: '未测量', ms: null, at: null });
+    latency = ref({ status: '未测量', ms: null, at: null }),
+    debug = ref({ active: false, sessionId: null, startedAt: null, events: [] }),
+    debugBusy = ref(false),
+    debugError = ref('');
 let controller,
     subscribed,
     viewerId,
@@ -79,6 +82,7 @@ const sections = [
     ['password', '密码事件'],
     ['events', '观察记录'],
     ['nodes', '节点信息'],
+    ['debug', 'API调试'],
     ['note', '备注'],
 ];
 async function load() {
@@ -104,6 +108,7 @@ async function load() {
             subscribe(subscribed);
         }
         if (reader.value && result.device.source === 'api') startLiveLease();
+        if (section.value === 'debug' && result.device.source === 'api') loadDebugSession();
     } catch (e) {
         if (e.name !== 'AbortError') {
             data.value = null;
@@ -216,6 +221,11 @@ const off = onMessage((message) => {
         captureState.value = `已收到 ${message.data.nodeCount} 个结构节点`;
         loadLiveNodes();
     }
+    if (
+        section.value === 'debug' &&
+        ['screenshot_result', 'command_ack', 'screenshot_ready'].includes(message.type)
+    )
+        loadDebugEvents();
 });
 onUnmounted(() => {
     controller?.abort();
@@ -223,6 +233,56 @@ onUnmounted(() => {
     stopLiveSession();
     if (subscribed) unsubscribe(subscribed);
 });
+async function loadDebugSession() {
+    if (!data.value || data.value.device.source !== 'api') return;
+    debugError.value = '';
+    try {
+        debug.value = await api(`/api/devices/${data.value.device.id}/debug-session`);
+    } catch (e) {
+        debugError.value = e.message;
+    }
+}
+async function loadDebugEvents() {
+    if (!data.value || data.value.device.source !== 'api') return;
+    const afterId = debug.value.events.at(-1)?.id || 0;
+    try {
+        const result = await api(
+            `/api/devices/${data.value.device.id}/debug-events?afterId=${afterId}&limit=100`,
+        );
+        if (result.data.length)
+            debug.value = {
+                ...debug.value,
+                events: [...debug.value.events, ...result.data].slice(-300),
+            };
+    } catch (e) {
+        debugError.value = e.message;
+    }
+}
+async function setDebugSession(active) {
+    if (!data.value || data.value.device.source !== 'api') return;
+    debugBusy.value = true;
+    debugError.value = '';
+    try {
+        debug.value = await mutate(`/api/devices/${data.value.device.id}/debug-session`, 'POST', {
+            active,
+        });
+        notice.value = active
+            ? 'API 调试已开启；手机心跳后开始上报请求、截图延迟和错误'
+            : 'API 调试已关闭；手机端停止收录调试上报';
+    } catch (e) {
+        debugError.value = e.message;
+    } finally {
+        debugBusy.value = false;
+    }
+}
+function debugDetails(row) {
+    if (!row.details) return '';
+    try {
+        return JSON.stringify(JSON.parse(row.details), null, 2);
+    } catch {
+        return row.details;
+    }
+}
 async function save() {
     saving.value = true;
     error.value = '';
@@ -368,6 +428,7 @@ function openPrimary() {
 function choose(value) {
     section.value = value;
     if (value === 'nodes') openReader();
+    if (value === 'debug') loadDebugSession();
 }
 </script>
 <template>
@@ -581,6 +642,113 @@ function choose(value) {
                         </tbody>
                     </table>
                     <p>仅展示已记录的元数据；无记录的场景保持为空。</p>
+                </div></template
+            ><template v-else-if="section === 'debug'"
+                ><div class="workspace-section-heading">
+                    <h2>API调试</h2>
+                    <span>开启后收集客户端上报的请求、截图延迟和错误；关闭后停止收录</span>
+                </div>
+                <div class="card card-body debug-card">
+                    <div class="debug-toolbar">
+                        <button
+                            class="btn btn-primary"
+                            :disabled="debugBusy || data.device.source !== 'api' || debug.active"
+                            @click="setDebugSession(true)"
+                        >
+                            开启调试
+                        </button>
+                        <button
+                            class="btn"
+                            :disabled="debugBusy || !debug.active"
+                            @click="setDebugSession(false)"
+                        >
+                            关闭调试
+                        </button>
+                        <button class="btn" :disabled="debugBusy" @click="loadDebugEvents">
+                            刷新请求
+                        </button>
+                        <span :class="['status-chip', debug.active ? 'online' : 'offline']">{{
+                            debug.active ? '收录中' : '已停止'
+                        }}</span>
+                        <code v-if="debug.sessionId">{{ debug.sessionId }}</code>
+                    </div>
+                    <p v-if="debugError" role="alert" class="alert alert-danger">
+                        {{ debugError }}
+                    </p>
+                    <p class="text-muted">
+                        截图与节点按原实时查看租约正常上报，不依赖调试开关；开启调试后，客户端额外记录截图延迟、错误码和一份私有调试截图，关闭后停止额外收录。
+                    </p>
+                    <div class="debug-summary">
+                        <span>事件 {{ debug.events.length }}</span>
+                        <span
+                            >MediaProjection
+                            {{
+                                debug.events.filter((e) => e.source === 'mediaprojection').length
+                            }}</span
+                        >
+                        <span
+                            >takeScreenshot
+                            {{
+                                debug.events.filter((e) => e.source === 'taskscreenshot').length
+                            }}</span
+                        >
+                        <span
+                            >错误 {{ debug.events.filter((e) => e.level === 'error').length }}</span
+                        >
+                    </div>
+                    <div class="debug-table-wrap">
+                        <table class="table debug-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>时间</th>
+                                    <th>级别</th>
+                                    <th>来源 / 阶段</th>
+                                    <th>耗时</th>
+                                    <th>截图内容</th>
+                                    <th>消息与详情</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="row in debug.events" :key="row.id">
+                                    <td>{{ row.id }}</td>
+                                    <td>{{ new Date(Number(row.ts)).toLocaleTimeString() }}</td>
+                                    <td>{{ row.level }}</td>
+                                    <td>{{ row.source }} / {{ row.stage }}</td>
+                                    <td>
+                                        {{ row.elapsed_ms === null ? '—' : `${row.elapsed_ms}ms` }}
+                                    </td>
+                                    <td>
+                                        <a
+                                            v-if="row.imageUrl"
+                                            :href="row.imageUrl"
+                                            target="_blank"
+                                            rel="noopener"
+                                            class="debug-shot-link"
+                                        >
+                                            <img :src="row.imageUrl" alt="调试截图内容" />
+                                            <span
+                                                >{{ row.screenshot_width }}×{{
+                                                    row.screenshot_height
+                                                }}
+                                                · {{ row.screenshot_size }}B</span
+                                            >
+                                        </a>
+                                        <span v-else>—</span>
+                                    </td>
+                                    <td>
+                                        <strong>{{ row.message || '—' }}</strong>
+                                        <pre v-if="row.details">{{ debugDetails(row) }}</pre>
+                                    </td>
+                                </tr>
+                                <tr v-if="!debug.events.length">
+                                    <td colspan="7" class="empty-state">
+                                        暂无调试上报；开启后等待手机下一次心跳或截图请求。
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </div></template
             ><template v-else
                 ><div class="workspace-section-heading"><h2>节点信息</h2></div>
