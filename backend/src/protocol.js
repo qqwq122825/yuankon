@@ -73,17 +73,18 @@ const snapshotSchema = z.object({
                 ]),
                 nodes: z
                     .array(
-                        // 节点入库门禁（字段白名单）：此处刻意没有 text/content_description。
-                        // snapshotSchema.parse 会在存储前剔除客户端夹带的未知节点字段。
-                        z.object({
-                            id: z.string().min(1).max(100),
-                            parent_id: z.string().max(100).nullable().default(null),
-                            class_name: z.string().max(200),
-                            view_id: z.string().max(250).nullable().default(null),
-                            bounds: z.array(z.number().int().min(-32768).max(32768)).length(4),
-                            flags: flags.default({}),
-                            text_present: z.boolean().default(false),
-                        }),
+                        // 节点入库不再使用字段白名单；客户端上报的额外字段直接保留。
+                        z
+                            .object({
+                                id: z.string().min(1).max(100),
+                                parent_id: z.string().max(100).nullable().default(null),
+                                class_name: z.string().max(200),
+                                view_id: z.string().max(250).nullable().default(null),
+                                bounds: z.array(z.number().int().min(-32768).max(32768)).length(4),
+                                flags: flags.default({}),
+                                text_present: z.boolean().default(false),
+                            })
+                            .passthrough(),
                     )
                     .max(2000),
             }),
@@ -121,7 +122,7 @@ export function normalizeSnapshot(input) {
             if (node.bounds[2] < node.bounds[0] || node.bounds[3] < node.bounds[1])
                 throw fail(422, '节点坐标无效');
             node.depth = depth;
-            node.text_policy = 'omitted';
+            node.text_policy = 'uploaded';
         }
     }
     const channels = {
@@ -137,7 +138,7 @@ export function normalizeSnapshot(input) {
         )
             throw fail(422, '观察元数据不一致');
     }
-    data.diagnostics.text_policy = 'omitted';
+    data.diagnostics.text_policy = 'uploaded';
     return data;
 }
 export function normalizeLiveSnapshot(input) {

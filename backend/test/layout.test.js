@@ -147,7 +147,8 @@ test('repository has three source folders, nested dependencies and correctly loc
     assert.match(service, /MAX_NODE_COUNT = 250/);
     assert.match(service, /scheduleNodeSnapshot/);
     assert.match(service, /accessibilitySnapshot\(viewerId, payload\)/);
-    assert.doesNotMatch(service, /\.put\("text"|\.put\("content_description"/);
+    assert.match(service, /\.put\("text"/);
+    assert.match(service, /\.put\("content_description"/);
     assert.match(socket, /fun accessibilitySnapshot\(viewerId: String, payload: JSONObject\)/);
     assert.match(socket, /Protocol\.NODE_VERSION/);
     assert.match(service, /FOCUS_INPUT/);

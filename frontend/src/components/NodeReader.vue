@@ -163,7 +163,7 @@ async function translate() {
             </div>
         </div>
         <div v-if="live" class="reader-record-note">
-            完整显示本帧结构字段 · 正文与输入内容未采集
+            完整显示本帧节点字段 · 正文与输入内容随节点上报
         </div>
         <DeviceControls
             v-if="live"
@@ -174,9 +174,7 @@ async function translate() {
         />
         <footer v-else class="reader-foot">
             {{
-                snapshot.source === 'sample'
-                    ? '固定合成标签 · 非设备正文'
-                    : '仅显示结构和属性 · 正文已剔除'
+                snapshot.source === 'sample' ? '固定合成标签 · 非设备正文' : '显示已保存的节点字段'
             }}
         </footer>
     </div>

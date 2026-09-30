@@ -189,7 +189,7 @@ test('APK ownership, automatic online and an actual synthetic JPEG are visible i
     );
     await expect(reader.locator('.reader-properties')).toContainText('"text_present": true');
     await expect(reader.locator('.reader-record-note')).toHaveText(
-        '完整显示本帧结构字段 · 正文与输入内容未采集',
+        '完整显示本帧节点字段 · 正文与输入内容随节点上报',
     );
     await expect(reader.locator('.width-control')).toContainText('屏幕宽度');
     await expect(panel.locator('.floating-heading-meta')).toHaveText('截图 #1');

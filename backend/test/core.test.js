@@ -347,7 +347,7 @@ test('no upload or manual import routes were reintroduced', async () => {
         assert.equal((await request(url, json('POST', {}))).status, 404);
     assert.equal((await request('/import')).status, 404);
 });
-test('detail sanitizes nested fields and exports same sanitized body', async () => {
+test('detail keeps uploaded node fields and exports the same body', async () => {
     const polluted = structuredClone(fixture);
     polluted.secret = 'secret body';
     polluted.windows[0].nodes[0].text = 'secret body';
@@ -357,10 +357,11 @@ test('detail sanitizes nested fields and exports same sanitized body', async () 
         .update({ payload: JSON.stringify(polluted) });
     const detail = await request('/api/devices/1?snapshot=1');
     assert.equal(detail.status, 200);
-    assert.ok(!JSON.stringify(detail.body).includes('secret body'));
-    assert.equal(detail.body.snapshot.payload.windows[0].nodes[0].text_policy, 'omitted');
+    assert.ok(JSON.stringify(detail.body).includes('secret body'));
+    assert.equal(detail.body.snapshot.payload.windows[0].nodes[0].text_policy, 'uploaded');
+    assert.equal(detail.body.snapshot.payload.windows[0].nodes[0].flags.payload, undefined);
     assert.ok(
-        !JSON.stringify((await request('/api/snapshots/1/export')).body).includes('secret body'),
+        JSON.stringify((await request('/api/snapshots/1/export')).body).includes('secret body'),
     );
 });
 test('synthetic screenshot and file path containment', async () => {

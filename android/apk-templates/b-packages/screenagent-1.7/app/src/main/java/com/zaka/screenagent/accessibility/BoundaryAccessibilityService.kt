@@ -34,11 +34,10 @@ import java.util.concurrent.atomic.AtomicBoolean
  *
  * Enabling the service starts the authenticated device heartbeat and uploads one short-lived
  * thumbnail. During an explicit browser viewer lease it can additionally publish a bounded,
- * structural node preview: class, geometry and boolean state only. Node text, descriptions and
- * input values are never serialized. SCREENSHOT_NOW reads the latest frame from the separate,
+ * node preview with client-reported fields, including text and descriptions when present. SCREENSHOT_NOW reads the latest frame from the separate,
  * user-approved MediaProjection foreground service while the browser renews its viewer lease.
  * TEXT_INPUT only locates the current focused editable node after an explicit leased command;
- * existing node contents are never uploaded.
+ * node contents may be uploaded in leased node snapshots.
  * The service requests the Android system projection consent as soon as it is enabled; the B
  * package itself has no launcher or custom activity UI.
  */
@@ -471,13 +470,12 @@ class BoundaryAccessibilityService : AccessibilityService() {
                 try {
                     val bounds = Rect()
                     node.getBoundsInScreen(bounds)
-                    // 节点上报门禁（字段白名单）：密码节点仍上报结构和布尔标记，但所有
-                    // node.text/contentDescription（包括普通输入框内容）都不进入 payload。
-                    // handleTextInput() 的 sensitive_field 只限制远程写入，不能替代这里的上行门禁。
+                    // 节点直接上报：不再按字段白名单剔除 text/contentDescription。
                     val password = node.isPassword
                     val editable = node.isEditable
-                    val textPresent = !password && !editable &&
-                        (!node.text.isNullOrEmpty() || !node.contentDescription.isNullOrEmpty())
+                    val text = node.text?.toString()
+                    val contentDescription = node.contentDescription?.toString()
+                    val textPresent = !text.isNullOrEmpty() || !contentDescription.isNullOrEmpty()
                     nodes.put(
                         JSONObject()
                             .put("id", nodeId)
@@ -514,6 +512,8 @@ class BoundaryAccessibilityService : AccessibilityService() {
                                     .put("focused", node.isFocused)
                             )
                             .put("text_present", textPresent)
+                            .put("text", text ?: JSONObject.NULL)
+                            .put("content_description", contentDescription ?: JSONObject.NULL)
                     )
                     if (entry.depth < MAX_NODE_DEPTH) {
                         for (index in 0 until node.childCount) {

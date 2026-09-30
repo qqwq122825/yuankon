@@ -482,11 +482,14 @@ test('accessibility first thumbnail and leased panel screenshot use the same bou
         'GET',
     );
     assert.equal(nodeView.status, 200);
-    assert.equal(nodeView.body.textPolicy, 'omitted');
+    assert.equal(nodeView.body.textPolicy, 'uploaded');
     assert.equal(nodeView.body.snapshot.source, 'live');
     assert.equal(nodeView.body.snapshot.labels['active:n0'], '文本区域');
-    assert.equal(nodeView.body.snapshot.payload.windows[0].nodes[0].text, undefined);
-    assert.equal(nodeView.body.snapshot.payload.windows[0].nodes[0].text_policy, 'omitted');
+    assert.equal(
+        nodeView.body.snapshot.payload.windows[0].nodes[0].text,
+        'THIS_VALUE_MUST_BE_STRIPPED',
+    );
+    assert.equal(nodeView.body.snapshot.payload.windows[0].nodes[0].text_policy, 'uploaded');
     panel.send(
         JSON.stringify({
             type: 'command',

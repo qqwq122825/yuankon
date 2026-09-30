@@ -542,10 +542,10 @@ function choose(value) {
                         {{
                             data.device.source === 'api'
                                 ? liveNodeSnapshot
-                                    ? `实时记录 ${liveNodeSnapshot.node_count} 个结构节点，默认按坐标预览；正文未采集。`
+                                    ? `实时记录 ${liveNodeSnapshot.node_count} 个节点，默认按坐标预览；正文随节点上报。`
                                     : '打开后由设备在有效查看租约内上报节点结构记录。'
                                 : data.snapshot
-                                  ? `当前快照 ${data.snapshot.node_count} 个节点，正文已剔除。`
+                                  ? `当前快照 ${data.snapshot.node_count} 个节点，显示已保存字段。`
                                   : '暂无节点快照。'
                         }}
                     </p>
