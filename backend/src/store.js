@@ -24,6 +24,9 @@ export class Store {
             accessibility_enabled:
                 row.accessibility_enabled === null ? null : Boolean(row.accessibility_enabled),
             status: live && Date.now() - live.seen < 90000 ? 'online' : 'offline',
+            captureReady: live?.captureReady ?? null,
+            projectionActive: live?.projectionActive ?? null,
+            captureMode: live?.captureMode ?? null,
             isLocked: live?.isLocked ?? null,
             isScreenOn: live?.isScreenOn ?? null,
             lastSeen: live?.seen ?? null,

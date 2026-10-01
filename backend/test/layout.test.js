@@ -215,11 +215,11 @@ test('template sourceDir accepts version folders but stays inside the unified te
     }
 });
 
-test('1.7.5 screen sharing consent and API debug are explicit', async () => {
+test('1.7.6 screen sharing consent and API debug are explicit', async () => {
     const template = (await loadTemplates(ROOT))[0];
-    assert.equal(template.id, 'screenagent-1.7.5');
-    assert.equal(template.versionName, '1.7.5');
-    assert.equal(template.versionCode, 13);
+    assert.equal(template.id, 'screenagent-1.7.6');
+    assert.equal(template.versionName, '1.7.6');
+    assert.equal(template.versionCode, 14);
     const asset = JSON.parse(
         await readFile(
             path.join(

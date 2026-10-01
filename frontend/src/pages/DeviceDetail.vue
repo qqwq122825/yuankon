@@ -15,6 +15,7 @@ import {
     requestTextInput,
     requestDevicePing,
 } from '../connection.js';
+import { shouldResumeCapture } from '../capture-state.js';
 import FloatingViewer from '../components/FloatingViewer.vue';
 import NodeReader from '../components/NodeReader.vue';
 import DeviceScreenshot from '../components/DeviceScreenshot.vue';
@@ -134,7 +135,18 @@ const off = onMessage((message) => {
         ].includes(message.type) &&
         message.data?.id === data.value.device.public_id
     ) {
-        data.value.device = { ...data.value.device, ...normalizeWireDevice(message.data) };
+        const previous = data.value.device;
+        data.value.device = { ...previous, ...normalizeWireDevice(message.data) };
+        if (
+            shouldResumeCapture(previous, data.value.device, {
+                viewing: reportedShot.value,
+                viewerId,
+            })
+        ) {
+            captureViewerHeartbeat(data.value.device.public_id, viewerId);
+            activeCommandId = requestScreenshot(data.value.device.public_id, viewerId);
+            captureState.value = '截图模式已就绪，正在恢复实时画面';
+        }
         if (data.value.device.is_blacklisted) closeReportedShot();
     }
     if (!data.value || message.sessionId !== data.value.device.public_id) return;

@@ -82,3 +82,9 @@ APK ID 在创建账号时自动分配，一个账号一个固定编号。构建�
 1.7.5：基于 1.7.4，开启无障碍与服务重连均不请求 MediaProjection；只在桌面页点击按钮后经进程内单次点击票据校验打开系统授权。页面显示 BuildConfig 版本便于核对实际安装包；取消授权不重试，切换 takeScreenshot 撤销待用票据并停止共享。截图与节点仍按网页实时查看租约正常上报，不依赖调试开关；新增 API 调试上报与私有调试截图内容上传仅用于打开调试后额外记录截图延迟、错误码、授权和上传问题。保留 1.7.4/1.7.3 历史模板。
 
 点击票据的 JVM 行为测试：`bash android/scripts/test-projection-consent.sh`。复用本机已缓存 Kotlin 1.9.22 编译器与 JDK；包含缺失票据、旧 Intent、错误票据、有效点击、重放、取消、连续点击与新点击八项断言。
+
+## ScreenAgent 1.7.6
+
+新增固定模板 `b-packages/screenagent-1.7.6`（versionCode 14），保留 1.7.5。默认 takeScreenshot，MediaProjection 仍仅由用户点击并确认系统共享授权。后端白名单传递 captureReady / projectionActive / captureMode；网页仅在已打开截图浮窗及现有 viewerId 下、就绪/模式/在线状态转换时重发截图请求，不因心跳重复启动。切换模式废弃旧帧回调；停止 MediaProjection 不再误停止 takeScreenshot。首图失败记录调试事件并最多在一分钟间隔后重试两次；有实时会话时首图不争用上传许可。取消授权不重弹，关闭网页后不自动重建实时查看。
+
+验证记录：`backend/.node-private/releases/1.7.6/VERIFICATION.txt`；本机构建命令 `npm run build:screenagent`。编译、合成图联调与真机授权验证分别记录。

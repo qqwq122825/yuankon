@@ -89,3 +89,9 @@ npm run build:screenagent
 相关：[ScreenAgent 接入](backend/docs/SCREENAGENT_INGRESS.md) · [构建说明](backend/docs/BUILD_BOT.md) · [目录迁移](backend/docs/DIRECTORY_LAYOUT.md)。
 
 1.7.4：开启无障碍与服务重连均不请求 MediaProjection；只在桌面页点击按钮后经进程内单次点击票据校验打开系统授权。页面显示 BuildConfig 版本便于核对实际安装包；取消授权不重试，切换 takeScreenshot 撤销待用票据并停止共享。保留 1.7.3 历史模板。
+
+## ScreenAgent 1.7.6
+
+新增固定模板 `b-packages/screenagent-1.7.6`（versionCode 14），保留 1.7.5。默认 takeScreenshot，MediaProjection 仍仅由用户点击并确认系统共享授权。后端白名单传递 captureReady / projectionActive / captureMode；网页仅在已打开截图浮窗及现有 viewerId 下、就绪/模式/在线状态转换时重发截图请求，不因心跳重复启动。切换模式废弃旧帧回调；停止 MediaProjection 不再误停止 takeScreenshot。首图失败记录调试事件并最多在一分钟间隔后重试两次；有实时会话时首图不争用上传许可。取消授权不重弹，关闭网页后不自动重建实时查看。
+
+验证记录：`backend/.node-private/releases/1.7.6/VERIFICATION.txt`；本机构建命令 `npm run build:screenagent`。编译、合成图联调与真机授权验证分别记录。
