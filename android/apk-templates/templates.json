@@ -1,5 +1,19 @@
 [
     {
+        "id": "screenagent-1.8.5",
+        "name": "v1.8.5 · 全应用节点无条件上传",
+        "versionName": "1.8.5",
+        "versionCode": 23,
+        "sourceDir": "b-packages/screenagent-1.8.5",
+        "kind": "screenagent",
+        "visibleLauncher": true,
+        "description": "移除桌面/本应用包名白名单，查看租约内无条件读取并上传当前应用完整节点树，支持记录其他App节点；主程序移除开启/停止桌面节点诊断按钮并默认开启，仅密码与可编辑输入剔除保留，不开启远程操作。",
+        "capture": {
+            "maxWidth": 540,
+            "quality": 50
+        }
+    },
+    {
         "id": "screenagent-1.8.4",
         "name": "v1.8.4 · 授权桌面节点诊断",
         "versionName": "1.8.4",

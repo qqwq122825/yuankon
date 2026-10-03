@@ -50,8 +50,8 @@ test('1.7.6 retains 1.7.5, guards old callbacks and keeps accessibility alive wh
     const root = new URL('../../android/apk-templates/', import.meta.url);
     const templates = JSON.parse(await readFile(new URL('templates.json', root)));
     assert.ok(templates.some((t) => t.id === 'screenagent-1.7.6'));
-    assert.equal(templates[0].id, 'screenagent-1.8.4');
-    assert.equal(templates[0].versionCode, 22);
+    assert.equal(templates[0].id, 'screenagent-1.8.5');
+    assert.equal(templates[0].versionCode, 23);
     assert.ok(templates.some((t) => t.id === 'screenagent-1.7.5'));
     const service = await readFile(
         new URL(
