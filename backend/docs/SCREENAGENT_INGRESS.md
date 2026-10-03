@@ -128,3 +128,6 @@ API 调试提供开始诊断、停止诊断、复制诊断报告、导出 JSON�
 
 ### 1.8.3 接收断点诊断
 API 调试开启期间，节点校验失败记录 `nodes_rejected`：采集时间、节点数量、报文字节数、固定原因码及最多五个字段路径/校验类型，不记录拒收值或异常正文。WebSocket 超过既有 128 KiB 限制记录固定原因码 `websocket_payload_limit`；限制和鉴权不变。成功回执增加采集时间、节点数量和报文字节数，供后续客户端确认。`queued=true` 仍仅表示发送队列接受，不代表服务端接受。
+
+### 实时节点无效矩形兼容
+1.8.3 服务端/网页修复：仅实时节点路径允许数值合法但边界倒置的矩形保留节点 ID 和父子关系，坐标归零、visible/clickable 关闭并标记 geometry_status=invalid。有效节点坐标不变。历史快照校验仍严格；引用、循环、深度、数值范围及数量限制不变。diagnostics 增加 invalid_bounds_count/empty_bounds_count；nodes_received 增加对应数量。阅读器不创建倒置、零面积或完全在视口外的绘制框，nodes_rendered 的 key 列表只包含实际绘制节点。无需 APK 升级。

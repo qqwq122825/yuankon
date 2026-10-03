@@ -63,6 +63,16 @@ const nodes = computed(() =>
     ),
 );
 const display = computed(() => props.snapshot?.payload?.display || { width: 1, height: 1 });
+const drawableNodes = computed(() =>
+    nodes.value.filter((node) => {
+        const [left, top, right, bottom] = node.bounds;
+        return (
+            node.geometry_status !== 'invalid' &&
+            Math.min(display.value.width, right) > Math.max(0, left) &&
+            Math.min(display.value.height, bottom) > Math.max(0, top)
+        );
+    }),
+);
 const diagnostics = computed(() => props.snapshot?.payload?.diagnostics || {});
 const packageName = computed(
     () => props.snapshot?.payload?.windows?.find((window) => window.active)?.package || '',
@@ -108,8 +118,8 @@ watch(
             snapshotId: id,
             receivedNodeCount: nodes.value.length,
             renderedNodeCount: painted.length,
-            nodeKeys: nodes.value.slice(0, 200).map((node) => node.key),
-            nodeKeysTruncated: nodes.value.length > 200,
+            nodeKeys: painted.slice(0, 200).map((element) => element.dataset.nodeKey),
+            nodeKeysTruncated: painted.length > 200,
             zeroAreaNodeCount: nodes.value.filter(
                 (node) => node.bounds[2] <= node.bounds[0] || node.bounds[3] <= node.bounds[1],
             ).length,
@@ -237,8 +247,9 @@ async function translate() {
                 aria-label="无障碍节点坐标预览"
             >
                 <div
-                    v-for="node in nodes"
+                    v-for="node in drawableNodes"
                     :key="node.key"
+                    :data-node-key="node.key"
                     class="reader-map-node"
                     :class="{ selected: selected?.key === node.key }"
                     :style="nodeStyle(node)"

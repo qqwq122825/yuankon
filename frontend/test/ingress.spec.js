@@ -103,6 +103,14 @@ test('APK ownership, automatic online and an actual synthetic JPEG are visible i
                                             text_present: true,
                                             text: 'Synthetic uploaded input',
                                         },
+                                        {
+                                            id: 'n2',
+                                            parent_id: 'n0',
+                                            class_name: 'android.view.View',
+                                            bounds: [300, 700, 200, 600],
+                                            flags: { visible: true, clickable: true },
+                                            text: 'Invalid geometry fixture',
+                                        },
                                     ],
                                 },
                             ],
@@ -209,6 +217,7 @@ test('APK ownership, automatic online and an actual synthetic JPEG are visible i
     await expect(reader).toBeVisible();
     expect((await reader.boundingBox()).width).toBe(300);
     await expect(reader.locator('.reader-map-node')).toHaveCount(2);
+    await expect(reader.locator('.reader-map-stage')).not.toContainText('Invalid geometry fixture');
     await expect(reader.locator('.reader-map-stage')).not.toContainText('Button');
     await expect(reader.locator('.reader-map-stage')).not.toContainText('FrameLayout');
     await expect(reader.locator('.reader-map-node').first()).toContainText('Fixture title');

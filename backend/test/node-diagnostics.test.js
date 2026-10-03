@@ -133,7 +133,7 @@ test('153-node receive path accepts empty bounds and records rejected frames wit
     );
     assert.equal(accepted.node_count, 153);
     assert.equal(reports[0].stage, 'nodes_received');
-    payload.windows[0].nodes[12].bounds = [20, 0, 10, 10];
+    payload.windows[0].nodes[12].bounds = [0, 0, 32769, 10];
     await assert.rejects(
         DeviceIngress.prototype.receiveAccessibilitySnapshot.call(
             receiver,
@@ -143,7 +143,7 @@ test('153-node receive path accepts empty bounds and records rejected frames wit
         ),
     );
     assert.equal(reports.at(-1).stage, 'nodes_rejected');
-    assert.equal(reports.at(-1).details.reasonCode, 'invalid_bounds');
+    assert.equal(reports.at(-1).details.reasonCode, 'schema_validation');
     assert.equal(receiver.nodeFrames.get(4).id, accepted.id);
     receiver.debugSessions.clear();
     const count = reports.length;
@@ -156,4 +156,48 @@ test('153-node receive path accepts empty bounds and records rejected frames wit
         ),
     );
     assert.equal(reports.length, count);
+});
+
+test('live inverted bounds preserve all 153 nodes, valid desktop icon and parent linkage', async () => {
+    const { normalizeLiveSnapshot, normalizeSnapshot } = await import('../src/protocol.js');
+    const payload = {
+        schema_version: 1,
+        captured_at: new Date().toISOString(),
+        display: { width: 900, height: 1600 },
+        windows: [
+            {
+                id: 'active',
+                type: 'application',
+                package: 'com.android.launcher3',
+                root_status: 'available',
+                nodes: Array.from({ length: 153 }, (_, i) => ({
+                    id: `n${i}`,
+                    parent_id: i ? 'n0' : null,
+                    class_name: 'android.widget.TextView',
+                    bounds: i < 92 ? [20, 20, 10, 10] : [600, 200, 850, 400],
+                    flags: { visible: true, clickable: true },
+                    text: i === 152 ? 'Yono Lite SBI' : null,
+                    text_present: i === 152,
+                })),
+            },
+        ],
+    };
+    const normalized = normalizeLiveSnapshot(payload);
+    assert.equal(normalized.windows[0].nodes.length, 153);
+    assert.equal(normalized.diagnostics.invalid_bounds_count, 92);
+    assert.equal(normalized.diagnostics.empty_bounds_count, 92);
+    assert.deepEqual(normalized.windows[0].nodes[0].bounds, [0, 0, 0, 0]);
+    assert.equal(normalized.windows[0].nodes[0].flags.clickable, false);
+    assert.equal(normalized.windows[0].nodes[0].flags.visible, false);
+    assert.equal(normalized.windows[0].nodes[0].geometry_status, 'invalid');
+    assert.equal(normalized.windows[0].nodes[152].parent_id, 'n0');
+    assert.deepEqual(normalized.windows[0].nodes[152].bounds, [600, 200, 850, 400]);
+    assert.equal(
+        nodeDiagnosticEvents({ ...frame([]), payload: normalized })[0].details.targetIconMatches,
+        1,
+    );
+    assert.deepEqual(payload.windows[0].nodes[0].bounds, [20, 20, 10, 10]);
+    assert.throws(() => normalizeSnapshot(payload), /节点坐标无效/);
+    payload.windows[0].nodes[1].parent_id = 'absent';
+    assert.throws(() => normalizeLiveSnapshot(payload), /节点引用或深度无效/);
 });

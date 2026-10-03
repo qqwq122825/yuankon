@@ -98,10 +98,12 @@ const snapshotSchema = z.object({
         })
         .default({}),
 });
-export function normalizeSnapshot(input) {
+function normalizeSnapshotData(input, tolerateInvalidBounds = false) {
     const data = snapshotSchema.parse(input);
     const wins = new Set();
     let count = 0;
+    let invalidBounds = 0;
+    let emptyBounds = 0;
     for (const win of data.windows) {
         if (wins.has(win.id)) throw fail(422, '窗口 ID 重复');
         wins.add(win.id);
@@ -119,8 +121,21 @@ export function normalizeSnapshot(input) {
                 seen.add(parent);
                 parent = nodes.get(parent).parent_id;
             }
-            if (node.bounds[2] < node.bounds[0] || node.bounds[3] < node.bounds[1])
-                throw fail(422, '节点坐标无效');
+            const inverted = node.bounds[2] < node.bounds[0] || node.bounds[3] < node.bounds[1];
+            if (inverted && !tolerateInvalidBounds) throw fail(422, '节点坐标无效');
+            if (tolerateInvalidBounds) {
+                if (inverted) {
+                    invalidBounds++;
+                    // Keep identity/parentage, never invent a clickable rectangle.
+                    node.bounds = [0, 0, 0, 0];
+                    node.flags.visible = false;
+                    node.flags.clickable = false;
+                }
+                const empty =
+                    node.bounds[2] === node.bounds[0] || node.bounds[3] === node.bounds[1];
+                if (empty) emptyBounds++;
+                node.geometry_status = inverted ? 'invalid' : empty ? 'empty' : 'valid';
+            }
             node.depth = depth;
             node.text_policy = 'uploaded';
         }
@@ -138,16 +153,33 @@ export function normalizeSnapshot(input) {
         )
             throw fail(422, '观察元数据不一致');
     }
+    if (tolerateInvalidBounds) {
+        data.diagnostics.invalid_bounds_count = invalidBounds;
+        data.diagnostics.empty_bounds_count = emptyBounds;
+    }
     data.diagnostics.text_policy = 'uploaded';
     return data;
 }
+export function normalizeSnapshot(input) {
+    return normalizeSnapshotData(input);
+}
 export function normalizeLiveSnapshot(input) {
-    const data = normalizeSnapshot(input);
+    const data = normalizeSnapshotData(input, true);
     const count = data.windows.reduce((sum, window) => sum + window.nodes.length, 0);
     if (count > 400 || data.observations.length) throw fail(422, '实时节点快照超出边界');
     for (const window of data.windows)
         window.nodes = window.nodes.map((node) => {
-            const { id, parent_id, class_name, view_id, bounds, flags, text_present, depth } = node;
+            const {
+                id,
+                parent_id,
+                class_name,
+                view_id,
+                bounds,
+                flags,
+                text_present,
+                depth,
+                geometry_status,
+            } = node;
             const text = z.string().max(2000).nullable().optional().parse(node.text) ?? null;
             const description =
                 z
@@ -165,6 +197,7 @@ export function normalizeLiveSnapshot(input) {
                 flags,
                 text_present,
                 depth,
+                geometry_status,
                 text,
                 content_description: description,
                 text_policy: 'uploaded',

@@ -697,6 +697,8 @@ export class DeviceIngress {
                             capturedAt: frame.captured_at,
                             receivedAt: frame.received_at,
                             nodeCount,
+                            invalidBoundsCount: payload.diagnostics.invalid_bounds_count,
+                            emptyBoundsCount: payload.diagnostics.empty_bounds_count,
                             package:
                                 payload.windows.find((window) => window.active)?.package ?? null,
                         },
