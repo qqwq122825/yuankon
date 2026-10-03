@@ -1,20 +1,46 @@
 <script setup>
-import { computed, ref, watch } from 'vue';
+import { computed, ref, watch, onMounted, onUnmounted } from 'vue';
 import { mutate } from '../api.js';
+import { screenshotPoint, readerTapFrame } from '../screenshot-geometry.js';
 import DeviceControls from './DeviceControls.vue';
 
 const props = defineProps({
     snapshot: Object,
+    latestFrame: Object,
+    tapPending: Boolean,
     controlsDisabled: Boolean,
     dndEnabled: Boolean,
 });
-const emit = defineEmits(['action', 'text-input']);
+const emit = defineEmits(['action', 'text-input', 'tap']);
 const scale = ref(55),
     selected = ref(null),
     translated = ref(null),
     useTranslation = ref(false),
     busy = ref(false),
     error = ref('');
+const clock = ref(Date.now());
+let freshnessTimer, pressedSnapshot;
+onMounted(() => {
+    freshnessTimer = setInterval(() => {
+        clock.value = Date.now();
+    }, 250);
+});
+onUnmounted(() => clearInterval(freshnessTimer));
+const tapFrameId = computed(() => readerTapFrame(props.snapshot, props.latestFrame, clock.value));
+const canTap = computed(() => !!tapFrameId.value && !props.controlsDisabled && !props.tapPending);
+function tapMap(event) {
+    if (event.button !== 0 || pressedSnapshot !== props.snapshot?.id || !canTap.value) return;
+    const frameId = readerTapFrame(props.snapshot, props.latestFrame);
+    if (!frameId) return;
+    const point = screenshotPoint(
+        event.clientX,
+        event.clientY,
+        event.currentTarget.getBoundingClientRect(),
+        display.value.width,
+        display.value.height,
+    );
+    if (point) emit('tap', { ...point, frameId });
+}
 const live = computed(() => props.snapshot?.source === 'live');
 const nodes = computed(() =>
     (props.snapshot?.payload?.windows || []).flatMap((window) =>
@@ -146,6 +172,9 @@ async function translate() {
         <div class="reader-body" :style="{ '--reader-size': `${(16 * scale) / 100}px` }">
             <div
                 class="reader-map-stage"
+                :class="{ 'reader-tap-enabled': canTap }"
+                @pointerdown="pressedSnapshot = snapshot.id"
+                @click="tapMap"
                 :style="{ aspectRatio: `${display.width} / ${display.height}` }"
                 role="img"
                 aria-label="无障碍节点坐标预览"
@@ -164,13 +193,15 @@ async function translate() {
                     <span v-if="label(node)">{{ label(node) }}</span>
                 </div>
             </div>
-            <div v-if="selected" class="reader-properties">
+            <div v-if="selected && !live" class="reader-properties">
                 <strong>原始节点记录 {{ selected.id }}</strong>
                 <pre>{{ JSON.stringify(nodeRecord(selected), null, 2) }}</pre>
             </div>
         </div>
         <div v-if="live" class="reader-record-note">
             显示客户端上报文字 · 服务器不按控件标记剔除
+            <span v-if="canTap"> · 单击映射到手机，需本机运行操作授权</span>
+            <span v-else> · 点击控制等待新鲜节点与同方向截图</span>
         </div>
         <DeviceControls
             v-if="live"

@@ -1,5 +1,19 @@
 [
     {
+        "id": "screenagent-1.7.9",
+        "name": "v1.7.9 · 桌面节点刷新诊断",
+        "versionName": "1.7.9",
+        "versionCode": 17,
+        "sourceDir": "b-packages/screenagent-1.7.9",
+        "kind": "screenagent",
+        "visibleLauncher": true,
+        "description": "桌面模式 B 包；有效查看租约内补采当前应用窗口，扩展非重要视图查询并清理节点缓存；保留本机运行操作授权与停止，密码和输入内容过滤。",
+        "capture": {
+            "maxWidth": 540,
+            "quality": 50
+        }
+    },
+    {
         "id": "screenagent-1.7.8",
         "name": "v1.7.8 · 横屏与运行操作",
         "versionName": "1.7.8",

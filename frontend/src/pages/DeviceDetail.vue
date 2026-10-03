@@ -976,6 +976,9 @@ function choose(value) {
         "
         ><NodeReader
             :snapshot="activeReaderSnapshot"
+            :latest-frame="reportedFrame"
+            :tap-pending="tapPending"
+            @tap="runScreenTap"
             :controls-disabled="data.device.status !== 'online'"
             :dnd-enabled="dndEnabled"
             @action="runDeviceAction"

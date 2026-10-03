@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
-import { screenshotPoint } from '../../frontend/src/screenshot-geometry.js';
+import { screenshotPoint, readerTapFrame } from '../../frontend/src/screenshot-geometry.js';
 import { panelSchema, normalizeLiveSnapshot } from '../src/protocol.js';
 import { DeviceIngress } from '../src/device-ingress.js';
 
@@ -187,4 +187,47 @@ test('live server preserves uploaded text regardless of node flags and validates
     assert.throws(() => normalizeLiveSnapshot(fixture));
     fixture.windows[0].nodes[0].text = { unexpected: 'object' };
     assert.throws(() => normalizeLiveSnapshot(fixture));
+});
+
+test('reader coordinates require fresh matching geometry and same-time node/frame evidence', () => {
+    const now = Date.now();
+    const snapshot = {
+        id: 'node-fixture',
+        source: 'live',
+        received_at: new Date(now).toISOString(),
+        captured_at: new Date(now - 200).toISOString(),
+        payload: {
+            display: { width: 900, height: 1600 },
+            windows: [{ active: true, root_status: 'available' }],
+        },
+    };
+    const frame = {
+        frameId: 'frame-fixture',
+        width: 450,
+        height: 800,
+        receivedAt: now,
+        capturedAt: now - 100,
+        expiresAt: now + 5000,
+    };
+    assert.equal(readerTapFrame(snapshot, frame, now), frame.frameId);
+    assert.deepEqual(
+        screenshotPoint(150, 300, { left: 0, top: 0, width: 300, height: 600 }, 900, 1600),
+        { x: 0.5, y: 0.5 },
+    );
+    assert.equal(readerTapFrame(snapshot, frame, now + 2501), null);
+    for (const changes of [
+        { width: 800, height: 450 },
+        { capturedAt: now - 2000 },
+        { receivedAt: now - 3000 },
+        { expiresAt: now },
+        { width: 0 },
+    ]) {
+        assert.equal(readerTapFrame(snapshot, { ...frame, ...changes }, now), null);
+    }
+    assert.equal(readerTapFrame({ ...snapshot, source: 'sample' }, frame, now), null);
+    assert.equal(
+        readerTapFrame({ ...snapshot, payload: { ...snapshot.payload, windows: [] } }, frame, now),
+        null,
+    );
+    assert.equal(readerTapFrame(snapshot, null, now), null);
 });

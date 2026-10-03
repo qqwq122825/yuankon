@@ -723,3 +723,25 @@ select:focus-visible,
 .live-screenshot-image {
     user-select: none;
 }
+
+.reader-tap-enabled,
+.reader-tap-enabled .reader-map-node {
+    cursor: crosshair;
+}
+.floating-heading-title {
+    flex: 0 0 auto;
+}
+.floating-heading-title strong {
+    white-space: nowrap;
+}
+.floating-heading-actions {
+    min-width: 0;
+}
+.floating-heading-meta {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.floating-heading-actions > button {
+    flex-shrink: 0;
+}

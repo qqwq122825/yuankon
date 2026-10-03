@@ -224,12 +224,11 @@ test('APK ownership, automatic online and an actual synthetic JPEG are visible i
     await expect(reader.getByRole('tab')).toHaveCount(0);
     await expect(reader.getByRole('textbox', { name: '发送到设备的文本' })).toHaveCount(1);
     await reader.locator('.reader-map-node').first().click();
-    await expect(reader.locator('.reader-properties')).toContainText(
-        '"view_id": "dev.boundary.fixture:id/title"',
-    );
-    await expect(reader.locator('.reader-properties')).toContainText('"text_present": true');
-    await expect(reader.locator('.reader-properties')).toContainText('Fixture title');
-    await expect(reader.locator('.reader-record-note')).toHaveText(
+    await expect(reader.locator('.reader-properties')).toHaveCount(0);
+    await expect(reader).not.toContainText('原始节点记录');
+    await reader.locator('.reader-map-node').first().press('Enter');
+    await expect(reader.locator('.reader-properties')).toHaveCount(0);
+    await expect(reader.locator('.reader-record-note')).toContainText(
         '显示客户端上报文字 · 服务器不按控件标记剔除',
     );
     await expect(reader.locator('.width-control')).toContainText('屏幕宽度');
@@ -318,6 +317,44 @@ test('APK ownership, automatic online and an actual synthetic JPEG are visible i
     tapConsent = true;
     await image.click();
     await expect(page.locator('.device-browser-toast')).toHaveText('手机已完成单击');
+    // A fresh reader map routes coordinates through the same local-consent tap path.
+    const liveReport = await page.request.get(
+        `/api/devices/${new URL(page.url()).pathname.split('/').pop()}/accessibility-snapshot?viewerId=${activeCapture.viewerId}`,
+    );
+    const readerPayload = (await liveReport.json()).snapshot.payload;
+    readerPayload.captured_at = new Date().toISOString();
+    readerPayload.windows[0].nodes[0].text = 'Fixture reader tap';
+    deviceSocket.send(
+        JSON.stringify({
+            protocol: 'boundary-node-v2',
+            type: 'accessibility_snapshot',
+            sessionId: device.deviceId,
+            apkId,
+            timestamp: Date.now(),
+            data: { viewerId: activeCapture.viewerId, payload: readerPayload },
+        }),
+    );
+    const map = reader.locator('.reader-map-stage');
+    await expect(map).toContainText('Fixture reader tap');
+    await expect(map).toHaveClass(/reader-tap-enabled/);
+    await expect(map).toHaveCSS('cursor', 'crosshair');
+    const beforeReaderTap = receivedTaps.length;
+    await map.click({
+        position: {
+            x: (await map.boundingBox()).width * 0.5,
+            y: (await map.boundingBox()).height * 0.5,
+        },
+    });
+    await expect(page.locator('.device-browser-toast')).toHaveText('手机已完成单击');
+    await expect.poll(() => receivedTaps.length).toBe(beforeReaderTap + 1);
+    expect(receivedTaps.at(-1).frameId).toBe(portrait.frameId);
+    expect(receivedTaps.at(-1).x).toBeCloseTo(0.5, 2);
+    expect(receivedTaps.at(-1).y).toBeCloseTo(0.5, 2);
+    await expect(map).toHaveClass(/reader-tap-enabled/);
+    await expect(map).not.toHaveClass(/reader-tap-enabled/, { timeout: 4000 });
+    const readerTapCount = receivedTaps.length;
+    await map.click({ position: { x: 150, y: 160 } });
+    expect(receivedTaps.length).toBe(readerTapCount);
     const landscape = await publishFrame(800, 360);
     expect((await panel.boundingBox()).width).toBe(300);
     expect((await stage.boundingBox()).height).toBeCloseTo((298 * 360) / 800, 0);

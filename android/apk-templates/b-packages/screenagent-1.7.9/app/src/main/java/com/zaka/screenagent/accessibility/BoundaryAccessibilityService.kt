@@ -40,7 +40,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  *
  * Enabling the service starts the authenticated device heartbeat and uploads one short-lived
  * thumbnail. During an explicit browser viewer lease it can additionally publish a bounded,
- * node preview with client-reported fields, without text or descriptions. SCREENSHOT_NOW
+ * node preview with visible non-editable labels and redacted input contents. SCREENSHOT_NOW
  * uses the selected page mode: MediaProjection latest frame or AccessibilityService.takeScreenshot.
  * TEXT_INPUT only locates the current focused editable node after an explicit leased command;
  * node contents are removed from leased node snapshots.
@@ -595,6 +595,8 @@ class BoundaryAccessibilityService : AccessibilityService() {
     )
 
     private fun currentApplicationRoot(): AccessibilityNodeInfo? {
+        // API 33+: invalidate cached descendants as well as the root before each leased read.
+        if (Build.VERSION.SDK_INT >= 33) runCatching { clearCache() }
         val currentWindows = runCatching { windows }.getOrDefault(emptyList())
         var selected: AccessibilityNodeInfo? = null
         try {
@@ -732,6 +734,18 @@ class BoundaryAccessibilityService : AccessibilityService() {
                     .put("elapsed_ms", SystemClock.elapsedRealtime() - started)
                     .put("truncated", truncated)
             )
+        // Only metadata, never node contents. Emitted only while API debug is explicitly enabled.
+        recordDebug("service", "nodes_snapshot", "info", "current application node refresh",
+            elapsedMs = SystemClock.elapsedRealtime() - started,
+            details = JSONObject()
+                .put("package", window.optString("package"))
+                .put("rootStatus", window.optString("root_status"))
+                .put("nodeCount", nodes.length())
+                .put("truncated", truncated)
+                .put("includeNotImportantViews", true)
+                .put("cacheInvalidationSupported", Build.VERSION.SDK_INT >= 33)
+        )
+        flushDebug()
         socket?.accessibilitySnapshot(viewerId, payload)
     }
 
