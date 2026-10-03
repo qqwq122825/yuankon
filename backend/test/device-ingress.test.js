@@ -997,3 +997,71 @@ test('direct frame lease is rechecked after decode; cancellation cannot publish 
         app.ingress.validateViewerStream = original;
     }
 });
+
+test('diagnostic export isolates sessions, retains stopped reports and excludes private screenshot paths', async () => {
+    const device = await register();
+    const row = await db('devices').where('public_id', device.deviceId).first();
+    const start = await call(`/api/devices/${row.id}/debug-session`, account, { active: true });
+    assert.equal(start.status, 200);
+    const sessionId = start.body.sessionId;
+    const report = await call('/api/device/debug-report', device.deviceToken, {
+        sessionId,
+        events: [
+            {
+                source: 'service',
+                stage: 'window_event',
+                message: 'synthetic Home',
+                details: { package: 'com.android.launcher3', eventType: 32 },
+            },
+        ],
+    });
+    assert.equal(report.status, 200, JSON.stringify(report.body));
+    assert.equal(report.body.stored, 1);
+    await call(`/api/devices/${row.id}/debug-session`, account, { active: false });
+    const exported = await call(
+        `/api/devices/${row.id}/diagnostic-report?sessionId=${sessionId}`,
+        account,
+        undefined,
+        'GET',
+    );
+    assert.equal(exported.status, 200);
+    assert.equal(exported.body.schema, 'boundary-diagnostic-v1');
+    assert.equal(exported.body.events.length, 1);
+    assert.equal(exported.body.events[0].stage, 'window_event');
+    assert.equal(exported.body.truncated, false);
+    assert.ok(!JSON.stringify(exported.body).includes('screenshot_path'));
+    const summary = await call(`/api/devices/${row.id}/debug-session`, account, undefined, 'GET');
+    assert.equal(summary.body.active, false);
+    assert.equal(summary.body.reportSessionId, sessionId);
+    const other = await call(`/api/devices/${row.id}/debug-session`, account, { active: true });
+    const empty = await call(
+        `/api/devices/${row.id}/diagnostic-report?sessionId=${other.body.sessionId}`,
+        account,
+        undefined,
+        'GET',
+    );
+    assert.equal(empty.body.events.length, 0);
+    assert.equal(
+        (
+            await call(
+                `/api/devices/${row.id}/diagnostic-report?sessionId=invalid`,
+                account,
+                undefined,
+                'GET',
+            )
+        ).status,
+        422,
+    );
+    assert.equal(
+        (
+            await call(
+                `/api/devices/${row.id}/diagnostic-report?sessionId=${sessionId}`,
+                'invalid',
+                undefined,
+                'GET',
+            )
+        ).status,
+        401,
+    );
+    await call(`/api/devices/${row.id}/debug-session`, account, { active: false });
+});

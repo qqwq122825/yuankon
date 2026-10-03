@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onUnmounted, watch } from 'vue';
+import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { api } from '../api.js';
 import DeviceControls from './DeviceControls.vue';
 import { screenshotPoint } from '../screenshot-geometry.js';
@@ -11,7 +11,7 @@ const props = defineProps({
     tapPending: Boolean,
     latestFrame: Object,
 });
-const emit = defineEmits(['count', 'action', 'text-input', 'tap']);
+const emit = defineEmits(['count', 'action', 'text-input', 'tap', 'diagnostic']);
 const frame = ref(null),
     error = ref(''),
     stageAspect = ref('9 / 16'),
@@ -75,6 +75,7 @@ async function downloadLatest() {
     if (next.frameId === frame.value?.frameId) return;
     downloading = true;
     imageController = new AbortController();
+    const downloadStarted = performance.now();
     try {
         const response = await fetch(next.imageUrl, {
             credentials: 'same-origin',
@@ -83,15 +84,49 @@ async function downloadLatest() {
         if (!response.ok || !response.headers.get('content-type')?.startsWith('image/jpeg'))
             throw new Error('截图已被替换，等待下一帧');
         const blob = await response.blob();
+        emit('diagnostic', {
+            stage: 'image_downloaded',
+            frameId: next.frameId,
+            elapsedMs: Math.round(performance.now() - downloadStarted),
+            bytes: blob.size,
+        });
         if (!stopped) {
             const url = URL.createObjectURL(blob);
+            const decodingStarted = performance.now();
+            const decoded = new Image();
+            decoded.src = url;
+            try {
+                await decoded.decode();
+                if (decoded.naturalWidth !== next.width || decoded.naturalHeight !== next.height)
+                    throw new Error('截图尺寸不匹配');
+            } catch (e) {
+                URL.revokeObjectURL(url);
+                throw e;
+            }
+            if (stopped || next.expiresAt <= Date.now()) {
+                URL.revokeObjectURL(url);
+                return;
+            }
             const oldUrl = displayedUrl;
             displayedUrl = url;
             acceptFrame({ ...next, imageUrl: url });
+            emit('diagnostic', {
+                stage: 'image_decoded',
+                frameId: next.frameId,
+                elapsedMs: Math.round(performance.now() - decodingStarted),
+            });
+            await nextTick();
             if (oldUrl) URL.revokeObjectURL(oldUrl);
         }
     } catch (e) {
-        if (!stopped && e.name !== 'AbortError') error.value = e.message;
+        if (!stopped && e.name !== 'AbortError') {
+            error.value = e.message;
+            emit('diagnostic', {
+                stage: 'image_failed',
+                frameId: next.frameId,
+                message: e.message,
+            });
+        }
     } finally {
         downloading = false;
         if (!stopped && pendingFrame) queueMicrotask(downloadLatest);
@@ -117,7 +152,6 @@ async function load() {
         }
     } catch (e) {
         if (!stopped && generation === loadGeneration && e.name !== 'AbortError') {
-            frame.value = null;
             error.value = e.message;
         }
     } finally {
@@ -176,7 +210,6 @@ onUnmounted(() => {
                 v-if="frame"
                 class="live-screenshot-image"
                 :src="frame.imageUrl"
-                :key="frame.frameId"
                 :data-frame-id="frame.frameId"
                 @pointerdown="pressedFrameId = frame.frameId"
                 :class="{ 'tap-enabled': imageLoaded && !controlsDisabled && !tapPending }"
@@ -185,7 +218,7 @@ onUnmounted(() => {
                 @load="imageLoaded = $event.currentTarget.dataset.frameId === frame?.frameId"
                 @click.stop="tap"
                 alt="设备实时上报的最新截图"
-                @error="frame = null"
+                @error="error = '图片显示失败，等待下一帧'"
             />
             <p v-else class="empty-state" role="status">
                 暂无有效截图；正在等待设备响应实时查看请求。

@@ -20,6 +20,59 @@ import { shouldResumeCapture } from '../capture-state.js';
 import FloatingViewer from '../components/FloatingViewer.vue';
 import NodeReader from '../components/NodeReader.vue';
 import DeviceScreenshot from '../components/DeviceScreenshot.vue';
+const diagnosticSessionId = ref(null);
+let diagnosticOwnsViewer = false;
+const browserDiagnosticEvents = ref([]);
+function recordBrowserDiagnostic(stage, details = {}) {
+    if (!debug.value.active) return;
+    browserDiagnosticEvents.value.push({ time: new Date().toISOString(), stage, ...details });
+    if (browserDiagnosticEvents.value.length > 1000) browserDiagnosticEvents.value.shift();
+}
+async function diagnosticText() {
+    const sessionId = diagnosticSessionId.value || debug.value.sessionId;
+    if (!sessionId) throw new Error('请先开始一次诊断');
+    const report = await api(
+        `/api/devices/${data.value.device.id}/diagnostic-report?sessionId=${sessionId}`,
+    );
+    return JSON.stringify(
+        {
+            ...report,
+            browserEvents: browserDiagnosticEvents.value,
+            scenario: '其他 App → Home 回桌面 → 打开其他 App',
+            browserEventsAtLimit: browserDiagnosticEvents.value.length >= 1000,
+        },
+        null,
+        2,
+    );
+}
+async function copyDiagnosticReport() {
+    debugBusy.value = true;
+    try {
+        await navigator.clipboard.writeText(await diagnosticText());
+        showActionToast('诊断报告已复制，可以直接粘贴发送');
+    } catch (e) {
+        debugError.value = e.message;
+    } finally {
+        debugBusy.value = false;
+    }
+}
+async function exportDiagnosticReport() {
+    debugBusy.value = true;
+    try {
+        const url = URL.createObjectURL(
+            new Blob([await diagnosticText()], { type: 'application/json' }),
+        );
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `diagnostic-${diagnosticSessionId.value || debug.value.sessionId}.json`;
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (e) {
+        debugError.value = e.message;
+    } finally {
+        debugBusy.value = false;
+    }
+}
 const route = useRoute(),
     router = useRouter(),
     data = ref(null),
@@ -252,6 +305,12 @@ const off = onMessage((message) => {
                 ? '实时截图已更新'
                 : `截图失败：${message.data.reasonCode || 'capture_failed'}`;
     if (message.type === 'screenshot_ready') {
+        recordBrowserDiagnostic('screenshot_ready', {
+            frameId: message.data?.frameId,
+            capturedAt: message.data?.capturedAt,
+            width: message.data?.width,
+            height: message.data?.height,
+        });
         reportedFrame.value = message.data;
         reportedRefresh.value++;
         captureState.value =
@@ -260,6 +319,7 @@ const off = onMessage((message) => {
                 : '实时画面已更新';
     }
     if (message.type === 'accessibility_snapshot_ready' && message.data?.viewerId === viewerId) {
+        recordBrowserDiagnostic('nodes_ready', { nodeCount: message.data.nodeCount });
         captureState.value = `已收到 ${message.data.nodeCount} 个结构节点`;
         loadLiveNodes();
     }
@@ -280,6 +340,8 @@ async function loadDebugSession() {
     debugError.value = '';
     try {
         debug.value = await api(`/api/devices/${data.value.device.id}/debug-session`);
+        if (debug.value.sessionId || debug.value.reportSessionId)
+            diagnosticSessionId.value = debug.value.sessionId || debug.value.reportSessionId;
     } catch (e) {
         debugError.value = e.message;
     }
@@ -288,8 +350,9 @@ async function loadDebugEvents() {
     if (!data.value || data.value.device.source !== 'api') return;
     const afterId = debug.value.events.at(-1)?.id || 0;
     try {
+        const sessionId = diagnosticSessionId.value || debug.value.sessionId;
         const result = await api(
-            `/api/devices/${data.value.device.id}/debug-events?afterId=${afterId}&limit=100`,
+            `/api/devices/${data.value.device.id}/debug-events?afterId=${afterId}&limit=100${sessionId ? `&sessionId=${sessionId}` : ''}`,
         );
         if (result.data.length)
             debug.value = {
@@ -305,9 +368,26 @@ async function setDebugSession(active) {
     debugBusy.value = true;
     debugError.value = '';
     try {
+        const previousSessionId = debug.value.sessionId;
+        if (!active) recordBrowserDiagnostic('diagnostic_stopped');
         debug.value = await mutate(`/api/devices/${data.value.device.id}/debug-session`, 'POST', {
             active,
         });
+        diagnosticSessionId.value =
+            debug.value.sessionId || previousSessionId || diagnosticSessionId.value;
+        if (active) {
+            browserDiagnosticEvents.value = [];
+            recordBrowserDiagnostic('diagnostic_started');
+            // Collect while the user switches apps, without issuing phone control commands.
+            if (!viewerId) {
+                diagnosticOwnsViewer = true;
+                startLiveLease();
+                activeCommandId = requestScreenshot(data.value.device.public_id, viewerId);
+            }
+        } else if (diagnosticOwnsViewer) {
+            diagnosticOwnsViewer = false;
+            if (!reportedShot.value && !reader.value) stopLiveSession();
+        }
         notice.value = active
             ? 'API 调试已开启；手机心跳后开始上报请求、截图延迟和错误'
             : 'API 调试已关闭；手机端停止收录调试上报';
@@ -363,7 +443,16 @@ async function loadLiveNodes() {
         const result = await api(
             `/api/devices/${data.value.device.id}/accessibility-snapshot?viewerId=${encodeURIComponent(viewerId)}`,
         );
-        if (result.snapshot) liveNodeSnapshot.value = result.snapshot;
+        if (result.snapshot) {
+            liveNodeSnapshot.value = result.snapshot;
+            recordBrowserDiagnostic('nodes_displayed', {
+                snapshotId: result.snapshot.id,
+                capturedAt: result.snapshot.captured_at,
+                receivedAt: result.snapshot.received_at,
+                nodeCount: result.snapshot.node_count,
+                package: result.snapshot.payload.windows.find((window) => window.active)?.package,
+            });
+        }
     } catch (e) {
         if (viewerId) captureState.value = e.message;
     }
@@ -704,7 +793,7 @@ function choose(value) {
             ><template v-else-if="section === 'debug'"
                 ><div class="workspace-section-heading">
                     <h2>API调试</h2>
-                    <span>开启后收集客户端上报的请求、截图延迟和错误；关闭后停止收录</span>
+                    <span>开始 → 切换 App / Home 回桌面 → 停止 → 复制报告</span>
                 </div>
                 <div class="card card-body debug-card">
                     <div class="debug-toolbar">
@@ -713,17 +802,28 @@ function choose(value) {
                             :disabled="debugBusy || data.device.source !== 'api' || debug.active"
                             @click="setDebugSession(true)"
                         >
-                            开启调试
+                            开始诊断
                         </button>
                         <button
                             class="btn"
                             :disabled="debugBusy || !debug.active"
                             @click="setDebugSession(false)"
                         >
-                            关闭调试
+                            停止诊断
                         </button>
-                        <button class="btn" :disabled="debugBusy" @click="loadDebugEvents">
-                            刷新请求
+                        <button
+                            class="btn"
+                            :disabled="debugBusy || !diagnosticSessionId"
+                            @click="copyDiagnosticReport"
+                        >
+                            复制诊断报告
+                        </button>
+                        <button
+                            class="btn"
+                            :disabled="debugBusy || !diagnosticSessionId"
+                            @click="exportDiagnosticReport"
+                        >
+                            导出 JSON
                         </button>
                         <span :class="['status-chip', debug.active ? 'online' : 'offline']">{{
                             debug.active ? '收录中' : '已停止'
@@ -734,79 +834,75 @@ function choose(value) {
                         {{ debugError }}
                     </p>
                     <p class="text-muted">
-                        截图与节点按原实时查看租约正常上报，不依赖调试开关；开启调试后，客户端额外记录截图延迟、错误码和一份私有调试截图，关闭后停止额外收录。
+                        开始后请操作手机：其他 App → Home 回桌面 → 打开其他
+                        App。完成后停止并复制报告，无需逐条查看日志。
                     </p>
                     <div class="debug-summary">
                         <span>事件 {{ debug.events.length }}</span>
                         <span
-                            >MediaProjection
-                            {{
-                                debug.events.filter((e) => e.source === 'mediaprojection').length
-                            }}</span
-                        >
-                        <span
-                            >takeScreenshot
-                            {{
-                                debug.events.filter((e) => e.source === 'taskscreenshot').length
-                            }}</span
-                        >
-                        <span
                             >错误 {{ debug.events.filter((e) => e.level === 'error').length }}</span
                         >
                     </div>
-                    <div class="debug-table-wrap">
-                        <table class="table debug-table">
-                            <thead>
-                                <tr>
-                                    <th>ID</th>
-                                    <th>时间</th>
-                                    <th>级别</th>
-                                    <th>来源 / 阶段</th>
-                                    <th>耗时</th>
-                                    <th>截图内容</th>
-                                    <th>消息与详情</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr v-for="row in debug.events" :key="row.id">
-                                    <td>{{ row.id }}</td>
-                                    <td>{{ new Date(Number(row.ts)).toLocaleTimeString() }}</td>
-                                    <td>{{ row.level }}</td>
-                                    <td>{{ row.source }} / {{ row.stage }}</td>
-                                    <td>
-                                        {{ row.elapsed_ms === null ? '—' : `${row.elapsed_ms}ms` }}
-                                    </td>
-                                    <td>
-                                        <a
-                                            v-if="row.imageUrl"
-                                            :href="row.imageUrl"
-                                            target="_blank"
-                                            rel="noopener"
-                                            class="debug-shot-link"
-                                        >
-                                            <img :src="row.imageUrl" alt="调试截图内容" />
-                                            <span
-                                                >{{ row.screenshot_width }}×{{
-                                                    row.screenshot_height
-                                                }}
-                                                · {{ row.screenshot_size }}B</span
+                    <details>
+                        <summary>详细日志（默认收起）</summary>
+                        <div class="debug-table-wrap">
+                            <table class="table debug-table">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>时间</th>
+                                        <th>级别</th>
+                                        <th>来源 / 阶段</th>
+                                        <th>耗时</th>
+                                        <th>截图内容</th>
+                                        <th>消息与详情</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="row in debug.events" :key="row.id">
+                                        <td>{{ row.id }}</td>
+                                        <td>{{ new Date(Number(row.ts)).toLocaleTimeString() }}</td>
+                                        <td>{{ row.level }}</td>
+                                        <td>{{ row.source }} / {{ row.stage }}</td>
+                                        <td>
+                                            {{
+                                                row.elapsed_ms === null
+                                                    ? '—'
+                                                    : `${row.elapsed_ms}ms`
+                                            }}
+                                        </td>
+                                        <td>
+                                            <a
+                                                v-if="row.imageUrl"
+                                                :href="row.imageUrl"
+                                                target="_blank"
+                                                rel="noopener"
+                                                class="debug-shot-link"
                                             >
-                                        </a>
-                                        <span v-else>—</span>
-                                    </td>
-                                    <td>
-                                        <strong>{{ row.message || '—' }}</strong>
-                                        <pre v-if="row.details">{{ debugDetails(row) }}</pre>
-                                    </td>
-                                </tr>
-                                <tr v-if="!debug.events.length">
-                                    <td colspan="7" class="empty-state">
-                                        暂无调试上报；开启后等待手机下一次心跳或截图请求。
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
+                                                <img :src="row.imageUrl" alt="调试截图内容" />
+                                                <span
+                                                    >{{ row.screenshot_width }}×{{
+                                                        row.screenshot_height
+                                                    }}
+                                                    · {{ row.screenshot_size }}B</span
+                                                >
+                                            </a>
+                                            <span v-else>—</span>
+                                        </td>
+                                        <td>
+                                            <strong>{{ row.message || '—' }}</strong>
+                                            <pre v-if="row.details">{{ debugDetails(row) }}</pre>
+                                        </td>
+                                    </tr>
+                                    <tr v-if="!debug.events.length">
+                                        <td colspan="7" class="empty-state">
+                                            暂无调试上报；开启后等待手机下一次心跳或截图请求。
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </details>
                 </div></template
             ><template v-else
                 ><div class="workspace-section-heading"><h2>节点信息</h2></div>
@@ -922,6 +1018,7 @@ function choose(value) {
             :tap-pending="tapPending"
             @tap="runScreenTap"
             :refresh-key="reportedRefresh"
+            @diagnostic="(event) => recordBrowserDiagnostic(event.stage, event)"
             :latest-frame="reportedFrame"
             :controls-disabled="data.device.status !== 'online'"
             :dnd-enabled="dndEnabled"

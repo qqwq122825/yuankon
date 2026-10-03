@@ -1,5 +1,19 @@
 [
     {
+        "id": "screenagent-1.8.0",
+        "name": "v1.8.0 · 一键链路诊断",
+        "versionName": "1.8.0",
+        "versionCode": 18,
+        "sourceDir": "b-packages/screenagent-1.8.0",
+        "kind": "screenagent",
+        "visibleLauncher": true,
+        "description": "桌面模式 B 包；记录窗口切换与节点读取/发送序号，支持一次诊断报告；保留本机授权、停止与密码/输入内容过滤。",
+        "capture": {
+            "maxWidth": 540,
+            "quality": 50
+        }
+    },
+    {
         "id": "screenagent-1.7.9",
         "name": "v1.7.9 · 桌面节点刷新诊断",
         "versionName": "1.7.9",

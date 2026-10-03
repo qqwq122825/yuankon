@@ -389,24 +389,56 @@ export class DeviceIngress {
     }
 
     async debugSummary(device, state = this.debugSessions.get(device.id)) {
+        const lastReport = await this.db('device_debug_reports')
+            .where('device_id', device.id)
+            .orderBy('id', 'desc')
+            .first('session_id');
         return {
+            reportSessionId: state?.sessionId || lastReport?.session_id || null,
             ...debugPublicState(state?.ownerId === device.owner_account_id ? state : null),
             retention: 'debug-screenshots-private',
-            events: await this.debugEvents(device.id, { limit: 100 }),
+            events: await this.debugEvents(device.id, {
+                limit: 100,
+                sessionId: state?.sessionId || lastReport?.session_id,
+            }),
         };
     }
 
-    async debugEvents(id, { afterId = 0, limit = 100 } = {}) {
+    async debugEvents(id, { afterId = 0, limit = 100, sessionId } = {}) {
         await this.store.device(id);
-        const rows = await this.db('device_debug_reports')
-            .where('device_id', id)
-            .where('id', '>', afterId)
-            .orderBy('id', 'asc')
-            .limit(limit);
+        const query = this.db('device_debug_reports').where('device_id', id);
+        if (sessionId) query.where('session_id', sessionId);
+        const rows = await query.where('id', '>', afterId).orderBy('id', 'asc').limit(limit);
         return rows.map((row) => ({
             ...row,
             imageUrl: row.screenshot_path ? `/api/devices/${id}/debug-screenshot/${row.id}` : null,
         }));
+    }
+
+    async diagnosticReport(id, sessionId) {
+        const device = await this.store.device(id);
+        const rows = await this.db('device_debug_reports')
+            .where({ device_id: id, session_id: sessionId })
+            .orderBy('id', 'asc')
+            .limit(5001);
+        return {
+            schema: 'boundary-diagnostic-v1',
+            sessionId,
+            generatedAt: new Date().toISOString(),
+            device: { id: device.id, version: device.apk_version ?? null },
+            truncated: rows.length > 5000,
+            events: rows.slice(0, 5000).map((row) => ({
+                id: row.id,
+                clientTime: row.ts,
+                source: row.source,
+                stage: row.stage,
+                level: row.level,
+                elapsedMs: row.elapsed_ms,
+                captureMode: row.capture_mode,
+                message: row.message,
+                details: row.details,
+            })),
+        };
     }
 
     async recordDebugReport(device, input) {
@@ -577,6 +609,26 @@ export class DeviceIngress {
             labels: structuralLabelsFor(payload),
         };
         this.nodeFrames.set(device.id, frame);
+        const debugState = this.debugSessions.get(device.id);
+        if (debugState)
+            await this.recordDebugReport(device, {
+                sessionId: debugState.sessionId,
+                events: [
+                    {
+                        source: 'service',
+                        stage: 'nodes_received',
+                        message: 'server accepted nodes',
+                        details: {
+                            snapshotId: frame.id,
+                            capturedAt: frame.captured_at,
+                            receivedAt: frame.received_at,
+                            nodeCount,
+                            package:
+                                payload.windows.find((window) => window.active)?.package ?? null,
+                        },
+                    },
+                ],
+            });
         await this.store.audit('accessibility_snapshot_received', 'device', device.public_id);
         return frame;
     }
@@ -1074,11 +1126,16 @@ export class DeviceIngress {
             const input = z.object({ active: z.boolean() }).strict().parse(req.body);
             res.json(await this.debugSession(idSchema.parse(req.params.id), input.active));
         });
+        router.get('/devices/:id/diagnostic-report', async (req, res) => {
+            const query = z.object({ sessionId: z.string().uuid() }).strict().parse(req.query);
+            res.json(await this.diagnosticReport(idSchema.parse(req.params.id), query.sessionId));
+        });
         router.get('/devices/:id/debug-events', async (req, res) => {
             const query = z
                 .object({
                     afterId: z.coerce.number().int().min(0).default(0),
                     limit: z.coerce.number().int().min(1).max(200).default(100),
+                    sessionId: z.string().uuid().optional(),
                 })
                 .parse(req.query);
             res.json({ data: await this.debugEvents(idSchema.parse(req.params.id), query) });

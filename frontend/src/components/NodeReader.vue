@@ -198,11 +198,6 @@ async function translate() {
                 <pre>{{ JSON.stringify(nodeRecord(selected), null, 2) }}</pre>
             </div>
         </div>
-        <div v-if="live" class="reader-record-note">
-            显示客户端上报文字 · 服务器不按控件标记剔除
-            <span v-if="canTap"> · 单击映射到手机，需本机运行操作授权</span>
-            <span v-else> · 点击控制等待新鲜节点与同方向截图</span>
-        </div>
         <DeviceControls
             v-if="live"
             :disabled="controlsDisabled"

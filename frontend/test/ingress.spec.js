@@ -228,9 +228,12 @@ test('APK ownership, automatic online and an actual synthetic JPEG are visible i
     await expect(reader).not.toContainText('原始节点记录');
     await reader.locator('.reader-map-node').first().press('Enter');
     await expect(reader.locator('.reader-properties')).toHaveCount(0);
-    await expect(reader.locator('.reader-record-note')).toContainText(
-        '显示客户端上报文字 · 服务器不按控件标记剔除',
-    );
+    await expect(reader.locator('.reader-record-note')).toHaveCount(0);
+    expect(
+        await reader
+            .locator('.reader-body')
+            .evaluate((el) => el.scrollHeight <= el.clientHeight + 1),
+    ).toBe(true);
     await expect(reader.locator('.width-control')).toContainText('屏幕宽度');
     await expect(panel.locator('.floating-heading-meta')).toHaveText('截图 #1');
     await expect(panel.locator('.viewer-live-dot')).toBeVisible();
@@ -370,10 +373,14 @@ test('APK ownership, automatic online and an actual synthetic JPEG are visible i
         await new Promise((resolve) => setTimeout(resolve, 180));
         await route.continue();
     });
+    await image.evaluate((el) => {
+        el.dataset.stableElement = 'retained';
+    });
     let newest;
     for (let i = 0; i < 10; i++) newest = await sendFrame(800, 360);
     await expect.poll(() => image.evaluate((el) => el.dataset.frameId)).toBe(newest.frameId);
     await expect.poll(() => image.evaluate((el) => el.complete && el.naturalWidth)).toBe(800);
+    await expect(image).toHaveAttribute('data-stable-element', 'retained');
     expect(imageRequests.length - imagesBefore).toBeLessThan(10);
     expect(metadataRequests.length).toBe(metadataBefore);
     console.log(
