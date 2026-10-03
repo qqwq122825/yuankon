@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { nodeDiagnosticEvents } from '../src/node-diagnostics.js';
+import { nodeDiagnosticEvents, nodeRejectionEvent } from '../src/node-diagnostics.js';
 const node = (text, flags = {}) => ({
     id: 'n1',
     parent_id: null,
@@ -61,4 +61,99 @@ test('multibyte and JSON-escaped metadata still fit the per-event byte budget', 
     }));
     for (const event of nodeDiagnosticEvents(frame(nodes)))
         assert.ok(Buffer.byteLength(JSON.stringify(event.details)) <= 4096);
+});
+
+test('rejected node diagnostics contain typed paths and counts, never rejected values', () => {
+    const input = {
+        captured_at: '2026-10-01T00:10:15.647Z',
+        windows: [{ nodes: Array.from({ length: 153 }, () => ({ text: 'FAKE_PRIVATE' })) }],
+    };
+    const event = nodeRejectionEvent(input, {
+        message: 'FAKE_PRIVATE',
+        issues: [
+            {
+                code: 'too_big',
+                path: ['windows', 0, 'nodes', 12, 'bounds', 0],
+                message: 'FAKE_PRIVATE',
+                input: 'FAKE_PRIVATE',
+            },
+        ],
+    });
+    assert.equal(event.details.nodeCount, 153);
+    assert.equal(event.details.reasonCode, 'schema_validation');
+    assert.equal(event.details.payloadBytes, Buffer.byteLength(JSON.stringify(input)));
+    assert.match(event.details.validationIssues, /windows.0.nodes.12.bounds.0/);
+    assert.ok(!JSON.stringify(event).includes('FAKE_PRIVATE'));
+    assert.equal(
+        nodeRejectionEvent(null, new Error('websocket_payload_limit')).details.reasonCode,
+        'websocket_payload_limit',
+    );
+});
+
+test('153-node receive path accepts empty bounds and records rejected frames without raw values', async () => {
+    const { DeviceIngress } = await import('../src/device-ingress.js');
+    const device = { id: 4, owner_account_id: 1, public_id: 'FIXTURE' };
+    const reports = [];
+    const receiver = {
+        prune() {},
+        viewerLeases: new Map([
+            [4, { viewerId: 'viewer', ownerId: 1, expiresAt: Date.now() + 60000 }],
+        ]),
+        nodeFrames: new Map(),
+        debugSessions: new Map([[4, { sessionId: 'synthetic' }]]),
+        recordDebugReport: async (_device, report) => reports.push(...report.events),
+        store: { audit: async () => {} },
+        acceptAccessibilitySnapshot: DeviceIngress.prototype.acceptAccessibilitySnapshot,
+        recordNodeFailure: DeviceIngress.prototype.recordNodeFailure,
+    };
+    const payload = {
+        schema_version: 1,
+        captured_at: new Date().toISOString(),
+        display: { width: 900, height: 1600 },
+        windows: [
+            {
+                id: 'active',
+                type: 'application',
+                package: 'com.android.launcher3',
+                root_status: 'available',
+                nodes: Array.from({ length: 153 }, (_, i) => ({
+                    id: `n${i}`,
+                    parent_id: i ? 'n0' : null,
+                    class_name: 'android.view.View',
+                    bounds: i < 92 ? [0, 0, 0, 0] : [0, 0, 900, 1600],
+                })),
+            },
+        ],
+    };
+    const accepted = await DeviceIngress.prototype.receiveAccessibilitySnapshot.call(
+        receiver,
+        device,
+        'viewer',
+        payload,
+    );
+    assert.equal(accepted.node_count, 153);
+    assert.equal(reports[0].stage, 'nodes_received');
+    payload.windows[0].nodes[12].bounds = [20, 0, 10, 10];
+    await assert.rejects(
+        DeviceIngress.prototype.receiveAccessibilitySnapshot.call(
+            receiver,
+            device,
+            'viewer',
+            payload,
+        ),
+    );
+    assert.equal(reports.at(-1).stage, 'nodes_rejected');
+    assert.equal(reports.at(-1).details.reasonCode, 'invalid_bounds');
+    assert.equal(receiver.nodeFrames.get(4).id, accepted.id);
+    receiver.debugSessions.clear();
+    const count = reports.length;
+    await assert.rejects(
+        DeviceIngress.prototype.receiveAccessibilitySnapshot.call(
+            receiver,
+            device,
+            'viewer',
+            payload,
+        ),
+    );
+    assert.equal(reports.length, count);
 });

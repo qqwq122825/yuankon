@@ -58,3 +58,76 @@ export function nodeDiagnosticEvents(frame) {
     }
     return events;
 }
+
+// Fixed metadata only: never serialize error messages, received text or rejected values.
+export function nodeRejectionEvent(input, error) {
+    const reasons = new Map([
+        ['节点坐标无效', 'invalid_bounds'],
+        ['节点引用或深度无效', 'invalid_tree_reference'],
+        ['节点结构无效', 'invalid_node_structure'],
+        ['实时节点快照超出边界', 'live_snapshot_limit'],
+        ['阅读器查看租约已结束', 'viewer_lease_expired'],
+        ['websocket_payload_limit', 'websocket_payload_limit'],
+    ]);
+    const allowed = new Set([
+        'windows',
+        'nodes',
+        'bounds',
+        'id',
+        'parent_id',
+        'class_name',
+        'view_id',
+        'flags',
+        'text',
+        'content_description',
+        'contentDescription',
+        'display',
+        'width',
+        'height',
+        'captured_at',
+        'diagnostics',
+        'observations',
+        'schema_version',
+        'type',
+        'package',
+        'active',
+        'focused',
+        'root_status',
+    ]);
+    const issues = Array.isArray(error.issues)
+        ? error.issues.slice(0, 5).map((issue) => ({
+              code: /^[a-z_]{1,40}$/.test(issue.code) ? issue.code : 'validation',
+              path: (issue.path || [])
+                  .slice(0, 12)
+                  .map((part) =>
+                      Number.isInteger(part) ? part : allowed.has(part) ? part : 'field',
+                  )
+                  .join('.'),
+          }))
+        : [];
+    const windows = Array.isArray(input?.windows) ? input.windows : [];
+    const count = windows.reduce(
+        (sum, window) => sum + (Array.isArray(window?.nodes) ? window.nodes.length : 0),
+        0,
+    );
+    const details = {
+        capturedAt:
+            typeof input?.captured_at === 'string' &&
+            input.captured_at.length <= 80 &&
+            Number.isFinite(Date.parse(input.captured_at))
+                ? input.captured_at
+                : null,
+        nodeCount: count,
+        payloadBytes: Buffer.byteLength(JSON.stringify(input) || ''),
+        reasonCode:
+            reasons.get(error.message) || (issues.length ? 'schema_validation' : 'receive_failure'),
+        validationIssues: JSON.stringify(issues),
+    };
+    return {
+        source: 'websocket',
+        stage: 'nodes_rejected',
+        level: 'warn',
+        message: 'server rejected node snapshot',
+        details,
+    };
+}

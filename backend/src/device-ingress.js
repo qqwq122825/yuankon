@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { nodeDiagnosticEvents } from './node-diagnostics.js';
+import { nodeDiagnosticEvents, nodeRejectionEvent } from './node-diagnostics.js';
 import path from 'node:path';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { Router } from 'express';
@@ -640,7 +640,24 @@ export class DeviceIngress {
             this.nodeFrames.delete(device.id);
         }
     }
+    async recordNodeFailure(device, input, error) {
+        const event = nodeRejectionEvent(input, error);
+        const state = this.debugSessions.get(device.id);
+        if (state)
+            await this.recordDebugReport(device, { sessionId: state.sessionId, events: [event] });
+        return event.details;
+    }
     async receiveAccessibilitySnapshot(device, viewerId, input) {
+        try {
+            return await this.acceptAccessibilitySnapshot(device, viewerId, input);
+        } catch (error) {
+            error.nodeDiagnostic = await this.recordNodeFailure(device, input, error).catch(
+                () => null,
+            );
+            throw error;
+        }
+    }
+    async acceptAccessibilitySnapshot(device, viewerId, input) {
         this.prune();
         const lease = this.viewerLeases.get(device.id);
         if (

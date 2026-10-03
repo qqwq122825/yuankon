@@ -174,6 +174,7 @@ export function attachWebSockets(
                             type: 'error',
                             code,
                             message: e.status === 404 ? '设备不存在' : '报文格式或能力未启用',
+                            data: e.nodeDiagnostic || undefined,
                         });
                         await store.audit(
                             'invalid_message',
@@ -442,6 +443,15 @@ export function attachWebSockets(
     });
     devices.on('connection', (ws) => {
         const id = ws.principal.sub;
+        ws.on('error', (error) => {
+            if (error.code !== 'WS_ERR_UNSUPPORTED_MESSAGE_LENGTH') return;
+            store
+                .device(id, true)
+                .then((device) =>
+                    ingress?.recordNodeFailure(device, null, new Error('websocket_payload_limit')),
+                )
+                .catch(() => {});
+        });
         const old = connections.get(id);
         connections.set(id, ws);
         old?.close(4001, 'session_expired');
@@ -530,7 +540,13 @@ export function attachWebSockets(
                     });
                     send(ws, {
                         type: 'accessibility_snapshot_ack',
-                        data: { snapshotId: snapshot.id, viewerId: snapshot.viewerId },
+                        data: {
+                            snapshotId: snapshot.id,
+                            viewerId: snapshot.viewerId,
+                            capturedAt: snapshot.captured_at,
+                            nodeCount: snapshot.node_count,
+                            payloadBytes: Buffer.byteLength(JSON.stringify(envelope.data.payload)),
+                        },
                     });
                     return;
                 }
