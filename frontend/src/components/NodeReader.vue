@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, watch, onMounted, onUnmounted } from 'vue';
+import { computed, ref, watch, onMounted, onUnmounted, inject } from 'vue';
 import { mutate } from '../api.js';
 import { screenshotPoint, readerTapFrame } from '../screenshot-geometry.js';
 import DeviceControls from './DeviceControls.vue';
@@ -12,6 +12,7 @@ const props = defineProps({
     dndEnabled: Boolean,
 });
 const emit = defineEmits(['action', 'text-input', 'tap']);
+const headerTools = inject('viewerHeaderTools', ref(null));
 const scale = ref(55),
     selected = ref(null),
     translated = ref(null),
@@ -138,33 +139,35 @@ async function translate() {
 
 <template>
     <div v-if="snapshot" class="node-reader" :class="{ 'node-reader-live': live }">
-        <div class="reader-actions">
-            <button
-                class="btn btn-sm reader-translate"
-                :disabled="busy || !canTranslate"
-                @click="translate"
-            >
-                {{ busy ? '翻译中' : useTranslation ? '原文' : '翻译' }}</button
-            ><button
-                class="btn btn-sm"
-                aria-label="缩小阅读器字号"
-                :disabled="scale <= 35"
-                @click="scale -= 5"
-            >
-                A−</button
-            ><output>{{ scale }}%</output
-            ><button
-                class="btn btn-sm"
-                aria-label="放大阅读器字号"
-                :disabled="scale >= 100"
-                @click="scale += 5"
-            >
-                A＋</button
-            ><span v-if="live" class="reader-package" :title="packageName">{{
-                packageName || '当前窗口'
-            }}</span
-            ><RouterLink v-else to="/settings/translation">设置</RouterLink>
-        </div>
+        <Teleport :to="headerTools || 'body'" :disabled="!live || !headerTools">
+            <div class="reader-actions">
+                <button
+                    class="btn btn-sm reader-translate"
+                    :disabled="busy || !canTranslate"
+                    @click="translate"
+                >
+                    {{ busy ? '翻译中' : useTranslation ? '原文' : '翻译' }}</button
+                ><button
+                    class="btn btn-sm"
+                    aria-label="缩小阅读器字号"
+                    :disabled="scale <= 35"
+                    @click="scale -= 5"
+                >
+                    A−</button
+                ><output>{{ scale }}%</output
+                ><button
+                    class="btn btn-sm"
+                    aria-label="放大阅读器字号"
+                    :disabled="scale >= 100"
+                    @click="scale += 5"
+                >
+                    A＋</button
+                ><span v-if="live && !headerTools" class="reader-package" :title="packageName">{{
+                    packageName || '当前窗口'
+                }}</span
+                ><RouterLink v-else-if="!live" to="/settings/translation">设置</RouterLink>
+            </div>
+        </Teleport>
         <p v-if="error" role="alert" class="reader-error">{{ error }}</p>
         <div v-if="live && diagnostics.truncated" class="reader-record-summary">
             <strong class="reader-summary-status">设备遍历已截断</strong>

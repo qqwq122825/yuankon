@@ -736,3 +736,51 @@ select:focus-visible,
 .floating-heading-actions > button {
     flex-shrink: 0;
 }
+
+/* Compact live reader: font tools share the title bar, width is a short right-aligned row. */
+.floating-viewer-reader.floating-viewer-live .floating-heading {
+    gap: 4px;
+    padding: 6px;
+}
+.floating-viewer-reader.floating-viewer-live .floating-heading-actions {
+    flex: 1;
+    justify-content: flex-end;
+    gap: 3px;
+}
+.floating-viewer-reader.floating-viewer-live .floating-heading-meta {
+    flex: 1;
+    max-width: 80px;
+    font-size: 9px;
+}
+.reader-header-tools {
+    flex: 0 0 auto;
+}
+.floating-viewer-reader .floating-heading .reader-actions {
+    min-height: 0;
+    padding: 0;
+    gap: 3px;
+    font-size: 9px;
+    white-space: nowrap;
+}
+.floating-viewer-reader .floating-heading .reader-actions .btn {
+    min-height: 20px;
+    min-width: 20px;
+    padding: 0 3px;
+    font-size: 9px;
+    border: 1px solid var(--lab-line);
+    background: var(--lab-surface);
+    color: var(--lab-ink);
+}
+.floating-viewer-reader .floating-heading .reader-actions output {
+    min-width: 24px;
+    text-align: center;
+}
+.floating-viewer-reader.floating-viewer-live > .width-control {
+    justify-content: flex-end;
+    min-height: 28px;
+    padding: 3px 8px;
+    gap: 6px;
+}
+.live-screenshot-stage.live-screenshot-waiting {
+    height: 96px;
+}

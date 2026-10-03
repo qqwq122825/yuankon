@@ -4,8 +4,8 @@ import { readFile } from 'node:fs/promises';
 test('1.7.9 preserves old templates and adds leased launcher freshness without input collection', async () => {
     const root = new URL('../../android/apk-templates/', import.meta.url);
     const templates = JSON.parse(await readFile(new URL('templates.json', root)));
-    assert.equal(templates[0].id, 'screenagent-1.8.0');
-    assert.equal(templates[0].versionCode, 18);
+    assert.equal(templates[0].id, 'screenagent-1.8.1');
+    assert.equal(templates[0].versionCode, 19);
     assert.ok(templates.some((t) => t.id === 'screenagent-1.7.8' && t.versionCode === 16));
     const dir = new URL('b-packages/screenagent-1.7.9/app/src/main/', root);
     const xml = await readFile(new URL('res/xml/boundary_accessibility_service.xml', dir), 'utf8');
@@ -38,4 +38,36 @@ test('1.8.0 correlates node reads and sends without event text, and deduplicates
     assert.match(service, /"window_event"/);
     assert.doesNotMatch(service, /event\.text/);
     assert.match(service, /if \(password \|\| editable\) JSONObject.NULL/);
+});
+
+test('1.8.1 diagnoses root scope and traversal without logging labels or input', async () => {
+    const service = await readFile(
+        new URL(
+            '../../android/apk-templates/b-packages/screenagent-1.8.1/app/src/main/java/com/zaka/screenagent/accessibility/BoundaryAccessibilityService.kt',
+            import.meta.url,
+        ),
+        'utf8',
+    );
+    for (const field of [
+        'windowInventory',
+        'childReadFailures',
+        'childrenReported',
+        'childrenRead',
+        'depthSkipped',
+        'outsideDisplay',
+        'lowestNodeBottom',
+        'skippedUnchanged',
+    ])
+        assert.ok(service.includes(field));
+    assert.match(service, /currentWindows.take\(8\)/);
+    assert.match(service, /if \(skippedUnchanged\) \{\s*flushDebug\(\)/);
+    assert.match(service, /if \(password \|\| editable\) JSONObject.NULL/);
+    const inventory = service.slice(
+        service.indexOf(
+            'windowInventory = JSONArray()',
+            service.indexOf('private fun currentApplicationRoot'),
+        ),
+        service.indexOf('var selected:'),
+    );
+    assert.doesNotMatch(inventory, /candidate\?\.(text|contentDescription)/);
 });

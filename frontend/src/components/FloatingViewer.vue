@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onUnmounted, watch } from 'vue';
+import { ref, onMounted, onUnmounted, watch, provide } from 'vue';
 import ViewerWidth from './ViewerWidth.vue';
 const props = defineProps({
     title: String,
@@ -17,6 +17,8 @@ const width = ref(300),
     left = ref(0),
     top = ref(76),
     panel = ref(null);
+const headerTools = ref(null);
+provide('viewerHeaderTools', headerTools);
 let drag, returnFocus;
 function reset() {
     left.value =
@@ -91,6 +93,11 @@ onUnmounted(() => {
                 ><strong>{{ title }}</strong></span
             ><span class="floating-heading-actions"
                 ><span v-if="meta" class="floating-heading-meta">{{ meta }}</span
+                ><span
+                    v-if="variant === 'reader'"
+                    ref="headerTools"
+                    class="reader-header-tools"
+                ></span
                 ><button class="btn btn-sm" @click="close" :aria-label="`关闭${title}`">
                     {{ live ? 'X' : '×' }}
                 </button></span

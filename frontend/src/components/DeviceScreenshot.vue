@@ -14,7 +14,7 @@ const props = defineProps({
 const emit = defineEmits(['count', 'action', 'text-input', 'tap', 'diagnostic']);
 const frame = ref(null),
     error = ref(''),
-    stageAspect = ref('9 / 16'),
+    stageAspect = ref(null),
     imageLoaded = ref(false);
 let timer,
     stopped = false,
@@ -205,7 +205,11 @@ onUnmounted(() => {
 <template>
     <div class="device-screenshot-viewer">
         <p v-if="error" role="alert">{{ error }}</p>
-        <div class="live-screenshot-stage" :style="{ aspectRatio: stageAspect }">
+        <div
+            class="live-screenshot-stage"
+            :class="{ 'live-screenshot-waiting': !stageAspect }"
+            :style="{ aspectRatio: stageAspect }"
+        >
             <img
                 v-if="frame"
                 class="live-screenshot-image"

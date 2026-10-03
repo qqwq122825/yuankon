@@ -19,6 +19,11 @@ test('one-shot diagnostic report copies/exports only this session; details colla
         })
     ).json();
     await page.goto(`/devices/${device.localId}`);
+    await page.getByRole('button', { name: '实时查看截图', exact: true }).click();
+    const shot = page.getByRole('region', { name: 'BM截图', exact: true });
+    expect((await shot.locator('.live-screenshot-stage').boundingBox()).height).toBe(96);
+    await expect(shot.locator('.live-screenshot-stage')).toHaveClass(/live-screenshot-waiting/);
+    await page.getByRole('button', { name: '关闭全部浮窗', exact: true }).click();
     await page.getByRole('button', { name: 'API调试', exact: true }).click();
     await expect(page.locator('.debug-card details')).not.toHaveAttribute('open');
     await page.getByRole('button', { name: '开始诊断', exact: true }).click();

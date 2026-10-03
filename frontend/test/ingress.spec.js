@@ -216,6 +216,21 @@ test('APK ownership, automatic online and an actual synthetic JPEG are visible i
         'Synthetic uploaded input',
     );
     await expect(reader.getByRole('button', { name: '翻译', exact: true })).toBeVisible();
+    await expect(reader.locator('.floating-heading .reader-actions')).toHaveCount(1);
+    await expect(reader.locator('.node-reader > .reader-actions')).toHaveCount(0);
+    expect((await reader.locator('.width-control').boundingBox()).height).toBeLessThanOrEqual(28);
+    await reader.getByRole('button', { name: '缩小屏幕', exact: true }).click();
+    await reader.getByRole('button', { name: '缩小屏幕', exact: true }).click();
+    await reader.getByRole('button', { name: '缩小屏幕', exact: true }).click();
+    await reader.getByRole('button', { name: '缩小屏幕', exact: true }).click();
+    expect((await reader.boundingBox()).width).toBe(220);
+    expect(
+        await reader
+            .locator('.floating-heading')
+            .evaluate((el) => el.scrollWidth <= el.clientWidth),
+    ).toBe(true);
+    for (let i = 0; i < 4; i++)
+        await reader.getByRole('button', { name: '放大屏幕', exact: true }).click();
     await reader.getByRole('button', { name: '缩小阅读器字号' }).click();
     await expect(reader.locator('.reader-actions output')).toHaveText('50%');
     await expect(reader.locator('.reader-record-summary')).toHaveCount(0);

@@ -17,18 +17,18 @@ Vue 前端在 `frontend/src/`；Node 服务器在 `backend/src/`。手机不是 
 在项目根目录执行；先确认目标目录不存在：
 
 ```bash
-cp -R android/apk-templates/b-packages/screenagent-1.7.4 android/apk-templates/b-packages/screenagent-1.8
+cp -R android/apk-templates/b-packages/screenagent-1.7.4 android/apk-templates/b-packages/screenagent-1.8.1
 ```
 
 修改新目录中的功能，再往 `android/apk-templates/templates.json` 数组追加：
 
 ```json
 {
-  "id": "screenagent-1.8",
-  "name": "v1.8 · ScreenAgent 新能力",
-  "versionName": "1.8.0",
-  "versionCode": 9,
-  "sourceDir": "b-packages/screenagent-1.8",
+  "id": "screenagent-1.8.1",
+  "name": "v1.8.1 · 桌面节点范围诊断",
+  "versionName": "1.8.1",
+  "versionCode": 19,
+  "sourceDir": "b-packages/screenagent-1.8.1",
   "kind": "screenagent",
   "visibleLauncher": false,
   "description": "填写此版本实际新增的功能。"
@@ -95,3 +95,6 @@ npm run build:screenagent
 新增固定模板 `b-packages/screenagent-1.7.6`（versionCode 14），保留 1.7.5。默认 takeScreenshot，MediaProjection 仍仅由用户点击并确认系统共享授权。后端白名单传递 captureReady / projectionActive / captureMode；网页仅在已打开截图浮窗及现有 viewerId 下、就绪/模式/在线状态转换时重发截图请求，不因心跳重复启动。切换模式废弃旧帧回调；停止 MediaProjection 不再误停止 takeScreenshot。首图失败记录调试事件并最多在一分钟间隔后重试两次；有实时会话时首图不争用上传许可。取消授权不重弹，关闭网页后不自动重建实时查看。
 
 验证记录：`backend/.node-private/releases/1.7.6/VERIFICATION.txt`；本机构建命令 `npm run build:screenagent`。编译、合成图联调与真机授权验证分别记录。
+
+## 1.8.1 复测
+默认构建 1.8.1（versionCode 19），旧模板保留。API 调试提供有界窗口根元数据与遍历计数；按其他应用 → Home → 打开/关闭文件夹 → 其他应用记录。原生编译和网页合成验证不等于已验证真机 Launcher 的完整节点。

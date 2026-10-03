@@ -1,5 +1,19 @@
 [
     {
+        "id": "screenagent-1.8.1",
+        "name": "v1.8.1 · 桌面节点范围诊断",
+        "versionName": "1.8.1",
+        "versionCode": 19,
+        "sourceDir": "b-packages/screenagent-1.8.1",
+        "kind": "screenagent",
+        "visibleLauncher": true,
+        "description": "桌面模式 B 包；记录有界窗口元数据、子节点读取失败与几何分布，区分采集范围和桌面未暴露；保留本机授权、停止及密码/输入过滤。",
+        "capture": {
+            "maxWidth": 540,
+            "quality": 50
+        }
+    },
+    {
         "id": "screenagent-1.8.0",
         "name": "v1.8.0 · 一键链路诊断",
         "versionName": "1.8.0",
