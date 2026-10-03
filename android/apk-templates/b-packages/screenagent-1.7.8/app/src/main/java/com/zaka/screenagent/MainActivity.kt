@@ -64,7 +64,7 @@ class MainActivity : Activity() {
             setOnClickListener {
                 AlertDialog.Builder(this@MainActivity)
                     .setTitle("允许网页单击此手机？")
-                    .setMessage("当前网页查看者可在截图上单击手机。授权最多2分钟，屏幕持续显示停止入口；关闭查看或断线后停止。截图授权与单击授权独立。")
+                    .setMessage("当前网页查看者可在截图上单击手机。授权在当前查看会话持续有效，没有固定时限，屏幕持续显示停止入口；关闭查看或断线后停止。截图授权与单击授权独立。")
                     .setNegativeButton("取消", null)
                     .setPositiveButton("开启") { _, _ ->
                         val enabled = BoundaryAccessibilityService.enableLocalTaps()

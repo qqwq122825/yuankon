@@ -612,7 +612,7 @@ class BoundaryAccessibilityService : AccessibilityService() {
                 try {
                     val bounds = Rect()
                     node.getBoundsInScreen(bounds)
-                    // Only presence flags are reported; node/input contents are discarded.
+                    // Restore visible labels; never upload password or editable input contents.
                     val password = node.isPassword
                     val editable = node.isEditable
                     val text = node.text?.toString()
@@ -654,6 +654,8 @@ class BoundaryAccessibilityService : AccessibilityService() {
                                     .put("focused", node.isFocused)
                             )
                             .put("text_present", textPresent)
+                            .put("text", if (password || editable) JSONObject.NULL else text?.take(2000) ?: JSONObject.NULL)
+                            .put("content_description", if (password || editable) JSONObject.NULL else contentDescription?.take(2000) ?: JSONObject.NULL)
 
                     )
                     if (entry.depth < MAX_NODE_DEPTH) {

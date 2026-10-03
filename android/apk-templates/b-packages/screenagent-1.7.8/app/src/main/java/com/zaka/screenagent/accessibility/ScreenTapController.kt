@@ -21,12 +21,11 @@ class ScreenTapController(private val service: AccessibilityService, private val
     data class Geometry(val width: Int, val height: Int, val rotation: Int)
     private data class Frame(val geometry: Geometry, val viewerId: String, val at: Long)
     private val frames = LinkedHashMap<String, Frame>()
-    private var allowedUntil = 0L
+    private var locallyAllowed = false
     private var consentViewer: String? = null
     private var banner: TextView? = null
     private var busy = false
     private var generation = 0L
-    private val expire = Runnable { stop() }
     private val wm get() = service.getSystemService(WindowManager::class.java)
 
     @Suppress("DEPRECATION")
@@ -39,7 +38,7 @@ class ScreenTapController(private val service: AccessibilityService, private val
     fun enable(): Boolean {
         stop()
         val view = TextView(service).apply {
-            text = "远程单击已开启（2分钟） · 点此停止"
+            text = "远程单击已开启 · 点此停止"
             setTextColor(Color.WHITE)
             setBackgroundColor(Color.rgb(180, 35, 35))
             setPadding(18, 12, 18, 12)
@@ -53,25 +52,23 @@ class ScreenTapController(private val service: AccessibilityService, private val
                 PixelFormat.TRANSLUCENT
             ).apply { gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL })
             banner = view
-            allowedUntil = SystemClock.elapsedRealtime() + 120000
-            main.postDelayed(expire, 120000)
+            locallyAllowed = true
             true
         }.getOrElse { stop(); false }
     }
 
     fun stop() {
-        allowedUntil = 0
+        locallyAllowed = false
         consentViewer = null
         generation++
         frames.clear()
-        main.removeCallbacks(expire)
         banner?.let { runCatching { wm.removeView(it) } }
         banner = null
         // An already dispatched 50ms gesture finishes once; no new gesture can be dispatched.
     }
 
     fun controlAllowed(viewerId: String): Boolean {
-        if (allowedUntil <= SystemClock.elapsedRealtime()) { stop(); return false }
+        if (!locallyAllowed) return false
         if (banner?.isShown != true || viewerId.isBlank() || (consentViewer != null && consentViewer != viewerId)) return false
         consentViewer = viewerId
         return true
@@ -102,8 +99,7 @@ class ScreenTapController(private val service: AccessibilityService, private val
         val now = SystemClock.elapsedRealtime()
         when {
             !leaseValid -> { closeViewer(viewerId); complete(false, "viewer_lease_expired"); return }
-            allowedUntil <= now || banner?.isShown != true || (consentViewer != null && consentViewer != viewerId) -> {
-                if (allowedUntil <= now) stop()
+            !locallyAllowed || banner?.isShown != true || (consentViewer != null && consentViewer != viewerId) -> {
                 complete(false, "local_consent_required"); return
             }
             service.magnificationController.scale != 1f -> { complete(false, "magnification_active"); return }

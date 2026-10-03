@@ -90,6 +90,9 @@ APK ID 在创建账号时自动分配，一个账号一个固定编号。构建�
 验证记录：`backend/.node-private/releases/1.7.6/VERIFICATION.txt`；本机构建命令 `npm run build:screenagent`。编译、合成图联调与真机授权验证分别记录。
 
 ### screenagent-1.7.8（B 包桌面模式页，versionCode 16）
-新增「运行操作」与「停止操作」。单击授权为本机弹窗确认后的两分钟内存状态，显示可点击停止横幅；仅截图查看租约内的近期单点映射，不支持长按或轨迹。MediaProjection 旋转时复用 VirtualDisplay 并换 Surface。节点正文剔除。1.7.6 及更旧固定源码保持不变。
+新增「运行操作」与「停止操作」。单击授权为本机弹窗确认后的当前会话内存状态（没有固定两分钟超时），显示可点击停止横幅；仅截图查看租约内的近期单点映射，不支持长按或轨迹。MediaProjection 旋转时复用 VirtualDisplay 并换 Surface。节点正文剔除。1.7.6 及更旧固定源码保持不变。
 
 1.7.8直传修订：MediaProjection与默认takeScreenshot实时查看共用 uploadViewerScreenshot，取消每帧singleFrameSession/uploadId；设备鉴权与已有查看指令关联保留。MediaProjection最短40ms本地周期以匹配有界限流；断线/查看心跳失效停止。首图/旧模板仍走兼容单张许可。
+
+### 1.7.8 阅读器文字修正（2026-10-03）
+恢复实时节点实际 text/content_description（每字段最多2000字符，仅当前查看租约的临时内存）；密码、敏感和 editable 输入字段仍剔除。无文字的节点不再用 Button/TextView/FrameLayout 类名占位，布局结构和坐标保留。需要重新构建安装修正版1.7.8 B包，已有APK不会自动更新。

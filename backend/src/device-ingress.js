@@ -1104,7 +1104,7 @@ export class DeviceIngress {
             res.json({
                 snapshot: await this.accessibilitySnapshot(id, viewerId),
                 mode: 'leased-structural-preview',
-                textPolicy: 'removed',
+                textPolicy: 'uploaded',
             });
         });
         router.get('/devices/:id/screenshot/:frameId', async (req, res) => {

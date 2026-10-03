@@ -467,7 +467,7 @@ test('accessibility first thumbnail and leased panel screenshot use the same bou
                                     bounds: [12, 24, 240, 72],
                                     flags: { visible: true, enabled: true },
                                     text_present: true,
-                                    text: 'THIS_VALUE_MUST_BE_STRIPPED',
+                                    text: 'Fixture visible title',
                                 },
                             ],
                         },
@@ -490,11 +490,11 @@ test('accessibility first thumbnail and leased panel screenshot use the same bou
         'GET',
     );
     assert.equal(nodeView.status, 200);
-    assert.equal(nodeView.body.textPolicy, 'removed');
+    assert.equal(nodeView.body.textPolicy, 'uploaded');
     assert.equal(nodeView.body.snapshot.source, 'live');
     assert.equal(nodeView.body.snapshot.labels['active:n0'], '文本区域');
-    assert.equal(nodeView.body.snapshot.payload.windows[0].nodes[0].text, undefined);
-    assert.equal(nodeView.body.snapshot.payload.windows[0].nodes[0].text_policy, 'removed');
+    assert.equal(nodeView.body.snapshot.payload.windows[0].nodes[0].text, 'Fixture visible title');
+    assert.equal(nodeView.body.snapshot.payload.windows[0].nodes[0].text_policy, 'uploaded');
     panel.send(
         JSON.stringify({
             type: 'command',

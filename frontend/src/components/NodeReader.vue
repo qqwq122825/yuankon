@@ -62,7 +62,7 @@ function rawText(node) {
         .find(Boolean);
 }
 function originalLabel(node) {
-    return rawText(node) || node.class_name.split('.').pop() || node.id;
+    return rawText(node) || (live.value ? '' : node.class_name.split('.').pop() || node.id);
 }
 function label(node) {
     if (useTranslation.value && translated.value?.[node.key]) return translated.value[node.key];
@@ -161,7 +161,7 @@ async function translate() {
                     @click="selected = node"
                     @keydown.enter="selected = node"
                 >
-                    <span>{{ label(node) }}</span>
+                    <span v-if="label(node)">{{ label(node) }}</span>
                 </div>
             </div>
             <div v-if="selected" class="reader-properties">
@@ -169,7 +169,9 @@ async function translate() {
                 <pre>{{ JSON.stringify(nodeRecord(selected), null, 2) }}</pre>
             </div>
         </div>
-        <div v-if="live" class="reader-record-note">显示节点结构与属性 · 正文与输入内容已剔除</div>
+        <div v-if="live" class="reader-record-note">
+            显示客户端上报文字 · 服务器不按控件标记剔除
+        </div>
         <DeviceControls
             v-if="live"
             :disabled="controlsDisabled"

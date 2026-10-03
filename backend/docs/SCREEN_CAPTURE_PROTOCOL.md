@@ -262,13 +262,13 @@ Vue 由会话 ID 和帧 ID 构造同源受控 GET 路径，不接受设备提供
 
 `SCREEN_TAP` 的 params 严格为 `{viewerId, frameId, x, y}`，x/y 为 0..1 的数值；禁止附带文本、时长、路径或脚本。服务端校验当前 socket 查看租约、设备在线、同设备/账号/查看者、五秒内帧和最新尺寸，保存每设备最多 32 条短期帧元数据。手机保存成功上传帧到捕获时真实 display 的宽高/rotation 关联，旋转后旧帧拒绝；缩放辅助功能开启时也拒绝。MediaProjection 使用全屏共享配置；截图尺寸与真实显示比例不符则不建立操作映射，不猜测单应用共享偏移。
 
-手机本机模式页「运行操作」弹窗确认才开启两分钟授权，不落盘、不通过服务器续期；可见 accessibility overlay 提供停止入口，远程点击不能触发该停止控件。首次单击绑定 viewerId，关闭租约、断线、模式切换、进程终止和期限到达停止授权。单击使用单点 50ms stroke，`onCompleted` 后返回 `accepted/tap_completed`；取消、过期、未授权、忙碌、旧帧返回 rejected，无回执时网页五秒结束等待，不自动重发。
+手机本机模式页「运行操作」弹窗确认才开启当前会话授权（没有固定时限），不落盘、不通过服务器续期；可见 accessibility overlay 提供停止入口，远程点击不能触发该停止控件。首次单击绑定 viewerId，关闭租约、断线、模式切换、进程终止后停止授权。单击使用单点 50ms stroke，`onCompleted` 后返回 `accepted/tap_completed`；取消、过期、未授权、忙碌、旧帧返回 rejected，无回执时网页五秒结束等待，不自动重发。
 
 Android 14+ 使用 onCapturedContentResize 调整已有 VirtualDisplay 和 ImageReader Surface，不重复创建 VirtualDisplay；较旧系统检测真实 display 尺寸变化。参考：[Android MediaProjection](https://developer.android.com/media/grow/media-projection)、[AccessibilityService](https://developer.android.com/reference/android/accessibilityservice/AccessibilityService)。
 
 网页测试使用合成 JPEG 与模拟设备 WS，不能据此认定真机触摸已成功；真机需检查纵屏、左右横屏、180°旋转、系统导航栏、缩放辅助功能、停止入口、租约超时和断线。
 
-「运行操作」在 1.7.8 也统一门控既有 DEVICE_ACTION 与 TEXT_INPUT；截图/状态查看独立，不开启操作也可查看。相同本机两分钟授权仅绑定一个查看者，其他查看者命令不会覆盖/续期授权。
+「运行操作」在 1.7.8 也统一门控既有 DEVICE_ACTION 与 TEXT_INPUT；截图/状态查看独立，不开启操作也可查看。相同本机会话授权仅绑定一个查看者，其他查看者命令不会覆盖/续期授权。
 
 ## 1.7.8 直传修订（2026-10-03）
 两种实时截图模式共用直接帧接口：POST `/api/device/screenshot`，头 `X-Capture-Mode: viewer-stream`，multipart 为 deviceId/apkId/ts/commandId/viewerId/file。没有 X-Capture-Upload，也不调用 screenshot-session。commandId/viewerId 是已有 WS 指令的关联字段，不是新的许可请求。设备 Bearer 身份、账号归属、撤销与鉴权保留；服务器在 JPEG 解码前和发布前均检查当前查看心跳/指令、设备心跳。查看租约15秒、设备心跳90秒失效就拒收；客户端 WS 断线立即取消正在进行的上报，查看心跳失效也停止。
@@ -280,3 +280,9 @@ Android 14+ 使用 onCapturedContentResize 调整已有 VirtualDisplay 和 Image
 网页使用 screenshot_ready WS 元数据，不逐帧查询JSON；同一时刻只下载一张图，等待队列仅保存最新帧，以 Blob URL 显示并释放旧 URL，避免高速更新反复取消图片加载。3秒无新元数据才轮询恢复。HTTP普通API维持300次/分钟默认限制；图片流另设每IP6000次/分钟和已鉴权设备直传30次/秒限制，保留2MiB单图、2个全局处理并发、每设备1个并发。实际帧率取决于截屏API、压缩、网络RTT与负载，不以合成联调结果宣称真机帧率。
 
 MediaProjection成功帧采用最短40ms本地周期（上限约25帧/秒，包含捕获与上传耗时），避免低延迟环境超过服务器30帧/秒限流后出现周期性500ms重试；慢网络不额外等待。takeScreenshot保留系统API节流，不宣称突破系统截图频率限制。
+
+### 1.7.8 阅读器文字修正（2026-10-03）
+恢复实时节点实际 text/content_description（每字段最多2000字符，仅当前查看租约的临时内存）；密码、敏感和 editable 输入字段仍剔除。无文字的节点不再用 Button/TextView/FrameLayout 类名占位，布局结构和坐标保留。需要重新构建安装修正版1.7.8 B包，已有APK不会自动更新。
+
+### 服务器节点文字透传（2026-10-03）
+按用户要求取消服务器基于password/sensitive/editable标记的文字置空：实时text和content_description按客户端上传值返回（text_policy=uploaded），网页以文本节点显示，不解析HTML。保留类型/2000字符长度/结构校验、设备鉴权、账号归属、查看租约和有界内存。Android端原有密码与可编辑输入过滤不变，服务器不补造客户端未上报的文字。

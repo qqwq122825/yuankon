@@ -96,8 +96,12 @@ test('APK ownership, automatic online and an actual synthetic JPEG are visible i
                                                 visible: true,
                                                 enabled: true,
                                                 clickable: true,
+                                                editable: true,
+                                                sensitive: true,
+                                                password: true,
                                             },
                                             text_present: true,
+                                            text: 'Synthetic uploaded input',
                                         },
                                     ],
                                 },
@@ -205,7 +209,12 @@ test('APK ownership, automatic online and an actual synthetic JPEG are visible i
     await expect(reader).toBeVisible();
     expect((await reader.boundingBox()).width).toBe(300);
     await expect(reader.locator('.reader-map-node')).toHaveCount(2);
-    await expect(reader.locator('.reader-map-node').first()).toContainText('TextView');
+    await expect(reader.locator('.reader-map-stage')).not.toContainText('Button');
+    await expect(reader.locator('.reader-map-stage')).not.toContainText('FrameLayout');
+    await expect(reader.locator('.reader-map-node').first()).toContainText('Fixture title');
+    await expect(reader.locator('.reader-map-node').nth(1)).toContainText(
+        'Synthetic uploaded input',
+    );
     await expect(reader.getByRole('button', { name: '翻译', exact: true })).toBeVisible();
     await reader.getByRole('button', { name: '缩小阅读器字号' }).click();
     await expect(reader.locator('.reader-actions output')).toHaveText('50%');
@@ -219,9 +228,9 @@ test('APK ownership, automatic online and an actual synthetic JPEG are visible i
         '"view_id": "dev.boundary.fixture:id/title"',
     );
     await expect(reader.locator('.reader-properties')).toContainText('"text_present": true');
-    await expect(reader.locator('.reader-properties')).not.toContainText('Fixture title');
+    await expect(reader.locator('.reader-properties')).toContainText('Fixture title');
     await expect(reader.locator('.reader-record-note')).toHaveText(
-        '显示节点结构与属性 · 正文与输入内容已剔除',
+        '显示客户端上报文字 · 服务器不按控件标记剔除',
     );
     await expect(reader.locator('.width-control')).toContainText('屏幕宽度');
     await expect(panel.locator('.floating-heading-meta')).toHaveText('截图 #1');

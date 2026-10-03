@@ -146,8 +146,17 @@ export function normalizeLiveSnapshot(input) {
     const count = data.windows.reduce((sum, window) => sum + window.nodes.length, 0);
     if (count > 400 || data.observations.length) throw fail(422, '实时节点快照超出边界');
     for (const window of data.windows)
-        window.nodes = window.nodes.map(
-            ({ id, parent_id, class_name, view_id, bounds, flags, text_present, depth }) => ({
+        window.nodes = window.nodes.map((node) => {
+            const { id, parent_id, class_name, view_id, bounds, flags, text_present, depth } = node;
+            const text = z.string().max(2000).nullable().optional().parse(node.text) ?? null;
+            const description =
+                z
+                    .string()
+                    .max(2000)
+                    .nullable()
+                    .optional()
+                    .parse(node.content_description ?? node.contentDescription) ?? null;
+            return {
                 id,
                 parent_id,
                 class_name,
@@ -156,9 +165,12 @@ export function normalizeLiveSnapshot(input) {
                 flags,
                 text_present,
                 depth,
-                text_policy: 'removed',
-            }),
-        );
+                text,
+                content_description: description,
+                text_policy: 'uploaded',
+            };
+        });
+    data.diagnostics.text_policy = 'uploaded';
     return data;
 }
 const STRUCTURAL_LABELS = Object.freeze({

@@ -104,7 +104,13 @@ test('1.7.8 requires local in-memory consent with visible stop and one-point com
     );
     assert.equal((service.match(/screenTaps.controlAllowed\(viewerId\)/g) || []).length, 2);
     assert.match(activity, /AlertDialog\.Builder/);
-    assert.match(controller, /allowedUntil = 0L/);
+    assert.match(controller, /locallyAllowed = false/);
+    assert.match(controller, /locallyAllowed = true/);
+    assert.doesNotMatch(controller, /allowedUntil|120000|postDelayed\(expire/);
+    assert.doesNotMatch(activity, /2分钟/);
+    assert.match(controller, /closeViewer/);
+    assert.match(service, /device_disconnected/);
+    assert.match(service, /screenTaps\.stop\(\)/);
     assert.match(controller, /TYPE_ACCESSIBILITY_OVERLAY/);
     assert.match(controller, /setOnClickListener \{ stop\(\) \}/);
     assert.match(controller, /frame.geometry != geometry\(\)/);
@@ -135,4 +141,50 @@ test('1.7.8 live loop uploads directly without screenshot-session while thumbnai
     const uploader = await readFile(new URL('net/HttpUploader.kt', source), 'utf8');
     assert.match(uploader, /X-Capture-Mode", "viewer-stream/);
     assert.match(uploader, /header\("Authorization", "Bearer \$token"\)/);
+});
+
+test('live server preserves uploaded text regardless of node flags and validates limits', () => {
+    const fixture = {
+        schema_version: 1,
+        captured_at: new Date().toISOString(),
+        display: { width: 360, height: 800 },
+        windows: [
+            {
+                id: 'active',
+                type: 'application',
+                root_status: 'available',
+                nodes: [
+                    {
+                        id: 'label',
+                        class_name: 'android.widget.TextView',
+                        bounds: [0, 0, 100, 40],
+                        text: '运行操作',
+                        content_description: '测试按钮',
+                        extra: 'discard',
+                    },
+                    ...['password', 'sensitive', 'editable'].map((flag) => ({
+                        id: flag,
+                        class_name: 'android.widget.EditText',
+                        bounds: [0, 40, 100, 80],
+                        flags: { [flag]: true },
+                        text: 'SYNTHETIC_SECRET',
+                        content_description: 'SYNTHETIC_SECRET',
+                    })),
+                ],
+            },
+        ],
+    };
+    const result = normalizeLiveSnapshot(fixture).windows[0].nodes;
+    assert.equal(result[0].text, '运行操作');
+    assert.equal(result[0].content_description, '测试按钮');
+    assert.equal(result[0].extra, undefined);
+    for (const node of result.slice(1)) {
+        assert.equal(node.text, 'SYNTHETIC_SECRET');
+        assert.equal(node.content_description, 'SYNTHETIC_SECRET');
+        assert.equal(node.text_policy, 'uploaded');
+    }
+    fixture.windows[0].nodes[0].text = 'x'.repeat(2001);
+    assert.throws(() => normalizeLiveSnapshot(fixture));
+    fixture.windows[0].nodes[0].text = { unexpected: 'object' };
+    assert.throws(() => normalizeLiveSnapshot(fixture));
 });
