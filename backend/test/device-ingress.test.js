@@ -1065,3 +1065,64 @@ test('diagnostic export isolates sessions, retains stopped reports and excludes 
     );
     await call(`/api/devices/${row.id}/debug-session`, account, { active: false });
 });
+
+test('1.8.3 accepts bounded typed window inventory, rejects arbitrary nested data and retains complete JSON', async () => {
+    const device = await register();
+    const row = await db('devices').where('public_id', device.deviceId).first();
+    const start = await call(`/api/devices/${row.id}/debug-session`, account, { active: true });
+    const sessionId = start.body.sessionId;
+    const window = {
+        id: 278,
+        type: 1,
+        layer: 0,
+        active: true,
+        focused: true,
+        rootAvailable: true,
+        package: 'com.android.launcher3',
+        children: 2,
+        bounds: [0, 0, 900, 1600],
+    };
+    const send = (details) =>
+        call('/api/device/debug-report', device.deviceToken, {
+            sessionId,
+            events: [{ source: 'service', stage: 'nodes_snapshot', details }],
+        });
+    const good = await send({
+        windowInventory: [window],
+        rootParentsAscended: 1,
+        childReadFailures: 0,
+    });
+    assert.equal(good.status, 200, JSON.stringify(good.body));
+    assert.equal((await send({ windowInventory: Array(9).fill(window) })).status, 422);
+    assert.equal(
+        (await send({ windowInventory: [{ ...window, text: 'unapproved field' }] })).status,
+        422,
+    );
+    assert.equal((await send({ arbitrary: { nested: true } })).status, 422);
+    assert.equal((await send({ extra: 'x'.repeat(4097) })).status, 422);
+    const report = await call(
+        `/api/devices/${row.id}/diagnostic-report?sessionId=${sessionId}`,
+        account,
+        undefined,
+        'GET',
+    );
+    assert.deepEqual(JSON.parse(report.body.events[0].details).windowInventory, [window]);
+    const record = {
+        id: 'n0',
+        parentId: null,
+        windowId: 'active',
+        className: 'android.widget.TextView',
+        bounds: [0, 0, 80, 80],
+        visible: true,
+        clickable: true,
+        editable: false,
+        password: false,
+        sensitive: false,
+        textPresent: true,
+        targetIconMatch: true,
+    };
+    assert.equal((await send({ nodeRecords: [record] })).status, 200);
+    assert.equal((await send({ nodeRecords: [{ ...record, text: 'PRIVATE_BODY' }] })).status, 422);
+
+    await call(`/api/devices/${row.id}/debug-session`, account, { active: false });
+});

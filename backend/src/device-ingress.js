@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { nodeDiagnosticEvents } from './node-diagnostics.js';
 import path from 'node:path';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { Router } from 'express';
@@ -39,6 +40,53 @@ const profileMetadata = (profile, current = {}) => ({
     batch: profile.batch ?? current.batch ?? '',
     build_id: profile.buildId ?? current.build_id ?? '',
 });
+const diagnosticWindowsSchema = z
+    .array(
+        z
+            .object({
+                id: z.number().int(),
+                type: z.number().int(),
+                layer: z.number().int(),
+                active: z.boolean(),
+                focused: z.boolean(),
+                rootAvailable: z.boolean(),
+                package: z.string().max(200).nullable(),
+                children: z.number().int().min(0),
+                bounds: z.tuple([
+                    z.number().int(),
+                    z.number().int(),
+                    z.number().int(),
+                    z.number().int(),
+                ]),
+            })
+            .strict(),
+    )
+    .max(8);
+const diagnosticNodeRecordsSchema = z
+    .array(
+        z
+            .object({
+                id: z.string().max(80),
+                parentId: z.string().max(80).nullable(),
+                windowId: z.string().max(80),
+                className: z.string().max(80),
+                bounds: z.tuple([
+                    z.number().int(),
+                    z.number().int(),
+                    z.number().int(),
+                    z.number().int(),
+                ]),
+                visible: z.boolean().nullable(),
+                clickable: z.boolean().nullable(),
+                editable: z.boolean().nullable(),
+                password: z.boolean().nullable(),
+                sensitive: z.boolean().nullable(),
+                textPresent: z.boolean(),
+                targetIconMatch: z.boolean(),
+            })
+            .strict(),
+    )
+    .max(6);
 const debugReportSchema = z
     .object({
         sessionId: z.string().uuid(),
@@ -67,9 +115,20 @@ const debugReportSchema = z
                         details: z
                             .record(
                                 z.string(),
-                                z.union([z.string(), z.number(), z.boolean(), z.null()]),
+                                z.union([
+                                    z.string(),
+                                    z.number(),
+                                    z.boolean(),
+                                    z.null(),
+                                    diagnosticWindowsSchema,
+                                    diagnosticNodeRecordsSchema,
+                                ]),
                             )
-                            .default({}),
+                            .default({})
+                            .refine(
+                                (details) => Buffer.byteLength(JSON.stringify(details)) <= 4096,
+                                '诊断详情过大',
+                            ),
                     })
                     .strict(),
             )
@@ -464,9 +523,7 @@ export class DeviceIngress {
             elapsed_ms: event.elapsedMs ?? null,
             capture_mode: event.captureMode ?? null,
             command_id: event.commandId ?? null,
-            details: Object.keys(event.details || {}).length
-                ? JSON.stringify(event.details).slice(0, 4096)
-                : null,
+            details: Object.keys(event.details || {}).length ? JSON.stringify(event.details) : null,
             screenshot_path: null,
             screenshot_width: null,
             screenshot_height: null,
@@ -610,8 +667,8 @@ export class DeviceIngress {
         };
         this.nodeFrames.set(device.id, frame);
         const debugState = this.debugSessions.get(device.id);
-        if (debugState)
-            await this.recordDebugReport(device, {
+        if (debugState) {
+            const input = {
                 sessionId: debugState.sessionId,
                 events: [
                     {
@@ -627,8 +684,15 @@ export class DeviceIngress {
                                 payload.windows.find((window) => window.active)?.package ?? null,
                         },
                     },
+                    ...nodeDiagnosticEvents(frame),
                 ],
-            });
+            };
+            for (let offset = 0; offset < input.events.length; offset += 50)
+                await this.recordDebugReport(device, {
+                    ...input,
+                    events: input.events.slice(offset, offset + 50),
+                });
+        }
         await this.store.audit('accessibility_snapshot_received', 'device', device.public_id);
         return frame;
     }

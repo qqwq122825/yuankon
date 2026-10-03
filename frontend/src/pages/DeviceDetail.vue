@@ -1072,6 +1072,7 @@ function choose(value) {
             front = 'shot';
         "
         ><NodeReader
+            @diagnostic="(event) => recordBrowserDiagnostic(event.stage, event)"
             :snapshot="activeReaderSnapshot"
             :latest-frame="reportedFrame"
             :tap-pending="tapPending"

@@ -217,6 +217,13 @@ test('APK ownership, automatic online and an actual synthetic JPEG are visible i
     );
     await expect(reader.getByRole('button', { name: '翻译', exact: true })).toBeVisible();
     await expect(reader.locator('.floating-heading .reader-actions')).toHaveCount(1);
+    const labelNode = reader.locator('.reader-map-node').filter({ hasText: 'Fixture title' });
+    await expect(labelNode).toHaveAttribute('title', 'Fixture title');
+    expect(
+        await labelNode.locator('span').evaluate((el) => getComputedStyle(el).textOverflow),
+    ).toBe('clip');
+    expect(await labelNode.evaluate((el) => getComputedStyle(el).whiteSpace)).toBe('normal');
+
     await expect(reader.locator('.node-reader > .reader-actions')).toHaveCount(0);
     expect((await reader.locator('.width-control').boundingBox()).height).toBeLessThanOrEqual(28);
     await reader.getByRole('button', { name: '缩小屏幕', exact: true }).click();

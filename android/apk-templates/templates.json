@@ -1,5 +1,19 @@
 [
     {
+        "id": "screenagent-1.8.3",
+        "name": "v1.8.3 · 桌面根节点与诊断兼容",
+        "versionName": "1.8.3",
+        "versionCode": 21,
+        "sourceDir": "b-packages/screenagent-1.8.3",
+        "kind": "screenagent",
+        "visibleLauncher": true,
+        "description": "桌面模式 B 包；同应用同窗口提升节点根，刷新子节点，修复诊断失败丢批次；保留本机授权、停止和密码/输入过滤。",
+        "capture": {
+            "maxWidth": 540,
+            "quality": 50
+        }
+    },
+    {
         "id": "screenagent-1.8.1",
         "name": "v1.8.1 · 桌面节点范围诊断",
         "versionName": "1.8.1",

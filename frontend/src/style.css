@@ -490,14 +490,15 @@ select:focus-visible,
     border-radius: 1px;
     font-size: var(--reader-size);
     font-weight: 400;
-    line-height: 1;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    line-height: 1.15;
+    text-overflow: clip;
+    white-space: normal;
+    overflow-wrap: anywhere;
 }
 .reader-map-node span {
     max-width: 100%;
     overflow: hidden;
-    text-overflow: ellipsis;
+    text-overflow: clip;
 }
 .reader-map-node.selected,
 .reader-map-node:focus-visible {

@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, watch, onMounted, onUnmounted, inject } from 'vue';
+import { computed, ref, watch, onMounted, onUnmounted, inject, nextTick } from 'vue';
 import { mutate } from '../api.js';
 import { screenshotPoint, readerTapFrame } from '../screenshot-geometry.js';
 import DeviceControls from './DeviceControls.vue';
@@ -11,8 +11,18 @@ const props = defineProps({
     controlsDisabled: Boolean,
     dndEnabled: Boolean,
 });
-const emit = defineEmits(['action', 'text-input', 'tap']);
+const emit = defineEmits(['action', 'text-input', 'tap', 'diagnostic']);
 const headerTools = inject('viewerHeaderTools', ref(null));
+const mapElement = ref(null);
+const mapWidth = ref(300);
+watch(mapElement, (element, previous, onCleanup) => {
+    if (!element) return;
+    const observer = new ResizeObserver(([entry]) => {
+        mapWidth.value = entry.contentRect.width;
+    });
+    observer.observe(element);
+    onCleanup(() => observer.disconnect());
+});
 const scale = ref(55),
     selected = ref(null),
     translated = ref(null),
@@ -83,6 +93,31 @@ watch(
     { immediate: true },
 );
 
+watch(
+    () => props.snapshot?.id,
+    async (id, previous, onCleanup) => {
+        let cancelled = false;
+        onCleanup(() => {
+            cancelled = true;
+        });
+        await nextTick();
+        if (cancelled || !live.value || !mapElement.value) return;
+        const painted = Array.from(mapElement.value.querySelectorAll('.reader-map-node'));
+        emit('diagnostic', {
+            stage: 'nodes_rendered',
+            snapshotId: id,
+            receivedNodeCount: nodes.value.length,
+            renderedNodeCount: painted.length,
+            nodeKeys: nodes.value.slice(0, 200).map((node) => node.key),
+            nodeKeysTruncated: nodes.value.length > 200,
+            zeroAreaNodeCount: nodes.value.filter(
+                (node) => node.bounds[2] <= node.bounds[0] || node.bounds[3] <= node.bounds[1],
+            ).length,
+        });
+    },
+    { immediate: true },
+);
+
 function rawText(node) {
     return [node.text, node.content_description, node.contentDescription]
         .map((value) => (typeof value === 'string' ? value.trim() : ''))
@@ -103,7 +138,25 @@ function nodeStyle(node) {
         top = Math.max(0, Math.min(height, node.bounds[1])),
         right = Math.max(left, Math.min(width, node.bounds[2])),
         bottom = Math.max(top, Math.min(height, node.bounds[3]));
+    const text = label(node) || '';
+    const units = Array.from(text).reduce(
+        (n, char) => n + (/[^\x00-\xff]/.test(char) ? 1 : 0.6),
+        0,
+    );
+    const boxWidth = Math.max(1, ((right - left) / width) * mapWidth.value - 4);
+    const boxHeight = Math.max(1, ((bottom - top) / width) * mapWidth.value - 2);
+    const requestedSize = (((16 * scale.value) / 100) * mapWidth.value) / 300;
+    // Fit labels without changing the coordinate rectangle used by tap mapping.
+    const size = Math.max(
+        1,
+        Math.min(
+            requestedSize,
+            boxHeight / 1.15,
+            units ? Math.sqrt((boxWidth * boxHeight) / (units * 1.3)) : requestedSize,
+        ),
+    );
     return {
+        fontSize: `${size}px`,
         left: `${(left / width) * 100}%`,
         top: `${(top / height) * 100}%`,
         width: `${((right - left) / width) * 100}%`,
@@ -174,6 +227,7 @@ async function translate() {
         </div>
         <div class="reader-body" :style="{ '--reader-size': `${(16 * scale) / 100}px` }">
             <div
+                ref="mapElement"
                 class="reader-map-stage"
                 :class="{ 'reader-tap-enabled': canTap }"
                 @pointerdown="pressedSnapshot = snapshot.id"
@@ -188,7 +242,7 @@ async function translate() {
                     class="reader-map-node"
                     :class="{ selected: selected?.key === node.key }"
                     :style="nodeStyle(node)"
-                    :title="node.class_name"
+                    :title="label(node) || node.class_name"
                     tabindex="0"
                     @click="selected = node"
                     @keydown.enter="selected = node"
