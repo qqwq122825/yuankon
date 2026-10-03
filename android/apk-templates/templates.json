@@ -1,5 +1,19 @@
 [
     {
+        "id": "screenagent-1.8.4",
+        "name": "v1.8.4 · 授权桌面节点诊断",
+        "versionName": "1.8.4",
+        "versionCode": 22,
+        "sourceDir": "b-packages/screenagent-1.8.4",
+        "kind": "screenagent",
+        "visibleLauncher": true,
+        "description": "默认关闭、内存授权的桌面节点诊断；仅桌面与本应用，5分钟可见停止入口，保留租约与密码/输入剔除，不开启远程操作。",
+        "capture": {
+            "maxWidth": 540,
+            "quality": 50
+        }
+    },
+    {
         "id": "screenagent-1.8.3",
         "name": "v1.8.3 · 桌面根节点与诊断兼容",
         "versionName": "1.8.3",

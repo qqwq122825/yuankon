@@ -4,8 +4,8 @@ import { readFile } from 'node:fs/promises';
 test('1.7.9 preserves old templates and adds leased launcher freshness without input collection', async () => {
     const root = new URL('../../android/apk-templates/', import.meta.url);
     const templates = JSON.parse(await readFile(new URL('templates.json', root)));
-    assert.equal(templates[0].id, 'screenagent-1.8.3');
-    assert.equal(templates[0].versionCode, 21);
+    assert.equal(templates[0].id, 'screenagent-1.8.4');
+    assert.equal(templates[0].versionCode, 22);
     assert.ok(templates.some((t) => t.id === 'screenagent-1.7.8' && t.versionCode === 16));
     const dir = new URL('b-packages/screenagent-1.7.9/app/src/main/', root);
     const xml = await readFile(new URL('res/xml/boundary_accessibility_service.xml', dir), 'utf8');
@@ -89,4 +89,35 @@ test('1.8.3 root ascent stays inside app/window and failed diagnostics are bound
     assert.match(service, /debug_report_failed/);
     assert.match(service, /while \(debugEvents.length\(\) > 50\)/);
     assert.match(service, /if \(password \|\| editable\) JSONObject.NULL/);
+});
+
+test('1.8.4 desktop diagnostics requires visible local consent and limits node packages', async () => {
+    const root = new URL(
+        '../../android/apk-templates/b-packages/screenagent-1.8.4/app/src/main/',
+        import.meta.url,
+    );
+    const service = await readFile(
+        new URL('java/com/zaka/screenagent/accessibility/BoundaryAccessibilityService.kt', root),
+        'utf8',
+    );
+    const gate = await readFile(
+        new URL('java/com/zaka/screenagent/accessibility/DesktopNodeConsent.kt', root),
+        'utf8',
+    );
+    const activity = await readFile(
+        new URL('java/com/zaka/screenagent/MainActivity.kt', root),
+        'utf8',
+    );
+    assert.match(service, /if \(!leaseValid\(viewerId\) \|\| !desktopNodes.active\(\)\) return/);
+    assert.match(service, /!desktopNodes.allows\(root.packageName\?\.toString\(\)\)/);
+    assert.match(gate, /private var expiresAt = 0L/);
+    assert.match(gate, /banner\?\.isShown == true/);
+    assert.match(gate, /packageName == homePackage \|\| packageName == service.packageName/);
+    assert.match(gate, /main.postDelayed\(expiry, 300_000L\)/);
+    assert.match(gate, /setOnClickListener \{ stop\(\) \}/);
+    assert.doesNotMatch(gate, /SharedPreferences|dispatchGesture/);
+    assert.match(activity, /setPositiveButton\("开始诊断"\)/);
+    assert.match(activity, /停止桌面节点诊断/);
+    assert.match(service, /if \(password \|\| editable\) JSONObject.NULL/);
+    assert.match(service, /override fun onDestroy\(\) \{\s*desktopNodes.stop\(\)/);
 });
