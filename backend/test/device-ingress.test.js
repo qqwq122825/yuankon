@@ -85,7 +85,13 @@ function listen(ws) {
 async function upload(
     device,
     ticket,
-    { bytes = jpeg, fields = {}, mime = 'image/jpeg', token = device.deviceToken } = {},
+    {
+        bytes = jpeg,
+        fields = {},
+        mime = 'image/jpeg',
+        token = device.deviceToken,
+        direct = false,
+    } = {},
 ) {
     const data = new FormData();
     const body = {
@@ -103,7 +109,9 @@ async function upload(
         headers: {
             Authorization: `Bearer ${token}`,
             'X-Boundary-Request': '1',
-            'X-Capture-Upload': ticket.uploadId,
+            ...(direct
+                ? { 'X-Capture-Mode': 'viewer-stream' }
+                : { 'X-Capture-Upload': ticket.uploadId }),
         },
         body: data,
     });
@@ -482,14 +490,11 @@ test('accessibility first thumbnail and leased panel screenshot use the same bou
         'GET',
     );
     assert.equal(nodeView.status, 200);
-    assert.equal(nodeView.body.textPolicy, 'uploaded');
+    assert.equal(nodeView.body.textPolicy, 'removed');
     assert.equal(nodeView.body.snapshot.source, 'live');
     assert.equal(nodeView.body.snapshot.labels['active:n0'], '文本区域');
-    assert.equal(
-        nodeView.body.snapshot.payload.windows[0].nodes[0].text,
-        'THIS_VALUE_MUST_BE_STRIPPED',
-    );
-    assert.equal(nodeView.body.snapshot.payload.windows[0].nodes[0].text_policy, 'uploaded');
+    assert.equal(nodeView.body.snapshot.payload.windows[0].nodes[0].text, undefined);
+    assert.equal(nodeView.body.snapshot.payload.windows[0].nodes[0].text_policy, 'removed');
     panel.send(
         JSON.stringify({
             type: 'command',
@@ -621,6 +626,60 @@ test('accessibility first thumbnail and leased panel screenshot use the same bou
     assert.notEqual(third.body.frameId, second.body.frameId);
     assert.equal((await nextReady).data.frameId, third.body.frameId);
 
+    const tapCommandId = '00000000-0000-4000-8000-000000000777';
+    const tapParams = { viewerId, frameId: second.body.frameId, x: 0.25, y: 0.75 };
+    for (const result of ['rejected', 'accepted']) {
+        panel.send(
+            JSON.stringify({
+                type: 'command',
+                sessionId: d.deviceId,
+                data: { command: 'SCREEN_TAP', commandId: tapCommandId, params: tapParams },
+            }),
+        );
+        const routed = await deviceNext('command');
+        assert.equal(routed.data.command, 'SCREEN_TAP');
+        assert.deepEqual(routed.data.params, tapParams);
+        assert.equal((await panelNext('command_dispatched')).data.command, 'SCREEN_TAP');
+        device.send(
+            JSON.stringify({
+                protocol: 'boundary-screenshot-v2',
+                type: 'command_ack',
+                sessionId: d.deviceId,
+                data: {
+                    command: 'SCREEN_TAP',
+                    commandId: tapCommandId,
+                    result,
+                    reasonCode: result === 'accepted' ? 'tap_completed' : 'local_consent_required',
+                },
+            }),
+        );
+        assert.equal((await panelNext('command_ack')).data.result, result);
+    }
+    panel.send(
+        JSON.stringify({
+            type: 'command',
+            sessionId: d.deviceId,
+            data: {
+                command: 'SCREEN_TAP',
+                commandId: tapCommandId,
+                params: { ...tapParams, frameId: '00000000-0000-4000-8000-000000000888' },
+            },
+        }),
+    );
+    assert.equal((await panelNext('command_ack')).data.reasonCode, 'stale_frame');
+    panel.send(
+        JSON.stringify({
+            type: 'command',
+            sessionId: d.deviceId,
+            data: {
+                command: 'SCREEN_TAP',
+                commandId: tapCommandId,
+                params: { ...tapParams, x: 1.001 },
+            },
+        }),
+    );
+    assert.equal((await panelNext('error')).code, 'invalid_message');
+
     panel.send(
         JSON.stringify({
             type: 'capture_viewer_close',
@@ -630,6 +689,14 @@ test('accessibility first thumbnail and leased panel screenshot use the same bou
     );
     assert.equal((await panelNext('capture_viewer_closed')).data.viewerId, viewerId);
     assert.equal((await deviceNext('command')).data.command, 'SCREENSHOT_VIEWER_CLOSE');
+    panel.send(
+        JSON.stringify({
+            type: 'command',
+            sessionId: d.deviceId,
+            data: { command: 'SCREEN_TAP', commandId: tapCommandId, params: tapParams },
+        }),
+    );
+    assert.equal((await panelNext('error')).code, 'invalid_message');
     assert.equal(
         (
             await call(
@@ -841,4 +908,92 @@ test('management endpoints validate input and reject device credentials; deleted
         401,
     );
     assert.equal((await db('device_credentials').where('device_id', d.localId).first()).revoked, 1);
+});
+
+test('1.7.8 direct frames need no per-frame grant, preserve JPEG, retain only bounded image history', async () => {
+    const d = await register();
+    app.store.live.set(d.deviceId, { seen: Date.now(), captureReady: true });
+    const device = await app.store.device(d.localId);
+    const viewerId = crypto.randomUUID(),
+        commandId = crypto.randomUUID();
+    app.ingress.renewCapture(device, viewerId, Date.now() + 15000);
+    app.ingress.requestCapture(device, { viewerId, commandId, actorId: owner.id });
+    const options = { direct: true, fields: { viewerId, commandId } };
+    const frames = [];
+    for (let i = 0; i < 5; i++) {
+        const response = await upload(d, null, options);
+        assert.equal(response.status, 201, JSON.stringify(response.body));
+        assert.equal(response.body.reason, 'viewer_request');
+        frames.push(response.body);
+    }
+    assert.equal(app.ingress.grants.has(d.localId), false);
+    assert.equal(new Set(frames.map((f) => f.frameId)).size, 5);
+    const image = await fetch(base + frames[0].imageUrl, {
+        headers: { Authorization: `Bearer ${account}` },
+    });
+    assert.equal(image.status, 200);
+    assert.deepEqual(Buffer.from(await image.arrayBuffer()), jpeg);
+    const histories = app.ingress.recentImages.get(d.localId);
+    assert.ok(histories.length <= 30);
+    histories.forEach((f) => {
+        f.receivedAt = Date.now() - 4000;
+    });
+    app.ingress.prune();
+    assert.equal(
+        (
+            await fetch(base + frames[0].imageUrl, {
+                headers: { Authorization: `Bearer ${account}` },
+            })
+        ).status,
+        410,
+    );
+    assert.equal((await upload(d, null, { ...options, token: '' })).status, 401);
+    assert.equal(
+        (
+            await upload(d, null, {
+                ...options,
+                fields: { viewerId, commandId: crypto.randomUUID() },
+            })
+        ).status,
+        410,
+    );
+    assert.equal((await upload(d, null, { ...options, fields: { commandId } })).status, 422);
+    assert.equal(
+        (await upload(d, null, { ...options, bytes: Buffer.from('not jpeg') })).status,
+        422,
+    );
+    app.store.live.get(d.deviceId).seen = Date.now() - 90001;
+    assert.equal((await upload(d, null, options)).status, 409);
+    app.store.live.get(d.deviceId).seen = Date.now();
+    app.ingress.viewerLeases.get(d.localId).expiresAt = Date.now() - 1;
+    assert.equal((await upload(d, null, options)).status, 410);
+    app.ingress.renewCapture(device, viewerId, Date.now() + 15000);
+    app.ingress.cancelCapture(device, viewerId);
+    assert.equal((await upload(d, null, options)).status, 410);
+});
+
+test('direct frame lease is rechecked after decode; cancellation cannot publish an in-flight frame', async () => {
+    const d = await register();
+    app.store.live.set(d.deviceId, { seen: Date.now() });
+    const device = await app.store.device(d.localId);
+    const viewerId = crypto.randomUUID(),
+        commandId = crypto.randomUUID();
+    app.ingress.renewCapture(device, viewerId, Date.now() + 15000);
+    app.ingress.requestCapture(device, { viewerId, commandId, actorId: owner.id });
+    const original = app.ingress.validateViewerStream;
+    let calls = 0;
+    app.ingress.validateViewerStream = function (...args) {
+        if (++calls === 2) this.cancelCapture(device, viewerId);
+        return original.apply(this, args);
+    };
+    try {
+        assert.equal(
+            (await upload(d, null, { direct: true, fields: { viewerId, commandId } })).status,
+            410,
+        );
+        assert.equal(app.ingress.frames.has(d.localId), false);
+        assert.equal(calls, 2);
+    } finally {
+        app.ingress.validateViewerStream = original;
+    }
 });

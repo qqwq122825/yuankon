@@ -715,3 +715,11 @@ select:focus-visible,
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
 }
+
+/* Bounded screenshot single-tap surface; size stays controlled by viewer-width. */
+.live-screenshot-image.tap-enabled {
+    cursor: crosshair;
+}
+.live-screenshot-image {
+    user-select: none;
+}

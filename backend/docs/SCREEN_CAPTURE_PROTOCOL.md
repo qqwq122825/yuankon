@@ -256,3 +256,27 @@ Vue 由会话 ID 和帧 ID 构造同源受控 GET 路径，不接受设备提供
 - 当前 Node：`backend/src/protocol.js`、`backend/src/websocket.js`、`backend/src/app.js`。
 - 附件（未修改）：`/Users/xxx/Downloads/ScreenAgent/app/src/main/java/com/zaka/screenagent/net/Protocol.kt`、`AgentSocket.kt`、`HttpUploader.kt`，及 `capture/CaptureService.kt`、`MainActivity.kt`。
 - 参考规范：第 3、4、5.2、8、9、10、11 节；只取截图会话所需部分，不接入其他内容上报、任意透传或设备操作。
+
+## 1.7.8 横屏与单击
+查看器固定宽度，按最新有效帧 width/height 更新 aspect-ratio；object-fit:contain 的黑边不映射。图片未加载、过期、离线、等待上一条回执，或按下/松开期间换帧时不发送。
+
+`SCREEN_TAP` 的 params 严格为 `{viewerId, frameId, x, y}`，x/y 为 0..1 的数值；禁止附带文本、时长、路径或脚本。服务端校验当前 socket 查看租约、设备在线、同设备/账号/查看者、五秒内帧和最新尺寸，保存每设备最多 32 条短期帧元数据。手机保存成功上传帧到捕获时真实 display 的宽高/rotation 关联，旋转后旧帧拒绝；缩放辅助功能开启时也拒绝。MediaProjection 使用全屏共享配置；截图尺寸与真实显示比例不符则不建立操作映射，不猜测单应用共享偏移。
+
+手机本机模式页「运行操作」弹窗确认才开启两分钟授权，不落盘、不通过服务器续期；可见 accessibility overlay 提供停止入口，远程点击不能触发该停止控件。首次单击绑定 viewerId，关闭租约、断线、模式切换、进程终止和期限到达停止授权。单击使用单点 50ms stroke，`onCompleted` 后返回 `accepted/tap_completed`；取消、过期、未授权、忙碌、旧帧返回 rejected，无回执时网页五秒结束等待，不自动重发。
+
+Android 14+ 使用 onCapturedContentResize 调整已有 VirtualDisplay 和 ImageReader Surface，不重复创建 VirtualDisplay；较旧系统检测真实 display 尺寸变化。参考：[Android MediaProjection](https://developer.android.com/media/grow/media-projection)、[AccessibilityService](https://developer.android.com/reference/android/accessibilityservice/AccessibilityService)。
+
+网页测试使用合成 JPEG 与模拟设备 WS，不能据此认定真机触摸已成功；真机需检查纵屏、左右横屏、180°旋转、系统导航栏、缩放辅助功能、停止入口、租约超时和断线。
+
+「运行操作」在 1.7.8 也统一门控既有 DEVICE_ACTION 与 TEXT_INPUT；截图/状态查看独立，不开启操作也可查看。相同本机两分钟授权仅绑定一个查看者，其他查看者命令不会覆盖/续期授权。
+
+## 1.7.8 直传修订（2026-10-03）
+两种实时截图模式共用直接帧接口：POST `/api/device/screenshot`，头 `X-Capture-Mode: viewer-stream`，multipart 为 deviceId/apkId/ts/commandId/viewerId/file。没有 X-Capture-Upload，也不调用 screenshot-session。commandId/viewerId 是已有 WS 指令的关联字段，不是新的许可请求。设备 Bearer 身份、账号归属、撤销与鉴权保留；服务器在 JPEG 解码前和发布前均检查当前查看心跳/指令、设备心跳。查看租约15秒、设备心跳90秒失效就拒收；客户端 WS 断线立即取消正在进行的上报，查看心跳失效也停止。
+
+默认无桌面 API 截图与手动授权的 MediaProjection 仍受同一有效查看租约约束；这项直传优化不替代屏幕共享授权，不改变「运行操作」默认关闭和本机停止机制。历史模板首图/手动单张接口保持一次性 uploadId 兼容。
+
+无 EXIF/XMP/ICC/IPTC/orientation 的直传 JPEG 保留客户端压缩结果，但仍进行限像素和实际解码校验；有元数据的图片仍正规化去除元数据。最新图与短期历史合计最多16MiB；每设备近期图片最多30张/3秒，达到内存上限先丢弃近期历史，避免图片GET与下一帧上传竞态。旧单张路径仍只暴露最新图片。
+
+网页使用 screenshot_ready WS 元数据，不逐帧查询JSON；同一时刻只下载一张图，等待队列仅保存最新帧，以 Blob URL 显示并释放旧 URL，避免高速更新反复取消图片加载。3秒无新元数据才轮询恢复。HTTP普通API维持300次/分钟默认限制；图片流另设每IP6000次/分钟和已鉴权设备直传30次/秒限制，保留2MiB单图、2个全局处理并发、每设备1个并发。实际帧率取决于截屏API、压缩、网络RTT与负载，不以合成联调结果宣称真机帧率。
+
+MediaProjection成功帧采用最短40ms本地周期（上限约25帧/秒，包含捕获与上传耗时），避免低延迟环境超过服务器30帧/秒限流后出现周期性500ms重试；慢网络不额外等待。takeScreenshot保留系统API节流，不宣称突破系统截图频率限制。

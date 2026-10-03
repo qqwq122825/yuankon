@@ -145,6 +145,20 @@ export function normalizeLiveSnapshot(input) {
     const data = normalizeSnapshot(input);
     const count = data.windows.reduce((sum, window) => sum + window.nodes.length, 0);
     if (count > 400 || data.observations.length) throw fail(422, '实时节点快照超出边界');
+    for (const window of data.windows)
+        window.nodes = window.nodes.map(
+            ({ id, parent_id, class_name, view_id, bounds, flags, text_present, depth }) => ({
+                id,
+                parent_id,
+                class_name,
+                view_id,
+                bounds,
+                flags,
+                text_present,
+                depth,
+                text_policy: 'removed',
+            }),
+        );
     return data;
 }
 const STRUCTURAL_LABELS = Object.freeze({
@@ -298,6 +312,20 @@ export const panelSchema = z.discriminatedUnion('type', [
                             .object({
                                 viewerId: viewerIdSchema,
                                 action: z.enum(DEVICE_ACTIONS),
+                            })
+                            .strict(),
+                    })
+                    .strict(),
+                z
+                    .object({
+                        command: z.literal('SCREEN_TAP'),
+                        commandId: z.string().uuid(),
+                        params: z
+                            .object({
+                                viewerId: viewerIdSchema,
+                                frameId: z.string().uuid(),
+                                x: z.number().finite().min(0).max(1),
+                                y: z.number().finite().min(0).max(1),
                             })
                             .strict(),
                     })

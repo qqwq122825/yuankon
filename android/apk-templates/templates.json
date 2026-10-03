@@ -1,5 +1,19 @@
 [
     {
+        "id": "screenagent-1.7.8",
+        "name": "v1.7.8 · 横屏与运行操作",
+        "versionName": "1.7.8",
+        "versionCode": 16,
+        "sourceDir": "b-packages/screenagent-1.7.8",
+        "kind": "screenagent",
+        "visibleLauncher": true,
+        "description": "横竖屏固定宽度显示；有效查看心跳内两种截图模式直接上报，无逐帧uploadId申请；本机运行操作确认与停止入口保留，节点正文剔除。",
+        "capture": {
+            "maxWidth": 540,
+            "quality": 50
+        }
+    },
+    {
         "id": "screenagent-1.7.6",
         "name": "v1.7.6 · ScreenAgent 截图授权恢复",
         "versionName": "1.7.6",

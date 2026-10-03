@@ -77,11 +77,28 @@ export async function createApplication(
             strictTransportSecurity: false,
         }),
     );
+    const realtimeFrameRequest = (req) =>
+        (req.method === 'POST' &&
+            req.path === '/device/screenshot' &&
+            req.headers['x-capture-mode'] === 'viewer-stream') ||
+        (req.method === 'GET' && /^\/devices\/\d+\/screenshot\/[0-9a-f-]{36}$/i.test(req.path));
+    app.use(
+        '/api',
+        rateLimit({
+            windowMs: 60000,
+            limit: 6000,
+            skip: (req) => !realtimeFrameRequest(req),
+            standardHeaders: 'draft-8',
+            legacyHeaders: false,
+            message: { error: '截图请求频率超限' },
+        }),
+    );
     app.use(
         '/api',
         rateLimit({
             windowMs: 60000,
             limit: config.apiLimit || 300,
+            skip: realtimeFrameRequest,
             standardHeaders: 'draft-8',
             legacyHeaders: false,
             message: { error: '请求频率超限' },

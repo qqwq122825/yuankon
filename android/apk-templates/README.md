@@ -88,3 +88,8 @@ APK ID 在创建账号时自动分配，一个账号一个固定编号。构建�
 新增固定模板 `b-packages/screenagent-1.7.6`（versionCode 14），保留 1.7.5。默认 takeScreenshot，MediaProjection 仍仅由用户点击并确认系统共享授权。后端白名单传递 captureReady / projectionActive / captureMode；网页仅在已打开截图浮窗及现有 viewerId 下、就绪/模式/在线状态转换时重发截图请求，不因心跳重复启动。切换模式废弃旧帧回调；停止 MediaProjection 不再误停止 takeScreenshot。首图失败记录调试事件并最多在一分钟间隔后重试两次；有实时会话时首图不争用上传许可。取消授权不重弹，关闭网页后不自动重建实时查看。
 
 验证记录：`backend/.node-private/releases/1.7.6/VERIFICATION.txt`；本机构建命令 `npm run build:screenagent`。编译、合成图联调与真机授权验证分别记录。
+
+### screenagent-1.7.8（B 包桌面模式页，versionCode 16）
+新增「运行操作」与「停止操作」。单击授权为本机弹窗确认后的两分钟内存状态，显示可点击停止横幅；仅截图查看租约内的近期单点映射，不支持长按或轨迹。MediaProjection 旋转时复用 VirtualDisplay 并换 Surface。节点正文剔除。1.7.6 及更旧固定源码保持不变。
+
+1.7.8直传修订：MediaProjection与默认takeScreenshot实时查看共用 uploadViewerScreenshot，取消每帧singleFrameSession/uploadId；设备鉴权与已有查看指令关联保留。MediaProjection最短40ms本地周期以匹配有界限流；断线/查看心跳失效停止。首图/旧模板仍走兼容单张许可。

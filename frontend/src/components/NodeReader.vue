@@ -169,9 +169,7 @@ async function translate() {
                 <pre>{{ JSON.stringify(nodeRecord(selected), null, 2) }}</pre>
             </div>
         </div>
-        <div v-if="live" class="reader-record-note">
-            完整显示本帧节点字段 · 正文与输入内容随节点上报
-        </div>
+        <div v-if="live" class="reader-record-note">显示节点结构与属性 · 正文与输入内容已剔除</div>
         <DeviceControls
             v-if="live"
             :disabled="controlsDisabled"

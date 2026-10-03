@@ -13,6 +13,7 @@ import {
     requestScreenshot,
     requestDeviceAction,
     requestTextInput,
+    requestScreenTap,
     requestDevicePing,
 } from '../connection.js';
 import { shouldResumeCapture } from '../capture-state.js';
@@ -33,6 +34,7 @@ const route = useRoute(),
     front = ref('reader'),
     resetKey = ref(0),
     reportedRefresh = ref(0),
+    reportedFrame = ref(null),
     reportedShotCount = ref(0),
     liveNodeSnapshot = ref(null),
     captureState = ref(''),
@@ -42,14 +44,17 @@ const route = useRoute(),
     latency = ref({ status: '未测量', ms: null, at: null }),
     debug = ref({ active: false, sessionId: null, startedAt: null, events: [] }),
     debugBusy = ref(false),
-    debugError = ref('');
+    debugError = ref(''),
+    tapPending = ref(false);
 let controller,
     subscribed,
     viewerId,
     viewerTimer,
     activeCommandId,
     actionToastTimer,
-    activeLatencyCommandId;
+    activeLatencyCommandId,
+    tapCommandId,
+    tapTimer;
 const activeReaderSnapshot = computed(() =>
     data.value?.device.source === 'api' ? liveNodeSnapshot.value : data.value?.snapshot,
 );
@@ -156,6 +161,28 @@ const off = onMessage((message) => {
             : '设备当前离线，连接后将继续请求截图';
         if (message.data.deviceOnline) loadLiveNodes();
     }
+    if (
+        message.type === 'command_ack' &&
+        message.data?.command === 'SCREEN_TAP' &&
+        message.data.commandId === tapCommandId
+    ) {
+        clearTimeout(tapTimer);
+        tapPending.value = false;
+        tapCommandId = null;
+        const reasons = {
+            local_consent_required: '请先在手机点击运行操作',
+            stale_frame: '画面已变化，请重新点击',
+            tap_busy: '手机正在处理上一次单击',
+            gesture_cancelled: '手机取消了单击',
+            viewer_lease_expired: '实时查看已结束',
+        };
+        showActionToast(
+            message.data.result === 'accepted'
+                ? '手机已完成单击'
+                : reasons[message.data.reasonCode] || '手机未执行单击',
+            message.data.result === 'accepted' ? 'success' : 'error',
+        );
+    }
     if (message.type === 'command_ack' && message.data?.command === 'DEVICE_ACTION') {
         const action = pendingActions.get(message.data.commandId);
         if (action) {
@@ -172,6 +199,7 @@ const off = onMessage((message) => {
                 );
             } else {
                 const failure = {
+                    local_consent_required: '请先在手机点击运行操作',
                     dnd_permission_required: '设备尚未允许勿扰权限',
                     viewer_lease_expired: '实时查看已结束',
                     android_version_unsupported: '当前 Android 版本不支持',
@@ -199,6 +227,7 @@ const off = onMessage((message) => {
             if (message.data.result === 'accepted') showActionToast('文本已发送');
             else {
                 const failure = {
+                    local_consent_required: '请先在手机点击运行操作',
                     input_not_focused: '设备当前没有获得焦点的输入框',
                     input_not_editable: '设备当前焦点不可输入',
                     sensitive_field: '密码或敏感输入框不接收远程文本',
@@ -223,6 +252,7 @@ const off = onMessage((message) => {
                 ? '实时截图已更新'
                 : `截图失败：${message.data.reasonCode || 'capture_failed'}`;
     if (message.type === 'screenshot_ready') {
+        reportedFrame.value = message.data;
         reportedRefresh.value++;
         captureState.value =
             message.data?.reason === 'initial_accessibility'
@@ -372,6 +402,9 @@ function closeReader() {
     if (!reportedShot.value && data.value?.device.source === 'api') stopLiveSession();
 }
 function stopLiveSession() {
+    clearTimeout(tapTimer);
+    tapCommandId = null;
+    tapPending.value = false;
     clearInterval(viewerTimer);
     viewerTimer = null;
     if (viewerId && data.value?.device.public_id)
@@ -384,6 +417,7 @@ function stopLiveSession() {
     clearTimeout(actionToastTimer);
     actionToast.value = '';
     reportedShot.value = false;
+    reportedFrame.value = null;
     liveNodeSnapshot.value = null;
 }
 function closeAll() {
@@ -396,6 +430,18 @@ function showActionToast(message, tone = 'success') {
     actionToast.value = message;
     actionToastTone.value = tone;
     actionToastTimer = setTimeout(() => (actionToast.value = ''), 2200);
+}
+function runScreenTap(point) {
+    if (!viewerId || !data.value || data.value.device.status !== 'online' || tapPending.value)
+        return;
+    tapPending.value = true;
+    tapCommandId = requestScreenTap(data.value.device.public_id, viewerId, point);
+    showActionToast('正在发送单击');
+    tapTimer = setTimeout(() => {
+        tapPending.value = false;
+        tapCommandId = null;
+        showActionToast('单击未收到回执，请确认手机已开启远程单击', 'error');
+    }, 5000);
 }
 function runDeviceAction(action) {
     if (!viewerId || !data.value || data.value.device.status !== 'online') {
@@ -873,7 +919,10 @@ function choose(value) {
     >
         <DeviceScreenshot
             :device-id="data.device.id"
+            :tap-pending="tapPending"
+            @tap="runScreenTap"
             :refresh-key="reportedRefresh"
+            :latest-frame="reportedFrame"
             :controls-disabled="data.device.status !== 'online'"
             :dnd-enabled="dndEnabled"
             @count="reportedShotCount = $event"

@@ -63,6 +63,14 @@ export const requestTextInput = (id, viewerId, text, commandId = crypto.randomUU
     });
     return commandId;
 };
+export const requestScreenTap = (id, viewerId, point, commandId = crypto.randomUUID()) => {
+    send({
+        type: 'command',
+        sessionId: id,
+        data: { command: 'SCREEN_TAP', commandId, params: { viewerId, ...point } },
+    });
+    return commandId;
+};
 function schedule() {
     if (stopped) return;
     connection.status = '重连中';

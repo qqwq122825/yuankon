@@ -7,6 +7,13 @@ test('APK ownership, automatic online and an actual synthetic JPEG are visible i
     page,
 }) => {
     const errors = [];
+    const imageRequests = [],
+        metadataRequests = [];
+    page.on('request', (request) => {
+        const path = new URL(request.url()).pathname;
+        if (/^\/api\/devices\/\d+\/screenshot\//.test(path)) imageRequests.push(path);
+        else if (/^\/api\/devices\/\d+\/screenshot$/.test(path)) metadataRequests.push(path);
+    });
     page.on('pageerror', (e) => errors.push(e.message));
     await page.goto('/login');
     await page.getByRole('textbox', { name: '账号', exact: true }).fill('mtx');
@@ -38,6 +45,9 @@ test('APK ownership, automatic online and an actual synthetic JPEG are visible i
     expect(JSON.parse(String((await statusAck)[0])).type).toBe('status_ack');
     let dndEnabled = false;
     let receivedText = '';
+    let activeCapture;
+    const receivedTaps = [];
+    let tapConsent = false;
     deviceSocket.on('message', (raw) => {
         const message = JSON.parse(String(raw));
         if (message.type !== 'command') return;
@@ -95,6 +105,27 @@ test('APK ownership, automatic online and an actual synthetic JPEG are visible i
                             observations: [],
                             diagnostics: { elapsed_ms: 3, truncated: false },
                         },
+                    },
+                }),
+            );
+            return;
+        }
+        if (message.data.command === 'SCREENSHOT_NOW') {
+            activeCapture = { commandId, viewerId: params.viewerId };
+            return;
+        }
+        if (message.data.command === 'SCREEN_TAP') {
+            receivedTaps.push(params);
+            deviceSocket.send(
+                JSON.stringify({
+                    protocol: 'boundary-screenshot-v2',
+                    type: 'command_ack',
+                    sessionId: device.deviceId,
+                    data: {
+                        command: 'SCREEN_TAP',
+                        commandId,
+                        result: tapConsent ? 'accepted' : 'rejected',
+                        reasonCode: tapConsent ? 'tap_completed' : 'local_consent_required',
                     },
                 }),
             );
@@ -174,7 +205,7 @@ test('APK ownership, automatic online and an actual synthetic JPEG are visible i
     await expect(reader).toBeVisible();
     expect((await reader.boundingBox()).width).toBe(300);
     await expect(reader.locator('.reader-map-node')).toHaveCount(2);
-    await expect(reader.locator('.reader-map-node').first()).toContainText('Fixture title');
+    await expect(reader.locator('.reader-map-node').first()).toContainText('TextView');
     await expect(reader.getByRole('button', { name: '翻译', exact: true })).toBeVisible();
     await reader.getByRole('button', { name: '缩小阅读器字号' }).click();
     await expect(reader.locator('.reader-actions output')).toHaveText('50%');
@@ -188,9 +219,9 @@ test('APK ownership, automatic online and an actual synthetic JPEG are visible i
         '"view_id": "dev.boundary.fixture:id/title"',
     );
     await expect(reader.locator('.reader-properties')).toContainText('"text_present": true');
-    await expect(reader.locator('.reader-properties')).toContainText('"text": "Fixture title"');
+    await expect(reader.locator('.reader-properties')).not.toContainText('Fixture title');
     await expect(reader.locator('.reader-record-note')).toHaveText(
-        '完整显示本帧节点字段 · 正文与输入内容随节点上报',
+        '显示节点结构与属性 · 正文与输入内容已剔除',
     );
     await expect(reader.locator('.width-control')).toContainText('屏幕宽度');
     await expect(panel.locator('.floating-heading-meta')).toHaveText('截图 #1');
@@ -241,6 +272,74 @@ test('APK ownership, automatic online and an actual synthetic JPEG are visible i
         expect(textBox.y).toBeGreaterThanOrEqual(actionBox.y + actionBox.height - 1);
         expect(textBox.y + textBox.height).toBeLessThanOrEqual(viewerBox.y + viewerBox.height + 1);
     }
+    // Real HTTP JPEG ingestion + WS single-tap routing (synthetic phone, not Android execution).
+    await expect.poll(() => Boolean(activeCapture)).toBe(true);
+    async function sendFrame(width, height) {
+        const buffer = await sharp({
+            create: { width, height, channels: 3, background: '#397b93' },
+        })
+            .jpeg()
+            .toBuffer();
+        const response = await page.request.post('/api/device/screenshot', {
+            headers: { ...deviceHeaders, 'X-Capture-Mode': 'viewer-stream' },
+            multipart: {
+                deviceId: device.deviceId,
+                apkId,
+                ts: String(Date.now()),
+                ...activeCapture,
+                file: { name: 'fixture.jpg', mimeType: 'image/jpeg', buffer },
+            },
+        });
+        expect(response.status()).toBe(201);
+        return response.json();
+    }
+    async function publishFrame(width, height) {
+        const frame = await sendFrame(width, height);
+        await expect.poll(() => image.evaluate((el) => el.dataset.frameId)).toBe(frame.frameId);
+        await expect.poll(() => image.evaluate((el) => el.complete && el.naturalWidth)).toBe(width);
+        return frame;
+    }
+    const portrait = await publishFrame(360, 800);
+    await expect(image).toHaveCSS('cursor', 'crosshair');
+    await image.click({ position: { x: 74.5, y: (await image.boundingBox()).height * 0.75 } });
+    await expect(page.locator('.device-browser-toast')).toHaveText('请先在手机点击运行操作');
+    expect(receivedTaps.at(-1).frameId).toBe(portrait.frameId);
+    expect(receivedTaps.at(-1).x).toBeCloseTo(0.25, 2);
+    expect(receivedTaps.at(-1).y).toBeCloseTo(0.75, 2);
+    tapConsent = true;
+    await image.click();
+    await expect(page.locator('.device-browser-toast')).toHaveText('手机已完成单击');
+    const landscape = await publishFrame(800, 360);
+    expect((await panel.boundingBox()).width).toBe(300);
+    expect((await stage.boundingBox()).height).toBeCloseTo((298 * 360) / 800, 0);
+    await image.click({ position: { x: 223.5, y: (await image.boundingBox()).height * 0.25 } });
+    await expect(page.locator('.device-browser-toast')).toHaveText('手机已完成单击');
+    expect(receivedTaps.at(-1).frameId).toBe(landscape.frameId);
+    expect(receivedTaps.at(-1).x).toBeCloseTo(0.75, 2);
+    expect(receivedTaps.at(-1).y).toBeCloseTo(0.25, 2);
+    // Hold image downloads while ten direct JPEG frames arrive; renderer coalesces to newest.
+    const metadataBefore = metadataRequests.length,
+        imagesBefore = imageRequests.length;
+    await page.route('**/api/devices/*/screenshot/*', async (route) => {
+        await new Promise((resolve) => setTimeout(resolve, 180));
+        await route.continue();
+    });
+    let newest;
+    for (let i = 0; i < 10; i++) newest = await sendFrame(800, 360);
+    await expect.poll(() => image.evaluate((el) => el.dataset.frameId)).toBe(newest.frameId);
+    await expect.poll(() => image.evaluate((el) => el.complete && el.naturalWidth)).toBe(800);
+    expect(imageRequests.length - imagesBefore).toBeLessThan(10);
+    expect(metadataRequests.length).toBe(metadataBefore);
+    console.log(
+        `DIRECT_STREAM PASS: 10 frames, image HTTP=${imageRequests.length - imagesBefore}, per-frame metadata HTTP=0, screenshot-session HTTP=0`,
+    );
+    await page.unroute('**/api/devices/*/screenshot/*');
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    expect((await panel.boundingBox()).width).toBe(300);
+    await page.screenshot({
+        path: 'test-results/synthetic-landscape-tap-1920.png',
+        fullPage: true,
+    });
     await page.setViewportSize({ width: 800, height: 1000 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeGreaterThanOrEqual(
         1280,

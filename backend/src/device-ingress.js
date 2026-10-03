@@ -3,6 +3,7 @@ import path from 'node:path';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { Router } from 'express';
 import multer from 'multer';
+import { rateLimit } from 'express-rate-limit';
 import sharp from 'sharp';
 import { z } from 'zod';
 import { privateFile } from './files.js';
@@ -104,6 +105,8 @@ export class DeviceIngress {
         Object.assign(this, { db, auth, store, config });
         this.grants = new Map();
         this.frames = new Map();
+        this.recentImages = new Map();
+        this.tapFrames = new Map();
         this.nodeFrames = new Map();
         this.viewerLeases = new Map();
         this.pendingCaptures = new Map();
@@ -114,6 +117,16 @@ export class DeviceIngress {
         this.timer.unref();
     }
     prune() {
+        for (const [id, frames] of this.recentImages) {
+            const recent = frames.filter((f) => Date.now() - f.receivedAt <= 3000);
+            if (recent.length) this.recentImages.set(id, recent);
+            else this.recentImages.delete(id);
+        }
+        for (const [id, frames] of this.tapFrames) {
+            const recent = frames.filter((f) => Date.now() - f.receivedAt <= 5000);
+            if (recent.length) this.tapFrames.set(id, recent);
+            else this.tapFrames.delete(id);
+        }
         for (const map of [
             this.grants,
             this.frames,
@@ -127,6 +140,8 @@ export class DeviceIngress {
         clearInterval(this.timer);
         this.grants.clear();
         this.frames.clear();
+        this.recentImages.clear();
+        this.tapFrames.clear();
         this.nodeFrames.clear();
         this.viewerLeases.clear();
         this.pendingCaptures.clear();
@@ -640,6 +655,26 @@ export class DeviceIngress {
             throw fail(410, '单张截图请求已过期或已使用');
         return grant;
     }
+    validateViewerStream(device, input) {
+        const now = Date.now();
+        const lease = this.viewerLeases.get(device.id);
+        const pending = this.pendingCaptures.get(device.id);
+        const live = this.store.live.get(device.public_id);
+        if (
+            !lease ||
+            !pending ||
+            lease.expiresAt <= now ||
+            pending.expiresAt <= now ||
+            lease.viewerId !== input.viewerId ||
+            pending.viewerId !== input.viewerId ||
+            pending.commandId !== input.commandId ||
+            lease.ownerId !== device.owner_account_id ||
+            pending.ownerId !== device.owner_account_id
+        )
+            throw fail(410, '实时查看心跳已过期或指令已变化');
+        if (!live || now - live.seen >= 90000) throw fail(409, '设备心跳已过期');
+        return { reason: 'viewer_request', commandId: pending.commandId, viewerId: lease.viewerId };
+    }
     async upload(req) {
         const { device } = req.deviceIdentity;
         const body = z
@@ -649,6 +684,8 @@ export class DeviceIngress {
                 ts: z.string().regex(/^\d{1,16}$/),
                 batch: z.string().max(80).optional(),
                 buildId: z.string().max(80).optional(),
+                commandId: z.string().uuid().optional(),
+                viewerId: z.string().uuid().optional(),
             })
             .strict()
             .parse(req.body);
@@ -656,6 +693,12 @@ export class DeviceIngress {
             throw fail(403, '设备标识或 APK ID 不匹配');
         if (!req.file?.buffer || req.file.mimetype !== 'image/jpeg')
             throw fail(415, '仅接收 JPEG 截图');
+        const direct = req.headers['x-capture-mode'] === 'viewer-stream';
+        if (direct) {
+            if (!body.commandId || !body.viewerId || req.headers['x-capture-upload'])
+                throw fail(422, '直接帧需要查看指令关联，不能混用单张许可');
+            this.validateViewerStream(device, body);
+        } else if (body.commandId || body.viewerId) throw fail(422, '旧单张上传不能附带连续帧字段');
         let output;
         try {
             const image = sharp(req.file.buffer, { limitInputPixels: 4000000, failOn: 'warning' });
@@ -667,21 +710,51 @@ export class DeviceIngress {
                 Math.max(meta.width, meta.height) > 4096
             )
                 throw new Error('image');
-            output = await image
-                .rotate()
-                .jpeg({ quality: 80 })
-                .toBuffer({ resolveWithObject: true });
+            if (direct && !meta.exif && !meta.xmp && !meta.icc && !meta.iptc && !meta.orientation) {
+                // Decode validation remains; Android's metadata-free JPEG need not be re-encoded.
+                await image.resize(1, 1).raw().toBuffer();
+                output = {
+                    data: req.file.buffer,
+                    info: { width: meta.width, height: meta.height },
+                };
+            } else {
+                output = await image
+                    .rotate()
+                    .jpeg({ quality: 80 })
+                    .toBuffer({ resolveWithObject: true });
+            }
         } catch {
             throw fail(422, '图片损坏或像素超限');
         }
         if (output.data.length > MAX_FILE) throw fail(413, '图片体积超限');
         const fresh = await this.resolve(req.deviceIdentity.principal, true);
-        const grant = this.validGrant(fresh, req.headers['x-capture-upload']);
+        const grant = direct
+            ? this.validateViewerStream(fresh, body)
+            : this.validGrant(fresh, req.headers['x-capture-upload']);
         this.prune();
+        const previous = this.frames.get(device.id);
+        const history = (this.recentImages.get(device.id) || []).filter(
+            (f) => Date.now() - f.receivedAt <= 3000,
+        );
+        if (
+            previous &&
+            Date.now() - previous.receivedAt <= 3000 &&
+            previous.ownerId === fresh.owner_account_id
+        )
+            history.push(previous);
+        if (direct) this.recentImages.set(device.id, history.slice(-30));
+        else this.recentImages.delete(device.id);
         const used = [...this.frames.entries()].reduce(
             (sum, [id, f]) => sum + (id === device.id ? 0 : f.buffer.length),
             0,
         );
+        let historyBytes = [...this.recentImages.values()]
+            .flat()
+            .reduce((sum, f) => sum + f.buffer.length, 0);
+        if (used + historyBytes + output.data.length > 16 * 1024 * 1024) {
+            this.recentImages.clear();
+            historyBytes = 0;
+        }
         if (used + output.data.length > 16 * 1024 * 1024) throw fail(429, '临时图片缓存已满');
         const frame = {
             frameId: randomUUID(),
@@ -698,6 +771,18 @@ export class DeviceIngress {
         };
         this.grants.delete(device.id);
         this.frames.set(device.id, frame);
+        const recent = (this.tapFrames.get(device.id) || []).filter(
+            (f) => Date.now() - f.receivedAt <= 5000,
+        );
+        recent.push({
+            frameId: frame.frameId,
+            receivedAt: frame.receivedAt,
+            width: frame.width,
+            height: frame.height,
+            viewerId: frame.viewerId,
+            ownerId: frame.ownerId,
+        });
+        this.tapFrames.set(device.id, recent.slice(-32));
         await this.db('devices')
             .where('id', device.id)
             .update({ last_received_at: new Date(frame.receivedAt).toISOString() });
@@ -710,6 +795,26 @@ export class DeviceIngress {
         const meta = this.frameMeta(device.id, frame);
         await this.notifyFrame?.(device.public_id, meta);
         return meta;
+    }
+    validateTap(device, viewerId, frameId) {
+        const frame = (this.tapFrames.get(device.id) || []).find((f) => f.frameId === frameId);
+        const latest = this.frames.get(device.id);
+        if (
+            !frame ||
+            !latest ||
+            frame.viewerId !== viewerId ||
+            latest.viewerId !== viewerId ||
+            frame.ownerId !== device.owner_account_id ||
+            latest.ownerId !== device.owner_account_id ||
+            device.is_blacklisted ||
+            device.status === 'offline' ||
+            frame.width !== latest.width ||
+            frame.height !== latest.height ||
+            Date.now() - frame.receivedAt > 5000 ||
+            latest.expiresAt <= Date.now()
+        )
+            throw fail(410, '截图已变化，请重新点击');
+        return frame;
     }
     frameMeta(id, frame) {
         if (!frame) return null;
@@ -726,8 +831,10 @@ export class DeviceIngress {
             (device.is_blacklisted ||
                 credential?.revoked ||
                 device.owner_account_id !== frame.ownerId)
-        )
+        ) {
             this.frames.delete(id);
+            this.recentImages.delete(id);
+        }
         return this.frames.get(id);
     }
     thumbnail(id) {
@@ -845,9 +952,19 @@ export class DeviceIngress {
                 clearTimeout(timeout);
             }
         });
-        router.post('/device/screenshot', requireDevice, async (req, res) => {
+        const frameLimit = rateLimit({
+            windowMs: 1000,
+            limit: 30,
+            keyGenerator: (req) => req.deviceIdentity.device.public_id,
+            skip: (req) => req.headers['x-capture-mode'] !== 'viewer-stream',
+            standardHeaders: 'draft-8',
+            legacyHeaders: false,
+            message: { error: '截图帧过快，请稍后重试' },
+        });
+        router.post('/device/screenshot', requireDevice, frameLimit, async (req, res) => {
             const { device } = req.deviceIdentity;
-            this.validGrant(device, req.headers['x-capture-upload']);
+            if (req.headers['x-capture-mode'] !== 'viewer-stream')
+                this.validGrant(device, req.headers['x-capture-upload']);
             if (this.inflight.has(device.id) || this.inflight.size >= 2)
                 throw fail(429, '已有图片正在处理');
             if (!req.is('multipart/form-data')) throw fail(415, '请使用 multipart/form-data');
@@ -987,14 +1104,22 @@ export class DeviceIngress {
             res.json({
                 snapshot: await this.accessibilitySnapshot(id, viewerId),
                 mode: 'leased-structural-preview',
-                textPolicy: 'uploaded',
+                textPolicy: 'removed',
             });
         });
         router.get('/devices/:id/screenshot/:frameId', async (req, res) => {
             const frame = await this.frame(idSchema.parse(req.params.id));
-            if (!frame || frame.frameId !== req.params.frameId)
-                throw fail(410, '临时截图已过期或被替换');
-            res.type('jpeg').send(frame.buffer);
+            const image =
+                frame?.frameId === req.params.frameId
+                    ? frame
+                    : (this.recentImages.get(Number(req.params.id)) || []).find(
+                          (f) =>
+                              f.frameId === req.params.frameId &&
+                              f.ownerId === frame?.ownerId &&
+                              Date.now() - f.receivedAt <= 3000,
+                      );
+            if (!image) throw fail(410, '临时截图已过期或被替换');
+            res.type('jpeg').send(image.buffer);
         });
         return router;
     }

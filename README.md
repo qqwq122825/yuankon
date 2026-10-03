@@ -105,3 +105,13 @@ npm run test:e2e
 2026-09-28 已完成真实浏览器验收：登录 → 填写 ScreenAgent 1.0 参数 → 随机包名 → 提交构建 → 复制链接 → 下载 APK；下载文件的签名、对齐和 SHA-256 校验通过。当前 `npm run check` 的 76 项 Node 测试和 `npm run test:e2e` 的 15 项 Chromium 测试通过，覆盖一次性网页安装。详细结果见 [浏览器构建验收](backend/docs/BUILD_ACCEPTANCE.md)；真机安装与截图发送另行验收。
 
 说明：[目录迁移记录](backend/docs/DIRECTORY_LAYOUT.md) · [HTTP / WS](backend/docs/NODE_PROTOCOL.md) · [设备接入](backend/docs/SCREENAGENT_INGRESS.md) · [账号归属](backend/docs/ACCOUNT_DESIGN.md) · [部署备份](backend/docs/DEPLOYMENT.md) · [UI](backend/docs/UI_DESIGN.md)。
+
+### B 包 1.7.8：横屏截图与运行操作
+- 截图窗口保持 viewer-width（默认 300px），每帧更新宽高比；横屏缩为宽 300px 的横向画面，无图时保持最近比例。
+- 手机桌面模式页点击「运行操作」并确认，开启两分钟单击；屏幕顶部持续显示可点击的停止入口。默认关闭，授权不持久化，网页租约结束、断线或切模式即结束。
+- 网页图片加载后显示十字光标，单击映射到实际图片区域；使用当前查看租约、近期 frameId 和归一化坐标。手机校验帧对应的真实屏幕尺寸、旋转、租约与本机授权，只执行 50ms 单点，完成后回执。无长按、拖动。
+- 节点正文与输入内容按项目约定剔除。旧截图授权不自动开启手机单击。
+- `npm run build:screenagent` 默认构建 1.7.8（versionCode 16）；1.7.6 等旧模板保留不变。构建、网页合成设备测试与真机测试分别记录。
+
+#### 1.7.8 直传优化
+实时截图不再逐帧申请 uploadId，两种模式在有效查看心跳内携带已有 commandId/viewerId 直接上传。设备身份鉴权保留，不增加独立网络往返；心跳失效、断线、关闭查看即停止。网页使用WS元数据和有界最新帧队列，JPEG去除重复编码开销（仍校验）；旧版本首图许可接口兼容。详见 `backend/docs/SCREEN_CAPTURE_PROTOCOL.md`。
