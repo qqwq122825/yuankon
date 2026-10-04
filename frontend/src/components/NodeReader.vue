@@ -2,6 +2,7 @@
 import { computed, ref, watch, onMounted, onUnmounted, inject, nextTick } from 'vue';
 import { mutate } from '../api.js';
 import { screenshotPoint, readerTapFrame } from '../screenshot-geometry.js';
+import { readerNodeStyle } from '../reader-node-style.js';
 import DeviceControls from './DeviceControls.vue';
 
 const props = defineProps({
@@ -142,37 +143,7 @@ function label(node) {
     return originalLabel(node);
 }
 function nodeStyle(node) {
-    const width = display.value.width || 1,
-        height = display.value.height || 1,
-        left = Math.max(0, Math.min(width, node.bounds[0])),
-        top = Math.max(0, Math.min(height, node.bounds[1])),
-        right = Math.max(left, Math.min(width, node.bounds[2])),
-        bottom = Math.max(top, Math.min(height, node.bounds[3]));
-    const text = label(node) || '';
-    const units = Array.from(text).reduce(
-        (n, char) => n + (/[^\x00-\xff]/.test(char) ? 1 : 0.6),
-        0,
-    );
-    const boxWidth = Math.max(1, ((right - left) / width) * mapWidth.value - 4);
-    const boxHeight = Math.max(1, ((bottom - top) / width) * mapWidth.value - 2);
-    const requestedSize = (((16 * scale.value) / 100) * mapWidth.value) / 300;
-    // Fit labels without changing the coordinate rectangle used by tap mapping.
-    const size = Math.max(
-        1,
-        Math.min(
-            requestedSize,
-            boxHeight / 1.15,
-            units ? Math.sqrt((boxWidth * boxHeight) / (units * 1.3)) : requestedSize,
-        ),
-    );
-    return {
-        fontSize: `${size}px`,
-        left: `${(left / width) * 100}%`,
-        top: `${(top / height) * 100}%`,
-        width: `${((right - left) / width) * 100}%`,
-        height: `${((bottom - top) / height) * 100}%`,
-        zIndex: Math.min(40, (node.depth || 0) + 1),
-    };
+    return readerNodeStyle(node, display.value, mapWidth.value, scale.value, label(node) || '');
 }
 function nodeRecord(node) {
     const { key, ...record } = node;

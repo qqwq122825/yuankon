@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { readerNodeStyle } from '../src/reader-node-style.js';
 
 test('reader short label keeps original 14x18 geometry and fits cs without extra padding', async ({
     page,
@@ -33,7 +34,16 @@ test('reader short label keeps original 14x18 geometry and fits cs without extra
     expect(metrics.height).toBe(18);
     expect(metrics.lines).toBe(1);
     expect(metrics.textHeight).toBeLessThan(18);
+    const rounded = readerNodeStyle(
+        { bounds: [0, 0, 27.3, 18], depth: 0 },
+        { width: 300, height: 600 },
+        300,
+        55,
+        '电池',
+    );
+    expect(rounded.width).toBe('28px');
+    expect(rounded.height).toBe('18px');
     console.log(
-        'READER PADDING PASS: padding=0px; cs=1 line; bounds=14x18 unchanged (synthetic fixture)',
+        'READER PADDING PASS: padding=0px; cs=1 line; bounds=14x18 unchanged; fractional width 27.3->28px',
     );
 });
