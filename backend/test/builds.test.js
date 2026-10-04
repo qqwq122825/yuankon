@@ -115,11 +115,10 @@ test('catalog/build submission require account authentication and reject device 
         401,
     );
     const catalog = await call('/api/build-templates');
-    assert.equal(catalog.body.templates.length, 20);
+    assert.equal(catalog.body.templates.length, 19);
     assert.deepEqual(
         catalog.body.templates.map((template) => template.kind),
         [
-            'screenagent',
             'screenagent',
             'screenagent',
             'screenagent',
@@ -159,7 +158,6 @@ test('catalog/build submission require account authentication and reject device 
             'b-packages/screenagent-1.7.1',
             'b-packages/screenagent-1.7',
             'b-packages/screenagent-1.6',
-            'b-packages/screenagent-1.5',
             'a-packages/installer-1.2',
             'a-packages/installer-1.1',
             'a-packages/installer-1.0',
@@ -554,7 +552,6 @@ test('source copies encode user values as XML/JSON without editing template code
                         'screenagent-1.7.1',
                         'screenagent-1.7',
                         'screenagent-1.6',
-                        'screenagent-1.5',
                     ].includes(t.id)
                 )
                     assert.deepEqual(assets.capture, {

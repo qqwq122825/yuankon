@@ -209,19 +209,6 @@
         }
     },
     {
-        "id": "screenagent-1.5",
-        "name": "v1.5 · ScreenAgent 文本输入",
-        "versionName": "1.5.0",
-        "versionCode": 6,
-        "sourceDir": "b-packages/screenagent-1.5",
-        "kind": "screenagent",
-        "description": "B 包工作端；实时截图查看租约内提供固定快捷控制，并可将显式提交的文本写入设备当前获得焦点的非敏感输入框。",
-        "capture": {
-            "maxWidth": 540,
-            "quality": 50
-        }
-    },
-    {
         "id": "installer-1.2",
         "name": "v1.2 · A 包安装器 / 受限设置引导",
         "versionName": "1.2.0",
