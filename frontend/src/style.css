@@ -482,7 +482,7 @@ select:focus-visible,
     min-height: 1px;
     align-items: center;
     justify-content: center;
-    padding: 1px 2px;
+    padding: 0;
     overflow: hidden;
     color: #111;
     background: #ffffff26;

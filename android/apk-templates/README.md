@@ -127,6 +127,6 @@ B 包新增默认关闭的「开始桌面节点诊断」按钮。用户在手机
 
 ## 1.8.5 全应用节点无条件上传
 
-固定模板 `b-packages/screenagent-1.8.5`，versionCode 23，保留 1.8.4 与旧版本。移除 1.8.4 的「桌面启动器 + 本应用」包名白名单（`DesktopNodeConsent.allows`），查看租约内无条件读取并上传当前前台应用完整节点树，因此可记录设置、浏览器、文件管理器等任意其他 App 的节点；`null_root` 不再由本地范围判断清空，仅当系统确无可用根时出现。主程序移除「开始/停止桌面节点诊断」两个按钮与 5 分钟内存授权横幅，节点采集默认开启、仅在存在有效网页查看租约时进行；删除 `DesktopNodeConsent.kt`。仍保留的边界：客户端最多 250 节点 / 24 层、坐标钳位、每字段 2000 字符；密码与可编辑输入的 `text`/`content_description` 仍置空；网页只画有效正面积且非 `invalid` 的框。截图通道不受影响，节点范围放宽不等于裁剪或补全截图。节点数量/深度与服务器 400 节点校验不变；「运行操作」远程单击授权与本机确认不变。更新需要安装新 APK 并刷新构建页模板清单。
+固定模板 `b-packages/screenagent-1.8.5`，versionCode 23，保留 1.8.4 与旧版本。移除 1.8.4 的「桌面启动器 + 本应用」包名白名单（`DesktopNodeConsent.allows`），查看租约内无条件读取并上传当前前台应用完整节点树，因此可记录设置、浏览器、文件管理器等任意其他 App 的节点；`null_root` 不再由本地范围判断清空，仅当系统确无可用根时出现。主程序移除「开始/停止桌面节点诊断」两个按钮与 5 分钟内存授权横幅，节点采集默认开启、仅在存在有效网页查看租约时进行；删除 `DesktopNodeConsent.kt`。同时移除密码/可编辑输入正文剔除：`text`/`content_description` 无条件上传（各最多 2000 字符），`password/editable/sensitive` 标志仍如实上报，`text_present` 语义不变。仍保留的边界：客户端最多 250 节点 / 24 层、坐标钳位；网页只画有效正面积且非 `invalid` 的框。截图通道不受影响，节点范围与正文放宽不等于裁剪或补全截图。节点数量/深度与服务器 400 节点校验不变；「运行操作」远程单击授权与本机确认不变。更新需要安装新 APK 并刷新构建页模板清单。
 
 验证记录：`npm run build:screenagent` 真实构建 `screenagent.apk`（package=com.zaka.screenagent、versionName=1.8.5、versionCode=23、桌面入口存在、apksigner v2 签名通过、zipalign 4/16K 对齐通过）；`npm run check` 116 项后端测试、`npm run test:e2e` 19 项浏览器测试均通过。编译/合成测试通过不代表真机完整性，真机验证另行报告。

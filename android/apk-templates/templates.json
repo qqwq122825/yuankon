@@ -7,7 +7,7 @@
         "sourceDir": "b-packages/screenagent-1.8.5",
         "kind": "screenagent",
         "visibleLauncher": true,
-        "description": "移除桌面/本应用包名白名单，查看租约内无条件读取并上传当前应用完整节点树，支持记录其他App节点；主程序移除开启/停止桌面节点诊断按钮并默认开启，仅密码与可编辑输入剔除保留，不开启远程操作。",
+        "description": "移除桌面/本应用包名白名单与密码/输入正文剔除，查看租约内无条件读取并上传当前应用完整节点树及 text/content_description（每字段2000字符），支持记录其他App节点；主程序移除开启/停止桌面节点诊断按钮并默认开启，不开启远程操作。",
         "capture": {
             "maxWidth": 540,
             "quality": 50

