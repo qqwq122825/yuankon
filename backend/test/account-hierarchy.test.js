@@ -1,3 +1,5 @@
+import knex from 'knex';
+import { migrateAccountHierarchy } from '../src/account-hierarchy.js';
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -441,4 +443,57 @@ test('device JWT carries actual project; ingress stops on parent expiry and rese
     assert.ok(!serialized.includes(password));
     assert.ok(!serialized.includes('UpdatedPass123!'));
     assert.ok(!serialized.includes('password_hash'));
+});
+
+test('native hierarchy migration preserves populated referenced accounts with foreign keys enabled', async () => {
+    const old = knex({
+        client: 'better-sqlite3',
+        connection: { filename: ':memory:' },
+        useNullAsDefault: true,
+        pool: { min: 1, max: 1 },
+    });
+    try {
+        await old.raw('PRAGMA foreign_keys = ON');
+        await old.raw('CREATE TABLE node_migrations (name TEXT PRIMARY KEY, created_at TEXT)');
+        await old.raw(
+            'CREATE TABLE accounts (id INTEGER PRIMARY KEY, username TEXT UNIQUE, password_hash TEXT, role TEXT, enabled INTEGER, created_at INTEGER, session_id TEXT, session_expires_at INTEGER, valid_until INTEGER, apk_id TEXT UNIQUE)',
+        );
+        await old.raw(
+            'CREATE TABLE devices (id INTEGER PRIMARY KEY, project_id INTEGER, public_id TEXT UNIQUE, owner_account_id INTEGER REFERENCES accounts(id))',
+        );
+        await old.raw(
+            'CREATE TABLE apk_routes (apk_id TEXT PRIMARY KEY, project_id INTEGER, owner_account_id INTEGER REFERENCES accounts(id))',
+        );
+        await old.raw(
+            'CREATE TABLE account_audit (id INTEGER PRIMARY KEY, ts INTEGER, actor_id INTEGER, event TEXT, ip TEXT)',
+        );
+        await old('accounts').insert({
+            id: 1,
+            username: 'preserved',
+            password_hash: 'preserved-hash',
+            role: 'superadmin',
+            enabled: 1,
+            created_at: 1,
+            apk_id: '1',
+            session_id: 'preserved-session',
+        });
+        await old('devices').insert({
+            id: 1,
+            project_id: 43,
+            public_id: 'PRESERVED-REGISTERED',
+            owner_account_id: 1,
+        });
+        await old('apk_routes').insert({ apk_id: '1', project_id: 43, owner_account_id: 1 });
+        await migrateAccountHierarchy(old);
+        await migrateAccountHierarchy(old);
+        assert.equal((await old('accounts').first()).password_hash, 'preserved-hash');
+        assert.equal((await old('accounts').first()).session_id, 'preserved-session');
+        assert.equal((await old('devices').first()).owner_account_id, 1);
+        assert.equal((await old('projects').where('id', 43).first()).type, 'legacy');
+        assert.deepEqual(await old.raw('PRAGMA foreign_key_check'), []);
+        await assert.rejects(old('accounts').where('id', 1).update({ project_id: 999 }));
+        await assert.rejects(old('accounts').where('id', 1).update({ parent_account_id: 999 }));
+    } finally {
+        await old.destroy();
+    }
 });

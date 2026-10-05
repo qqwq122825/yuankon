@@ -74,9 +74,18 @@ export async function migrateAccountHierarchy(db) {
                 type: id === 1 ? 'platform' : 'legacy',
                 created_at: Date.now(),
             });
+        // Knex foreign-key ALTER rebuilds a referenced SQLite table, which fails
+        // when existing enrolled devices/routes reference accounts. Native ADD
+        // COLUMN with a nullable REFERENCES clause preserves rows and FKs.
+        await trx.raw(
+            'ALTER TABLE accounts ADD COLUMN project_id INTEGER NULL REFERENCES projects(id)',
+        );
+        await trx.raw(
+            'ALTER TABLE accounts ADD COLUMN parent_account_id INTEGER NULL REFERENCES accounts(id)',
+        );
         await trx.schema.alterTable('accounts', (t) => {
-            t.integer('project_id').nullable().references('projects.id').index();
-            t.integer('parent_account_id').nullable().references('accounts.id').index();
+            t.index(['project_id']);
+            t.index(['parent_account_id']);
             t.string('note').notNullable().defaultTo('');
             t.string('creation_request_id').nullable().unique();
             t.integer('creation_actor_id').nullable();
