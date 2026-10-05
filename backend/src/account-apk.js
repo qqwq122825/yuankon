@@ -1,3 +1,4 @@
+import { accountContext } from './account-hierarchy.js';
 import { fail } from './protocol.js';
 
 const FIRST_MANAGED_APK_ID = 100;
@@ -78,27 +79,46 @@ export async function assignAccountApkId(trx, account, projectId) {
 }
 
 export async function resolveBuildRecipient(trx, requestedId, actor, projectId) {
-    // Only superadmin accounts are active in this release. Future studio/member support
-    // must supply a tenant-scoped default and lookup, not reuse this global root scope.
-    const available = () =>
-        trx('accounts as a')
-            .join('apk_routes as r', function () {
-                this.on('r.apk_id', '=', 'a.apk_id').andOn('r.owner_account_id', '=', 'a.id');
-            })
-            .where({
-                'a.enabled': true,
-                'a.role': 'superadmin',
-                'r.enabled': true,
-                'r.project_id': projectId,
-            })
-            .where(function () {
-                this.whereNull('a.valid_until').orWhere('a.valid_until', '>', Date.now());
-            })
-            .select('a.id', 'a.username', 'a.apk_id');
-    const explicit = requestedId ? await available().where('a.apk_id', requestedId).first() : null;
-    const recipient = explicit || (await available().where('a.id', actor.id).first());
-    if (!recipient) throw fail(409, '默认接收账号或 APK ID 已停用，请先检查账号配置');
+    actor = await accountContext(trx, actor);
+    const query = trx('accounts as a')
+        .join('apk_routes as r', function () {
+            this.on('r.apk_id', '=', 'a.apk_id').andOn('r.owner_account_id', '=', 'a.id');
+        })
+        .where({ 'a.enabled': true, 'r.enabled': true })
+        .select('a.*', 'r.project_id as route_project_id');
+    if (actor.role === 'superadmin')
+        query.where((q) =>
+            q
+                .where({ 'a.role': 'superadmin', 'r.project_id': projectId })
+                .orWhere((q) =>
+                    q.whereNot('a.role', 'superadmin').whereColumn('r.project_id', 'a.project_id'),
+                ),
+        );
+    else query.where('r.project_id', projectId);
+    if (actor.role !== 'superadmin') query.where('a.project_id', actor.project_id);
+    const defaultId = actor.role === 'member' ? actor.parent_account_id : actor.id;
+    let explicit = requestedId ? await query.clone().where('a.apk_id', requestedId).first() : null;
+    if (explicit) {
+        try {
+            explicit = await accountContext(trx, explicit);
+        } catch {
+            explicit = null;
+        }
+    }
+    let recipient = explicit;
+    if (!recipient) {
+        try {
+            recipient = await accountContext(
+                trx,
+                await query.clone().where('a.id', defaultId).first(),
+            );
+        } catch {
+            throw fail(409, '默认接收账号或 APK ID 已停用，请先检查账号配置');
+        }
+    }
+    if (!recipient) throw fail(409, '默认接收账号或 APK ID 已停用');
     return {
+        project_id: recipient.route_project_id,
         apk_id: recipient.apk_id,
         requested_apk_id: requestedId,
         owner_account_id: recipient.id,

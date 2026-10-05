@@ -17,6 +17,7 @@ test('list, server sorting, query preservation, pagination, empty state and keyb
     await expect(page.getByText('WS · 已连接')).toBeVisible();
     await expect(page.getByRole('navigation', { name: '主导航' }).getByRole('link')).toHaveText([
         '设备',
+        '账号',
         '构建',
         '翻译',
         '日志',
@@ -251,7 +252,7 @@ test('left navigation stays anchored during vertical and horizontal scrolling an
     const large = await rail.boundingBox();
     expect(large).toEqual({ x: 0, y: 58, width: 64, height: 842 });
 });
-test('translation validation, build center, client logs and protocol audit', async ({ page }) => {
+test('translation validation, build center, server logs and protocol audit', async ({ page }) => {
     await page.goto('/settings/translation');
     await expect(page.getByRole('heading', { name: '翻译设置' })).toBeVisible();
     await expect(page.getByRole('button', { name: '验证已保存密钥' })).toBeDisabled();
@@ -262,7 +263,7 @@ test('translation validation, build center, client logs and protocol audit', asy
     await expect(page.getByText(/Telegram 发送待接入/)).toBeVisible();
     await page.getByRole('link', { name: '日志', exact: true }).click();
     await expect(page).toHaveURL('/logs');
-    await expect(page.getByRole('heading', { name: '客户端日志' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '服务器日志' })).toBeVisible();
     await expect(page.getByText('快照档案', { exact: true })).toHaveCount(0);
     await expect(page.getByText('观察记录', { exact: true })).toHaveCount(0);
     await page.goto('/protocol');

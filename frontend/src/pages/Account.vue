@@ -2,7 +2,7 @@
 import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { session, endSession, logout, refreshProfile } from '../session.js';
-import { validityDisplay } from '../account-display.js';
+import { roleLabel, validityDisplay } from '../account-display.js';
 import { mutate } from '../api.js';
 const router = useRouter(),
     oldPassword = ref(''),
@@ -56,14 +56,29 @@ async function exit() {
             <RouterLink to="/">返回设备</RouterLink>
         </div>
         <section class="card card-body settings-card mb-3">
-            <h2>{{ session.user?.username }} · 超级管理员</h2>
-            <p>可查看所有设备与已实现的后台管理功能，不按工作室过滤。</p>
+            <h2>
+                {{ session.user?.username }} ·
+                {{
+                    session.user?.role === 'superadmin'
+                        ? '超级管理员'
+                        : roleLabel(session.user?.role)
+                }}
+            </h2>
+            <p>
+                {{
+                    session.user?.role === 'superadmin'
+                        ? '可管理总台并查看所有项目。'
+                        : session.user?.role === 'studio_admin'
+                          ? '管理本总台及所属子账号。'
+                          : '仅查看自己的设备和构建任务。'
+                }}
+            </p>
             <dl class="account-facts">
                 <dt>APK ID</dt>
                 <dd class="account-apk-list">
                     <code>{{ session.user?.apkId || '待分配' }}</code>
                 </dd>
-                <dt>账号有效期</dt>
+                <dt>账号有效期{{ session.user?.inheritsValidity ? '（继承总台）' : '' }}</dt>
                 <dd>
                     <span class="account-validity" :class="validity.state">{{
                         validity.label

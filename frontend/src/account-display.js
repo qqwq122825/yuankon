@@ -1,5 +1,5 @@
 export const roleLabel = (role) =>
-    ({ superadmin: '超管', studio_admin: '总台', member: '员工' })[role] || '账号';
+    ({ superadmin: '超管', studio_admin: '总台', member: '子账号' })[role] || '账号';
 
 // Account validity is separate from the eight-hour login session. Display dates
 // in the billing timezone, including the last valid instant of the chosen day.

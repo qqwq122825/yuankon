@@ -54,7 +54,7 @@ test('account date badge renders active, expiring and expired states from explic
     await page.reload();
     const badge = page.getByRole('link', { name: '账号设置', exact: true });
     await expect(badge).toContainText('fixture_user');
-    await expect(badge).toContainText('员工 · APK 10074');
+    await expect(badge).toContainText('子账号 · APK 10074');
     await expect(badge.locator('.account-validity')).toHaveText('到期 2099-10-11');
     await expect(badge.locator('.account-validity')).toHaveClass(/active/);
     validUntil = Date.now() + 86400000;

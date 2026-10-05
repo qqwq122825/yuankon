@@ -107,7 +107,8 @@ test('test fixture superadmin is seeded once with Argon2id, not plaintext', asyn
     await app.accounts.initialize();
     assert.equal((await db('accounts').count('* as n').first()).n, 1);
     assert.equal((await db('devices').count('* as n').first()).n, 2);
-    assert.equal(await db.schema.hasTable('studios'), false);
+    assert.equal(await db.schema.hasTable('studios'), true);
+    assert.equal((await db('studios').count('* as n').first()).n, 0);
 });
 test('every data route and panel-ticket route requires login', async () => {
     for (const url of [
@@ -120,6 +121,9 @@ test('every data route and panel-ticket route requires login', async () => {
         '/api/builds',
         '/api/settings/translation',
         '/api/logs/protocol',
+        '/api/logs/server',
+        '/api/logs/server/tail',
+        '/api/logs/server/export?date=2026-10-05',
         '/api/session',
         '/api/auth/me',
     ])

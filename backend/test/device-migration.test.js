@@ -21,6 +21,7 @@ test('device enrollment migration preserves populated legacy devices and referen
         CREATE TABLE apk_builds (id TEXT PRIMARY KEY, project_id INTEGER, app_name TEXT, status TEXT);
         INSERT INTO apk_builds VALUES ('legacy-build', 1, 'Preserved build', 'succeeded');
         INSERT INTO devices VALUES (1,'PRESERVED_DEVICE',1);
+        INSERT INTO devices VALUES (2,'LEGACY_SCOPE',88);
         INSERT INTO snapshots VALUES (1,1,'preserved fixture');
     `);
     old.close();
@@ -36,6 +37,8 @@ test('device enrollment migration preserves populated legacy devices and referen
         assert.equal(device.public_id, 'PRESERVED_DEVICE');
         assert.equal(device.owner_account_id, null);
         assert.equal(device.apk_id, null);
+        assert.equal((await db('projects').where('id', 88).first()).type, 'legacy');
+        assert.equal((await db('devices').where('id', 2).first()).project_id, 88);
         assert.equal((await db('apk_builds').first()).app_name, 'Preserved build');
         assert.equal((await db('apk_builds').first()).template_id, null);
         assert.equal(await db.schema.hasColumn('accounts', 'valid_until'), true);

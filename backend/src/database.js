@@ -1,4 +1,5 @@
 import knex from 'knex';
+import { migrateAccountHierarchy } from './account-hierarchy.js';
 import {
     migrateAccounts,
     migrateAccountValidity,
@@ -14,7 +15,7 @@ import {
     migrateDeviceDebugScreenshots,
 } from './device-schema.js';
 import { migrateAbPackageBuilds, migrateBuilds } from './build-schema.js';
-import { migrateClientRequestLogs } from './log-schema.js';
+import { migrateClientRequestLogs, migrateServerLogs } from './log-schema.js';
 import { mkdirSync, chmodSync } from 'node:fs';
 import path from 'node:path';
 
@@ -119,6 +120,8 @@ export async function openDatabase(filename) {
     await migrateDeviceMetadataAndMemos(db);
     await migrateDeviceDebugReports(db);
     await migrateDeviceDebugScreenshots(db);
+    await migrateServerLogs(db);
+    await migrateAccountHierarchy(db);
     if (filename !== ':memory:') chmodSync(filename, 0o600);
     return db;
 }

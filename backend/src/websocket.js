@@ -40,6 +40,8 @@ export function attachWebSockets(
         return false;
     };
     const logout = (ws, reason) => {
+        for (const id of ws.viewers?.keys() || []) closeViewer(ws, id, 'session_expired');
+        ws.subscriptions?.clear();
         send(ws, {
             type: 'forced_logout',
             code: reason,
@@ -71,7 +73,21 @@ export function attachWebSockets(
             [...panels.clients].map(async (ws) => {
                 if (Date.now() >= ws.principal.exp * 1000) return expireTicket(ws);
                 try {
-                    await accounts.resolveSession(ws.principal);
+                    const user = await accounts.resolveSession(ws.principal);
+                    if (
+                        value.data?.id &&
+                        [
+                            'device_status_update',
+                            'device_online',
+                            'device_offline',
+                            'device_removed',
+                        ].includes(value.type)
+                    ) {
+                        const query = store.db('devices').where('public_id', value.data.id);
+                        if (user.role !== 'superadmin') query.where('project_id', user.project_id);
+                        if (user.role === 'member') query.where('owner_account_id', user.id);
+                        if (!(await query.first())) return;
+                    }
                     send(ws, value);
                 } catch {
                     logout(ws, 'session_expired');
@@ -81,8 +97,23 @@ export function attachWebSockets(
     };
     const publish = async (id, type = 'device_status_update') =>
         broadcast({ type, data: wireDevice(await store.device(id, true)), timestamp: Date.now() });
-    const publishSubscribers = (id, value) => {
-        for (const panel of panels.clients) if (panel.subscriptions?.has(id)) send(panel, value);
+    const publishSubscribers = async (id, value) => {
+        await Promise.all(
+            [...panels.clients].map(async (panel) => {
+                if (!panel.subscriptions?.has(id)) return;
+                try {
+                    const user = await accounts.resolveSession(panel.principal);
+                    await store.withScope(user).device(id, true);
+                    send(panel, value);
+                } catch (e) {
+                    if (e.status === 401) logout(panel, 'session_expired');
+                    else {
+                        panel.subscriptions.delete(id);
+                        closeViewer(panel, id, 'ownership_changed');
+                    }
+                }
+            }),
+        );
     };
     const sendDeviceCommand = (id, command, commandId, params) => {
         const socket = connections.get(id);
@@ -162,7 +193,7 @@ export function attachWebSockets(
                     if (Date.now() >= ws.principal.exp * 1000) return expireTicket(ws);
                     try {
                         if (ws.principal.role === 'panel')
-                            await accounts.resolveSession(ws.principal);
+                            ws.principal.user = await accounts.resolveSession(ws.principal);
                         await handler(JSON.parse(raw.toString()), raw.length);
                     } catch (e) {
                         if (e.status === 401) {
@@ -213,10 +244,11 @@ export function attachWebSockets(
             },
         });
         setup(ws, async (raw, size) => {
+            const scoped = store.withScope(ws.principal.user);
             const message = panelSchema.parse(raw);
             if (message.type === 'ping') return send(ws, { type: 'pong', timestamp: Date.now() });
             if (message.type === 'get_bot_list') {
-                const rows = await store.devices();
+                const rows = await scoped.devices();
                 return send(ws, {
                     type: 'bot_list',
                     data: rows
@@ -225,7 +257,7 @@ export function attachWebSockets(
                         .map(wireDevice),
                 });
             }
-            const device = await store.device(message.sessionId, true);
+            const device = await scoped.device(message.sessionId, true);
             if (message.type === 'subscribe') {
                 if (ws.subscriptions.size >= 20 && !ws.subscriptions.has(device.public_id))
                     throw fail(422, 'subscription_limit');
@@ -526,7 +558,7 @@ export function attachWebSockets(
                         envelope.data.viewerId,
                         envelope.data.payload,
                     );
-                    publishSubscribers(id, {
+                    await publishSubscribers(id, {
                         type: 'accessibility_snapshot_ready',
                         sessionId: id,
                         data: {
@@ -637,7 +669,7 @@ export function attachWebSockets(
                         pendingDevicePings.delete(envelope.data.commandId);
                         if (sentAt) envelope.data.latencyMs = receivedAt - sentAt;
                     }
-                    publishSubscribers(id, {
+                    await publishSubscribers(id, {
                         type: envelope.type,
                         sessionId: id,
                         data: envelope.data,
@@ -688,6 +720,10 @@ export function attachWebSockets(
     });
     const timer = setInterval(() => {
         for (const panel of panels.clients)
+            accounts.resolveSession(panel.principal).catch(() => logout(panel, 'session_expired'));
+        for (const device of devices.clients)
+            ingress.resolve(device.principal).catch(() => device.close(4001, 'account_expired'));
+        for (const panel of panels.clients)
             for (const [id, viewer] of panel.viewers || [])
                 if (viewer.expiresAt <= Date.now()) closeViewer(panel, id, 'lease_expired');
         for (const ws of [...panels.clients, ...devices.clients]) {
@@ -718,14 +754,17 @@ export function attachWebSockets(
                 sessionId: id,
                 data: frame,
                 timestamp: Date.now(),
-            });
+            }).catch(() => {});
         },
         disconnectDevice(id, removed = false) {
             const socket = connections.get(id);
             connections.delete(id);
             store.live.delete(id);
             socket?.close(4001, 'device_disabled');
-            if (removed) for (const panel of panels.clients) panel.subscriptions.delete(id);
+            for (const panel of panels.clients) {
+                closeViewer(panel, id, 'device_disabled');
+                if (removed) panel.subscriptions.delete(id);
+            }
         },
         async close() {
             clearInterval(timer);

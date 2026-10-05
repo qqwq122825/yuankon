@@ -1,3 +1,4 @@
+import { accountContext } from './account-hierarchy.js';
 import { EventEmitter } from 'node:events';
 import { hkdfSync, randomUUID } from 'node:crypto';
 import argon2 from 'argon2';
@@ -34,14 +35,9 @@ export const installationSchema = z
         message: '两次输入的密码不一致',
         path: ['confirmPassword'],
     });
-const hashPassword = (value) =>
+export const hashPassword = (value) =>
     argon2.hash(value, { type: argon2.argon2id, memoryCost: 19456, timeCost: 2, parallelism: 1 });
 const SESSION_SECONDS = 8 * 3600;
-const validAccount = (user) =>
-    user.valid_until === null ||
-    (Number.isSafeInteger(user.valid_until) &&
-        user.valid_until <= 8640000000000000 &&
-        user.valid_until > Date.now());
 
 export class Accounts extends EventEmitter {
     constructor(db, config, masterKey) {
@@ -90,12 +86,17 @@ export class Accounts extends EventEmitter {
         };
     }
     async publicUser(row) {
+        row = await accountContext(this.db, row, { requireActive: false });
         return {
             id: row.id,
             username: row.username,
             role: row.role,
             expiresAt: row.session_expires_at,
-            validUntil: row.valid_until,
+            validUntil: row.effective_valid_until,
+            ownValidUntil: row.valid_until,
+            inheritsValidity: row.inherits_validity,
+            projectId: row.project_id,
+            parentAccountId: row.parent_account_id,
             apkId: row.apk_id,
         };
     }
@@ -163,7 +164,12 @@ export class Accounts extends EventEmitter {
     async checkPassword(username, password) {
         const user = await this.db('accounts').where('username', username.toLowerCase()).first();
         const matches = await argon2.verify(user?.password_hash || this.dummyHash, password);
-        return matches && user?.enabled && user.role === 'superadmin' ? user : null;
+        if (!matches || !user?.enabled) return null;
+        try {
+            return await accountContext(this.db, user);
+        } catch {
+            return null;
+        }
     }
     async resolveSession(payload, db = this.db) {
         if (
@@ -176,13 +182,11 @@ export class Accounts extends EventEmitter {
         const user = await db('accounts').where('id', Number(payload.sub)).first();
         if (
             !user?.enabled ||
-            user.role !== 'superadmin' ||
             user.session_id !== payload.sid ||
-            user.session_expires_at <= Date.now() ||
-            !validAccount(user)
+            user.session_expires_at <= Date.now()
         )
             throw fail(401, '登录状态已失效，请重新登录');
-        return user;
+        return accountContext(db, user);
     }
     async sign(user, audience, ttl = SESSION_SECONDS) {
         return new SignJWT({ sid: user.session_id })
@@ -202,17 +206,13 @@ export class Accounts extends EventEmitter {
     async login(verified, ip) {
         const user = await this.db.transaction(async (trx) => {
             const current = await trx('accounts').where('id', verified.id).first();
-            if (
-                !current?.enabled ||
-                current.role !== 'superadmin' ||
-                current.password_hash !== verified.password_hash
-            )
+            if (!current?.enabled || current.password_hash !== verified.password_hash)
                 throw fail(401, '账号或密码错误');
-            if (!validAccount(current)) throw fail(401, '账号已到期，请联系管理员续费');
+            const context = await accountContext(trx, current);
             const session_id = randomUUID(),
                 session_expires_at = Math.min(
                     Date.now() + SESSION_SECONDS * 1000,
-                    current.valid_until ?? Infinity,
+                    context.effective_valid_until ?? Infinity,
                 );
             await trx('accounts')
                 .where('id', current.id)
@@ -251,6 +251,13 @@ export class Accounts extends EventEmitter {
                 req.user = user;
                 next();
             })(req, res, next);
+    }
+    requireSuperadmin() {
+        return (req, _res, next) => {
+            if (!req.user) return next(fail(401, '请登录或重新登录'));
+            if (req.user.role !== 'superadmin') return next(fail(403, '仅超管可访问此功能'));
+            next();
+        };
     }
     async panelTicket(user) {
         return {

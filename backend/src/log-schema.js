@@ -29,3 +29,28 @@ export async function migrateClientRequestLogs(db) {
         });
     });
 }
+
+export async function migrateServerLogs(db) {
+    if (await db('node_migrations').where('name', '016_server_logs').first()) return;
+    await db.transaction(async (trx) => {
+        await trx.schema.createTable('server_logs', (t) => {
+            t.increments('id');
+            t.integer('project_id').notNullable().index();
+            t.bigInteger('ts').notNullable().index();
+            t.string('level').notNullable().index();
+            t.string('category').notNullable().index();
+            t.string('event').notNullable();
+            t.string('message').notNullable();
+            t.string('request_method').nullable();
+            t.string('request_path').nullable();
+            t.integer('response_status').nullable();
+            t.integer('duration_ms').nullable();
+            t.string('error_kind').nullable();
+            t.string('error_code').nullable();
+        });
+        await trx('node_migrations').insert({
+            name: '016_server_logs',
+            created_at: new Date().toISOString(),
+        });
+    });
+}

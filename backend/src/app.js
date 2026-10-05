@@ -1,4 +1,5 @@
 import express from 'express';
+import { AccountManagement } from './account-management.js';
 import helmet from 'helmet';
 import { rateLimit } from 'express-rate-limit';
 import { createServer } from 'node:http';
@@ -21,6 +22,7 @@ import { DeviceMemos } from './device-memos.js';
 import { BuildQueue } from './build-queue.js';
 import { Installation } from './installation.js';
 import { BuildEnvironment } from './build-environment.js';
+import { ServerLogs } from './server-logs.js';
 
 export async function createApplication(
     config,
@@ -48,10 +50,17 @@ export async function createApplication(
     const ingress = new DeviceIngress(db, auth, store, config);
     const deviceManagement = new DeviceManagement(db, store, ingress);
     const deviceMemos = new DeviceMemos(db, store);
+    const accountManagement = new AccountManagement(db, accounts);
+    const translations = new Map([[config.projectId, translation]]);
     const builds = new BuildQueue(db, config, buildOptions);
     await builds.initialize();
     const app = express(),
         server = createServer(app);
+    const serverLogs = new ServerLogs(db, config);
+    await serverLogs.prune();
+    app.use(serverLogs.middleware());
+    server.on('listening', () => serverLogs.record('server_listening'));
+    server.on('error', (error) => serverLogs.record('server_start_failed', { error }));
     app.disable('x-powered-by');
     app.set('trust proxy', config.trustProxy ? 'loopback' : false);
     const workspaceOnly = localOnly(config);
@@ -119,7 +128,11 @@ export async function createApplication(
     });
     const requireEnvironmentAccess = accounts.requireLogin();
     const environmentAccess = (req, res, next) =>
-        installation.installed ? requireEnvironmentAccess(req, res, next) : next();
+        installation.installed
+            ? requireEnvironmentAccess(req, res, (error) =>
+                  error ? next(error) : accounts.requireSuperadmin()(req, res, next),
+              )
+            : next();
     app.get('/api/install/status', (_req, res) => res.json(installation.status()));
     app.get('/api/install/environment', environmentAccess, async (_req, res) => {
         res.json(await environment.status());
@@ -154,6 +167,32 @@ export async function createApplication(
     );
     app.use('/api/auth', authRoutes(accounts, config));
     app.use('/api', accounts.requireLogin());
+    app.use('/api', async (req, _res, next) => {
+        req.store = store.withScope(req.user);
+        const projectId = req.user.role === 'superadmin' ? config.projectId : req.user.project_id;
+        if (!translations.has(projectId))
+            translations.set(
+                projectId,
+                new Translation(db, { ...config, projectId }, key, fetcher),
+            );
+        req.translation = translations.get(projectId);
+        if (req.path.startsWith('/settings/translation') && req.user.role === 'member')
+            throw fail(403, '子账号不管理翻译配置');
+        next();
+    });
+    app.use('/api/devices/:id', async (req, _res, next) => {
+        const id = idSchema.parse(req.params.id);
+        if (req.method === 'DELETE' && ['/', ''].includes(req.path)) {
+            const query = db('devices').where({ id });
+            if (req.user.role !== 'superadmin') query.where('project_id', req.user.project_id);
+            if (req.user.role === 'member') query.where('owner_account_id', req.user.id);
+            if (!(await query.first())) throw fail(404, '设备不存在');
+        } else await req.store.device(id);
+        next();
+    });
+    app.use('/api', accountManagement.routes());
+    app.use('/api', serverLogs.routes(accounts.requireSuperadmin()));
+    app.use('/api/logs/protocol', accounts.requireSuperadmin());
     app.use('/api', ingress.accountRoutes());
     app.use('/api', builds.routes());
     app.get('/api/session', async (req, res) => res.json(await accounts.panelTicket(req.user)));
@@ -164,6 +203,8 @@ export async function createApplication(
             mode: config.trustProxy ? 'trusted-proxy' : 'local-only',
             capabilities: [
                 'superadmin-login',
+                'studio-accounts',
+                'tenant-isolation',
                 'single-session',
                 'all-devices',
                 'device-list',
@@ -178,16 +219,11 @@ export async function createApplication(
                 'leased-accessibility-preview',
                 'apk-build-queue',
             ],
-            pending: [
-                'studio-accounts',
-                'telegram-otp',
-                'telegram-worker',
-                'continuous-frame-stream',
-            ],
+            pending: ['telegram-otp', 'telegram-worker', 'continuous-frame-stream'],
         }),
     );
     app.get(['/api/devices', '/api/device/list'], async (req, res) => {
-        const result = await store.list(req.query);
+        const result = await req.store.list(req.query);
         result.data = result.data.map((device) => ({
             ...device,
             thumbnail: ingress.thumbnail(device.id),
@@ -196,7 +232,7 @@ export async function createApplication(
     });
     app.get('/api/devices/:id', async (req, res) =>
         res.json(
-            await store.detail(
+            await req.store.detail(
                 idSchema.parse(req.params.id),
                 req.query.snapshot ? idSchema.parse(req.query.snapshot) : undefined,
             ),
@@ -207,13 +243,13 @@ export async function createApplication(
             .object({ note: z.string().max(200) })
             .strict()
             .parse(req.body);
-        const device = await store.note(idSchema.parse(req.params.id), note);
+        const device = await req.store.note(idSchema.parse(req.params.id), note);
         await ws.broadcast({
             type: 'device_status_update',
             data: wireDevice(device),
             timestamp: Date.now(),
         });
-        await store.audit('note_updated', 'http', device.public_id);
+        await req.store.audit('note_updated', 'http', device.public_id);
         res.json(device);
     });
     const memoInput = z
@@ -228,8 +264,8 @@ export async function createApplication(
     app.post('/api/devices/:id/memos', async (req, res) => {
         const deviceId = idSchema.parse(req.params.id);
         const memo = await deviceMemos.create(deviceId, memoInput.parse(req.body), req.user.id);
-        const device = await store.device(deviceId);
-        await store.audit('device_memo_created', 'http', device.public_id);
+        const device = await req.store.device(deviceId);
+        await req.store.audit('device_memo_created', 'http', device.public_id);
         res.status(201).json(memo);
     });
     app.patch('/api/devices/:id/memos/:memoId', async (req, res) => {
@@ -239,16 +275,16 @@ export async function createApplication(
             idSchema.parse(req.params.memoId),
             memoInput.parse(req.body),
         );
-        const device = await store.device(deviceId);
-        await store.audit('device_memo_updated', 'http', device.public_id);
+        const device = await req.store.device(deviceId);
+        await req.store.audit('device_memo_updated', 'http', device.public_id);
         res.json(memo);
     });
     app.delete('/api/devices/:id/memos/:memoId', async (req, res) => {
         z.object({}).strict().parse(req.body);
         const deviceId = idSchema.parse(req.params.id);
         await deviceMemos.remove(deviceId, idSchema.parse(req.params.memoId));
-        const device = await store.device(deviceId);
-        await store.audit('device_memo_deleted', 'http', device.public_id);
+        const device = await req.store.device(deviceId);
+        await req.store.audit('device_memo_deleted', 'http', device.public_id);
         res.json({ ok: true });
     });
     app.patch('/api/devices/:id/blacklist', async (req, res) => {
@@ -258,7 +294,7 @@ export async function createApplication(
             { blacklisted },
             req.user.id,
         );
-        res.json({ device: store.dto(device) });
+        res.json({ device: req.store.dto(device) });
     });
     app.delete('/api/devices/:id', async (req, res) => {
         z.object({}).strict().parse(req.body);
@@ -267,7 +303,7 @@ export async function createApplication(
     });
     app.get('/api/snapshots', async (req, res) => {
         const page = z.coerce.number().int().min(1).max(100000).default(1).parse(req.query.page);
-        const query = store.snapshotQuery();
+        const query = req.store.snapshotQuery();
         const { total } = await query.clone().count('* as total').first();
         res.json({
             data: await query
@@ -280,18 +316,18 @@ export async function createApplication(
         });
     });
     app.get('/api/snapshots/:id/export', async (req, res) => {
-        const snapshot = await store.snapshot(idSchema.parse(req.params.id));
-        await store.audit(
+        const snapshot = await req.store.snapshot(idSchema.parse(req.params.id));
+        await req.store.audit(
             'snapshot_export',
             'http',
-            (await store.device(snapshot.device_id)).public_id,
+            (await req.store.device(snapshot.device_id)).public_id,
         );
         res.attachment(`snapshot-${snapshot.id}.json`)
             .type('json')
             .send(JSON.stringify(snapshot.payload, null, 2));
     });
     app.get('/api/snapshots/:id/image', async (req, res) => {
-        const snapshot = await store.snapshot(idSchema.parse(req.params.id));
+        const snapshot = await req.store.snapshot(idSchema.parse(req.params.id));
         if (snapshot.source === 'sample' && snapshot.screenshot_path === 'demo:settings')
             return res
                 .type('svg')
@@ -306,7 +342,13 @@ export async function createApplication(
     });
     app.get('/api/events', async (req, res) => {
         const page = z.coerce.number().int().min(1).max(100000).default(1).parse(req.query.page);
-        const query = db('lab_events').whereIn('device_id', store.devices().select('id'));
+        const query = db('lab_events').whereExists(
+            req.store
+                .devices()
+                .select(db.raw('1'))
+                .whereColumn('devices.id', 'lab_events.device_id')
+                .whereColumn('devices.project_id', 'lab_events.project_id'),
+        );
         const { total } = await query.clone().count('* as total').first();
         res.json({
             data: await query
@@ -324,18 +366,18 @@ export async function createApplication(
         legacyHeaders: false,
         message: { error: '翻译调用频率超限' },
     });
-    app.get('/api/settings/translation', async (_req, res) =>
-        res.json(await translation.publicState()),
+    app.get('/api/settings/translation', async (req, res) =>
+        res.json(await req.translation.publicState()),
     );
     app.put('/api/settings/translation', translationLimit, async (req, res) =>
-        res.json(await translation.save(req.body)),
+        res.json(await req.translation.save(req.body)),
     );
-    app.delete('/api/settings/translation', translationLimit, async (_req, res) =>
-        res.json(await translation.clear()),
+    app.delete('/api/settings/translation', translationLimit, async (req, res) =>
+        res.json(await req.translation.clear()),
     );
-    app.post('/api/settings/translation/verify', translationLimit, async (_req, res) => {
-        await translation.translate({ test: 'Synthetic fixture' }, true);
-        res.json(await translation.publicState());
+    app.post('/api/settings/translation/verify', translationLimit, async (req, res) => {
+        await req.translation.translate({ test: 'Synthetic fixture' }, true);
+        res.json(await req.translation.publicState());
     });
 
     const translateLabelsSchema = z
@@ -347,13 +389,13 @@ export async function createApplication(
         .strict();
     app.post('/api/translate', translationLimit, async (req, res) => {
         const body = translateLabelsSchema.parse(req.body);
-        res.json({ labels: await translation.translate(body.labels, false, null) });
+        res.json({ labels: await req.translation.translate(body.labels, false, null) });
     });
     app.post('/api/snapshots/:id/translate', translationLimit, async (req, res) => {
         z.object({}).strict().parse(req.body);
         res.json({
-            labels: await translation.translate(
-                labelsFor(await store.snapshot(idSchema.parse(req.params.id))),
+            labels: await req.translation.translate(
+                labelsFor(await req.store.snapshot(idSchema.parse(req.params.id))),
             ),
         });
     });
@@ -422,12 +464,15 @@ export async function createApplication(
                 '/',
                 '/devices/:id',
                 '/builds',
+                '/accounts',
+                '/accounts/:studioAccountId/members',
                 '/settings/translation',
                 '/settings/account',
                 '/login',
                 '/install',
                 '/snapshots',
                 '/events',
+                '/logs',
                 '/protocol',
             ],
             (_req, res) => res.sendFile(path.join(dist, 'index.html')),
@@ -435,6 +480,7 @@ export async function createApplication(
     }
     app.use((_req, _res, next) => next(fail(404, '页面不存在')));
     app.use((err, _req, res, _next) => {
+        res.locals.serverLogError = err;
         const validation = err instanceof z.ZodError,
             parse = err.type === 'entity.parse.failed';
         const status =
@@ -450,6 +496,18 @@ export async function createApplication(
         });
     });
     const ws = attachWebSockets(server, store, auth, config, { dev, accounts, ingress });
+    accounts.onAccountsChanged = async ({ ids }) => {
+        const rows = await db('devices').whereIn('owner_account_id', ids);
+        for (const device of rows) {
+            ingress.frames.delete(device.id);
+            ingress.recentImages.delete(device.id);
+            ingress.nodeFrames.delete(device.id);
+            ingress.viewerLeases.delete(device.id);
+            ingress.grants.delete(device.id);
+            ingress.pendingCaptures.delete(device.id);
+            ws.disconnectDevice(device.public_id);
+        }
+    };
     ingress.publish = ws.publish;
     ingress.notifyFrame = ws.frameReady;
     deviceManagement.disconnect = ws.disconnectDevice;
@@ -469,10 +527,12 @@ export async function createApplication(
             db('protocol_logs')
                 .where('ts', '<', Date.now() - 7 * 86400000)
                 .delete()
+                .then(() => serverLogs.prune())
                 .catch(() => {}),
         3600000,
     );
     prune.unref();
+    await serverLogs.record('application_ready');
     return {
         app,
         server,
@@ -484,15 +544,20 @@ export async function createApplication(
         translation,
         ingress,
         deviceManagement,
+        accountManagement,
         builds,
+        serverLogs,
         async close() {
             clearInterval(prune);
+            await serverLogs.record('server_stopping');
             ingress.close();
             await environment.close();
             await builds.close();
             await ws.close();
             await vite?.close();
             await new Promise((r) => server.close(r));
+            await serverLogs.record('server_stopped');
+            await serverLogs.close();
             if (!providedDb) await db.destroy();
         },
     };

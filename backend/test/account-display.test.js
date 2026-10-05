@@ -19,6 +19,6 @@ test('account validity labels use the last valid Beijing date, not session expir
         assert.equal(validityDisplay(bad).state, 'unknown');
     assert.equal(roleLabel('superadmin'), '超管');
     assert.equal(roleLabel('studio_admin'), '总台');
-    assert.equal(roleLabel('member'), '员工');
+    assert.equal(roleLabel('member'), '子账号');
     assert.equal(roleLabel('bad'), '账号');
 });

@@ -4,7 +4,7 @@
 
 参考 2026-09-27《无障碍辅助设备管理平台 · 通信协议规范 开放版 v1.0》。当前采用其面板通道、推荐消息信封、公开设备 ID、状态上报双层 type 和事件命名；不是全协议替代实现。HTTP 端点是否存在以本文件和代码为准，未实现接口返回 404，未知 WS 报文返回 `error`。
 
-当前进程仅监听 `127.0.0.1:8080`，所有 HTTP/WS 校验直连本机地址、Host、Origin 和转发头。全新数据库仅开放安装状态、固定构建环境安装与受限的单次账号安装接口；部署者在 `/install` 先安装并验证 Android 构建环境，再设置超管账号和密码。成功后账号安装永久关闭；构建环境接口改为仅登录账号可访问，便于后续检测或补齐工具链，其他 API 同时开放。登录后可跨所有项目查看设备。设备上报的项目归属仍由服务端凭证与数据库确定。
+当前进程仅监听 `127.0.0.1:8080`，所有 HTTP/WS 校验直连本机地址、Host、Origin 和转发头。全新数据库仅开放安装状态、固定构建环境安装与受限的单次账号安装接口；部署者在 `/install` 先安装并验证 Android 构建环境，再设置超管账号和密码。成功后账号安装永久关闭；构建环境接口改为仅超管可访问，便于后续检测或补齐工具链，其他 API 同时开放。登录后可跨所有项目查看设备。设备上报的项目归属仍由服务端凭证与数据库确定。
 
 安装完成后，除健康检查、登录、随机 UUID 构建产物下载与下述设备专用接口外，业务 HTTP API 要求账号 JWT，支持 `Authorization: Bearer ACCOUNT_TOKEN` 或 HttpOnly Cookie。构建产物链接用于直接分享，仅开放成功任务的 APK 文件；日志、列表、删除及其他管理接口仍需登录。账号 JWT 与设备 JWT、面板 WS 票据互不通用。账号仅保留一个有效会话，JWT 签名有效还需通过 SQLite 当前会话/角色/启用状态校验。详见 [账号方案](ACCOUNT_DESIGN.md)。
 
@@ -15,8 +15,8 @@
 | 方法           | 路由                                        | 行为                                                                                                              |
 | -------------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | GET            | /api/install/status                         | `{installed:boolean}`；不返回账号或锁内容                                                                         |
-| GET            | /api/install/environment                    | 未初始化时直接开放；初始化后需账号登录。返回固定组件、安装阶段、有界日志与 ready 状态                             |
-| POST           | /api/install/environment                    | 未初始化时直接开放；初始化后需账号登录。启动单个固定 Linux 环境安装任务；无用户参数，202 表示正在执行             |
+| GET            | /api/install/environment                    | 未初始化时直接开放；初始化后需超管登录。返回固定组件、安装阶段、有界日志与 ready 状态                             |
+| POST           | /api/install/environment                    | 未初始化时直接开放；初始化后需超管登录。启动单个固定 Linux 环境安装任务；无用户参数，202 表示正在执行             |
 | POST           | /api/install                                | 仅环境验证通过且未安装时接受 `{username,password,confirmPassword}`；事务创建唯一超管与 APK ID `1`，成功后永久关闭 |
 | POST           | /api/client/online                          | B 包自动上线；`{deviceId,apkId,设备画像}` → 按 APK ID 归属、幂等设备记录与内部设备 Token                          |
 | GET            | /api/health                                 | Node/Vue/协议/本机模式状态                                                                                        |
@@ -47,8 +47,8 @@
 | GET/PUT/DELETE | /api/settings/translation                   | 配置状态 / 加密保存 / 清除                                                                                        |
 | POST           | /api/settings/translation/verify            | 真实调用固定 Google v2 地址验证已保存密钥                                                                         |
 | POST           | /api/snapshots/:id/translate                | 请求体 `{}`；仅固定合成标签                                                                                       |
-| GET            | /api/logs/protocol、/api/logs/protocol/tail | `afterId`、`limit`（1–100）、`channel`                                                                            |
-| GET            | /api/logs/protocol/export?date=YYYY-MM-DD   | 按 UTC 日期导出，单次上限 10000 条                                                                                |
+| GET            | /api/logs/protocol、/api/logs/protocol/tail | 仅超管；`afterId`、`limit`（1–100）、`channel`                                                                            |
+| GET            | /api/logs/protocol/export?date=YYYY-MM-DD   | 仅超管；按 UTC 日期导出，单次上限 10000 条                                                                                |
 
 HTTP 写请求（包括登录）要求 JSON 和 `X-Boundary-Request: 1`，跨站页面不开放 CORS。通用每分钟 300 次；登录/改密失败共享每 IP 每 15 分钟 10 次的限流；翻译每分钟 20 次；JSON 请求上限 32KB。错误返回 `{error}`：未登录/会话失效 401、校验失败 422、限流 429、不存在或关联错误 404。所有 API 响应 no-store；未知 API 不回落到 SPA HTML。
 
@@ -127,10 +127,21 @@ npm run device:token -- TEST_DEVICE_001
 
 左侧「日志」入口使用 `GET /api/logs/protocol/tail?scope=client` 查看客户端请求元数据。B 包 HTTP 请求记录固定方法、固定路由、响应状态、耗时、字节数和已验证设备 ID；设备 WebSocket 记录连接、登记、心跳、截图结果与断开事件。日志不保存 Authorization、设备 Token、请求正文、截图内容或 URL 查询参数，保留策略与协议审计一致为 7 天；`GET /api/logs/protocol/export?date=YYYY-MM-DD&scope=client` 导出当天 UTC JSONL。
 
-`/ws/bridge`、反向隧道、任意代理、二进制/base64 画面流、输入操作及原 PHP v1 诊断接口尚未接入。总台/子账号/验证码仍待实现；已加入 APK ID 到现有超管的首次登记归属。收到不支持的二进制帧返回 `unsupported_binary`，不透传。原 android-shell 不变；B 包 1.7 实现用户确认 MediaProjection 后的首图、有效网页租约内的串行最新帧，以及不含正文的结构节点预览。
+`/ws/bridge`、反向隧道、任意代理、二进制/base64 画面流、输入操作及原 PHP v1 诊断接口尚未接入。总台/子账号及租户隔离已实现；机器人验证码仍待实现；已加入 APK ID 到现有超管的首次登记归属。收到不支持的二进制帧返回 `unsupported_binary`，不透传。原 android-shell 不变；B 包 1.7 实现用户确认 MediaProjection 后的首图、有效网页租约内的串行最新帧，以及不含正文的结构节点预览。
 
 ## 网页构建参数
 
-`POST /api/builds`：B 包使用 `{templateId,domain,appName,apkId?,batch?,packageName?,requestId}`，只接收后台域名；A 包使用 `{templateId:"installer-1.1",appName,homeUrl,packageName?,requestId}`，只接收 HTTPS 首页地址。给 B 包传 `homeUrl` 或给 A 包传 `domain` 均返回 422。requestId 为 UUID，相同提交重试幂等，换配置必须换 requestId。apkId 可空或省略：有效账号固定编号指定归属，未匹配可用账号或留空归默认接收账号（当前为超管），不创建新编号。响应 build 的 apk_id 为实际编号，requested_apk_id 保留输入，owner_account_id / owner_username / routing_reason 表示构建时归属快照；原因取 explicit / default_empty / default_unmatched。A 包必须存在同项目、同归属账号的最新成功 B 包，任务创建时固定 `payload_build_id/payload_sha256/payload_package_name`；缺少 B 返回 409，A/B 包名相同时返回 422。batch 和 packageName 默认空，空包名服务端随机生成；模板决定 versionName/versionCode。B 包 domain 支持 local、已登记简称、HTTPS origin；A 包 homeUrl 只接受不带凭证的 HTTPS URL。构建器按模板 `visibleLauncher` 校验 B 包无 MAIN/LAUNCHER；1.7 的无界面内部 Activity 只负责立即转交 Android 系统 MediaProjection 确认，A 包必须有桌面入口，否则包信息校验失败。
+`POST /api/builds`：B 包使用 `{templateId,domain,appName,apkId?,batch?,packageName?,requestId}`，只接收后台域名；A 包使用 `{templateId:"installer-1.1",appName,homeUrl,packageName?,requestId}`，只接收 HTTPS 首页地址。给 B 包传 `homeUrl` 或给 A 包传 `domain` 均返回 422。requestId 为 UUID，相同提交重试幂等，换配置必须换 requestId。apkId 可空或省略：有效账号固定编号指定归属，未匹配可用账号或留空归默认接收账号（超管/总台本人，子账号所属总台），不创建新编号。响应 build 的 apk_id 为实际编号，requested_apk_id 保留输入，owner_account_id / owner_username / routing_reason 表示构建时归属快照；原因取 explicit / default_empty / default_unmatched。A 包必须存在同项目、同归属账号的最新成功 B 包，任务创建时固定 `payload_build_id/payload_sha256/payload_package_name`；缺少 B 返回 409，A/B 包名相同时返回 422。batch 和 packageName 默认空，空包名服务端随机生成；模板决定 versionName/versionCode。B 包 domain 支持 local、已登记简称、HTTPS origin；A 包 homeUrl 只接受不带凭证的 HTTPS URL。构建器按模板 `visibleLauncher` 校验 B 包无 MAIN/LAUNCHER；1.7 的无界面内部 Activity 只负责立即转交 Android 系统 MediaProjection 确认，A 包必须有桌面入口，否则包信息校验失败。
 
-任务持久化 queued/building/succeeded/failed，stage 细分 preparing/compiling/signing/aligning/inspecting/publishing；失败返回经过归一化的 error_message，不泄漏工具输出。成功才返回 downloadUrl/sha256/size/artifactAvailable；日志文件存在时返回 logAvailable/logUrl，日志下载同样要求当前超管登录。最多 10 个未完成任务，单任务 20 分钟；额度/工具链错误返回 429/409/503。完成或失败的任务可确认删除，服务端按已校验 UUID 同时删除数据库记录、`files/apk-builds/<UUID>` 产物目录和 `build-work/<UUID>` 日志目录，并写入账号审计；排队中或构建中的任务返回 409。保存模板配置快照、提交者和 APK ID 归属，后续新增角色需统一加入租户检查。下载链接不携带 Token。详见 [模板与队列](../../android/apk-templates/README.md)。
+任务持久化 queued/building/succeeded/failed，stage 细分 preparing/compiling/signing/aligning/inspecting/publishing；失败返回经过归一化的 error_message，不泄漏工具输出。成功才返回 downloadUrl/sha256/size/artifactAvailable；日志文件存在时返回 logAvailable/logUrl，日志下载要求当前账号且通过项目/提交者归属校验。最多 10 个未完成任务，单任务 20 分钟；额度/工具链错误返回 429/409/503。完成或失败的任务可确认删除，服务端按已校验 UUID 同时删除数据库记录、`files/apk-builds/<UUID>` 产物目录和 `build-work/<UUID>` 日志目录，并写入账号审计；排队中或构建中的任务返回 409。保存模板配置快照、提交者和 APK ID 归属，总台按项目过滤，子账号按项目和 actor_id 过滤。下载链接不携带 Token。详见 [模板与队列](../../android/apk-templates/README.md)。
+
+
+## 超管服务器日志
+
+`GET /api/logs/server` 与 `/api/logs/server/tail`：只允许有效超管会话，普通角色 403，未登录 401。支持 `level=info|warn|error`、`category=runtime|http`、UTC `date=YYYY-MM-DD`、`limit=1..100`；未传 `afterId` 返回最近记录并按 ID 升序排列，传 `afterId` 返回之后的增量。响应 `{data,payloadPolicy:"metadata-only",retentionDays:7,source:"node-server"}`。
+
+`GET /api/logs/server/export?date=YYYY-MM-DD`：同一超管权限与级别/分类筛选，UTC 日期必填，最多 10000 条 JSONL。未知字段、无效枚举和不存在的日期返回 422。只记录路由模板、HTTP 状态与耗时，异常仅允许固定类型/错误码；请求正文、查询、头、凭证及任意原始异常消息不入日志。详见 [服务器日志](SERVER_LOGS.md)。
+
+## 三级账号 API
+
+GET /api/accounts 支持 q/page/sort(username,apkId,createdAt,validUntil)/direction 与超管 parentId；每页20条。POST /api/accounts/studios 仅超管；POST /api/accounts/members 仅总台；POST /api/accounts/studios/:id/members 仅超管代管。创建字段 requestId(UUID)/username/password/confirmPassword/validUntil/note，总台另需 name；不接受 role、project_id 或自定义编号。PATCH /api/accounts/:id/status(enabled)、PATCH /api/accounts/:id/validity(validUntil)、PUT /api/accounts/:id/password(password/confirmPassword) 仅合法管理者；子账号403，跨归属对象404，格式422，重复/配额409。新账号密码8–128字；到期截止为UTC毫秒，子账号NULL继承总台，总台必须有限期限。具体上下文及单机隔离见 ACCOUNT_DESIGN.md。

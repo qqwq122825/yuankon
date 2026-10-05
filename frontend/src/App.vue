@@ -11,12 +11,15 @@ const route = useRoute(),
     q = ref(''),
     dark = ref(localStorage.getItem('boundary-theme') === 'dark');
 const detail = computed(() => route.path.startsWith('/devices/'));
-const nav = [
+const nav = computed(() => [
     ['/', 'device-mobile', '设备'],
+    ...(['superadmin', 'studio_admin'].includes(session.user?.role)
+        ? [['/accounts', 'shield-check', '账号']]
+        : []),
     ['/builds', 'package', '构建'],
-    ['/settings/translation', 'adjustments', '翻译'],
-    ['/logs', 'activity', '日志'],
-];
+    ...(session.user?.role !== 'member' ? [['/settings/translation', 'adjustments', '翻译']] : []),
+    ...(session.user?.role === 'superadmin' ? [['/logs', 'activity', '日志']] : []),
+]);
 watch(
     () => route.query.q,
     (v) => (q.value = String(v || '')),
@@ -104,11 +107,13 @@ function search() {
             <button class="btn console-theme" @click="dark = !dark" aria-label="切换明暗主题">
                 {{ dark ? '浅色' : '深色' }}主题</button
             ><RouterLink
+                v-if="session.user.role === 'superadmin'"
                 to="/protocol"
                 class="btn console-help"
                 :title="connection.error || '查看协议审计'"
                 >WS · {{ connection.status }}</RouterLink
             >
+            <span v-else class="console-help">WS · {{ connection.status }}</span>
         </header>
         <aside class="console-rail">
             <nav aria-label="主导航">
@@ -117,7 +122,11 @@ function search() {
                     :key="url"
                     :to="url"
                     class="rail-link"
-                    :class="{ active: route.path === url }"
+                    :class="{
+                        active:
+                            route.path === url ||
+                            (url === '/accounts' && route.path.startsWith('/accounts/')),
+                    }"
                     ><img
                         :src="`/vendor/icons/${icon}.svg`"
                         width="21"

@@ -5,8 +5,15 @@ export class Store {
         this.projectId = projectId;
         this.live = new Map();
     }
+    withScope(user) {
+        const scoped = new Store(this.db, user.role === 'superadmin' ? null : user.project_id);
+        scoped.ownerId = user.role === 'member' ? user.id : null;
+        scoped.live = this.live;
+        return scoped;
+    }
     devices() {
         const query = this.db('devices').whereNull('devices.deleted_at');
+        if (this.ownerId) query.where('devices.owner_account_id', this.ownerId);
         return this.projectId === null ? query : query.where('devices.project_id', this.projectId);
     }
     async device(id, publicId = false) {

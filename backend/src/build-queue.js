@@ -1,3 +1,4 @@
+import { accountContext } from './account-hierarchy.js';
 import { Router } from 'express';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -43,6 +44,12 @@ export class BuildQueue {
             localOrigin: this.config.origin,
         };
     }
+    scope(actor, db = this.db) {
+        const query = db('apk_builds');
+        if (actor.role !== 'superadmin') query.where('project_id', actor.project_id);
+        if (actor.role === 'member') query.where('actor_id', actor.id);
+        return query;
+    }
     async enqueue(input, actor) {
         if (this.stopping) throw fail(503, '构建队列正在关闭');
         const parsed = buildInput.parse(input);
@@ -77,7 +84,7 @@ export class BuildQueue {
         const now = new Date().toISOString();
         const job = {
             id: randomUUID(),
-            project_id: this.config.projectId,
+            project_id: actor.role === 'superadmin' ? this.config.projectId : actor.project_id,
             actor_id: actor.id,
             request_id: parsed.requestId,
             request_body: requestBody,
@@ -104,9 +111,10 @@ export class BuildQueue {
                     throw fail(409, '提交标识已用于其他配置');
                 return duplicate;
             }
-            const owner = await trx('accounts')
-                .where({ id: actor.id, enabled: true, role: 'superadmin' })
-                .first();
+            const owner = await accountContext(
+                trx,
+                await trx('accounts').where({ id: actor.id }).first(),
+            );
             if (!owner) throw fail(403, '当前账号没有构建权限');
             const { n } = await trx('apk_builds')
                 .whereIn('status', activeStates)
@@ -121,10 +129,15 @@ export class BuildQueue {
                 throw fail(409, '构建产物配额不足（含排队预留），请管理员归档清理后重试');
             Object.assign(
                 job,
-                await resolveBuildRecipient(trx, parsed.apkId, owner, this.config.projectId),
+                await resolveBuildRecipient(trx, parsed.apkId, owner, job.project_id),
             );
             if (role === 'a') {
-                const payload = await this.latestB(job.owner_account_id, trx);
+                const payload = await this.latestB(
+                    job.owner_account_id,
+                    trx,
+                    owner,
+                    job.project_id,
+                );
                 if (!payload) throw fail(409, '请先完成同一归属账号的 B 包构建，再构建 A 包');
                 if (payload.package_name === pkg) throw fail(422, 'A 包与 B 包必须使用不同包名');
                 Object.assign(job, {
@@ -145,13 +158,20 @@ export class BuildQueue {
         this.kick();
         return this.dto(saved);
     }
-    async latestB(ownerId, connection = this.db) {
+    async latestB(ownerId, connection = this.db, actor = null, projectId = null) {
         const rows = await connection('apk_builds')
             .where({
-                project_id: this.config.projectId,
+                project_id:
+                    projectId ??
+                    (actor && actor.role !== 'superadmin'
+                        ? actor.project_id
+                        : this.config.projectId),
                 owner_account_id: ownerId,
                 artifact_role: 'b',
                 status: 'succeeded',
+            })
+            .modify((query) => {
+                if (actor?.role === 'member') query.where('actor_id', actor.id);
             })
             .orderBy('finished_at', 'desc')
             .orderBy('created_at', 'desc')
@@ -209,6 +229,14 @@ export class BuildQueue {
                 started_at: new Date().toISOString(),
             });
             try {
+                const actor = await accountContext(
+                    this.db,
+                    await this.db('accounts').where('id', job.actor_id).first(),
+                );
+                await accountContext(
+                    this.db,
+                    await this.db('accounts').where('id', job.owner_account_id).first(),
+                );
                 const template = templateSchema.parse(JSON.parse(job.template_snapshot));
                 let payloadFile;
                 if (job.artifact_role === 'a') {
@@ -222,6 +250,7 @@ export class BuildQueue {
                         })
                         .first();
                     if (
+                        (actor.role === 'member' && payload?.actor_id !== actor.id) ||
                         !payload ||
                         payload.sha256 !== job.payload_sha256 ||
                         payload.package_name !== job.payload_package_name
@@ -239,6 +268,14 @@ export class BuildQueue {
                     payloadFile,
                 });
                 if (signal.aborted) throw new Error('Interrupted');
+                await accountContext(
+                    this.db,
+                    await this.db('accounts').where('id', job.actor_id).first(),
+                );
+                await accountContext(
+                    this.db,
+                    await this.db('accounts').where('id', job.owner_account_id).first(),
+                );
                 await privateFile(
                     path.join(this.config.privateDir, 'files'),
                     result.artifact_path,
@@ -309,7 +346,7 @@ export class BuildQueue {
     async remove(id, actor) {
         const buildId = uuid.parse(id);
         return this.db.transaction(async (trx) => {
-            const row = await trx('apk_builds').where('id', buildId).first();
+            const row = await this.scope(actor, trx).where('id', buildId).first();
             if (!row) throw fail(404, '构建任务不存在');
             if (activeStates.includes(row.status)) throw fail(409, '构建进行中，完成后再删除');
             if (
@@ -376,20 +413,24 @@ export class BuildQueue {
                 .max(100000)
                 .default(1)
                 .parse(req.query.page);
-            const { total } = await this.db('apk_builds').count('* as total').first();
-            const rows = await this.db('apk_builds')
+            const { total } = await this.scope(req.user).count('* as total').first();
+            const rows = await this.scope(req.user)
                 .orderBy('created_at', 'desc')
                 .orderBy('id', 'desc')
                 .limit(20)
                 .offset((page - 1) * 20);
-            const { n } = await this.db('apk_builds')
+            const { n } = await this.scope(req.user)
                 .whereIn('status', activeStates)
                 .count('* as n')
                 .first();
             res.json({
                 data: await Promise.all(rows.map((r) => this.dto(r))),
                 latestB: await (async () => {
-                    const row = await this.latestB(req.user.id);
+                    const row = await this.latestB(
+                        req.user.role === 'member' ? req.user.parent_account_id : req.user.id,
+                        this.db,
+                        req.user,
+                    );
                     return row ? this.dto(row) : null;
                 })(),
                 total,
@@ -403,7 +444,7 @@ export class BuildQueue {
         });
         router.get('/builds/:id/log', async (req, res) => {
             const id = uuid.parse(req.params.id);
-            const row = await this.db('apk_builds').where('id', id).first();
+            const row = await this.scope(req.user).where('id', id).first();
             if (!row) throw fail(404, '构建日志不存在');
             const file = await privateFile(
                 path.join(this.config.privateDir, 'build-work'),
@@ -423,7 +464,7 @@ export class BuildQueue {
             res.json(await this.remove(req.params.id, req.user));
         });
         router.get('/builds/:id', async (req, res) => {
-            const row = await this.db('apk_builds').where('id', uuid.parse(req.params.id)).first();
+            const row = await this.scope(req.user).where('id', uuid.parse(req.params.id)).first();
             if (!row) throw fail(404, '构建任务不存在');
             res.json({ build: await this.dto(row) });
         });

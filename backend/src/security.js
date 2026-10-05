@@ -53,7 +53,7 @@ export function tokens(masterKey, projectId) {
     const key = new Uint8Array(hkdfSync('sha256', masterKey, 'boundary', 'ws-jwt-v1', 32));
     return {
         async issue(role, subject = 'local-panel', ttl = '10m', claims = {}) {
-            return new SignJWT({ ...claims, role, projectId })
+            return new SignJWT({ ...claims, role, projectId: claims.projectId ?? projectId })
                 .setProtectedHeader({ alg: 'HS256' })
                 .setIssuer('boundary-local')
                 .setAudience('boundary-ws')

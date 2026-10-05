@@ -1,3 +1,4 @@
+import { accountContext } from './account-hierarchy.js';
 import { randomUUID } from 'node:crypto';
 import { nodeDiagnosticEvents, nodeRejectionEvent } from './node-diagnostics.js';
 import path from 'node:path';
@@ -208,9 +209,7 @@ export class DeviceIngress {
         this.debugSessions.clear();
     }
     async owner(id, db = this.db) {
-        const row = await db('accounts').where({ id, enabled: true, role: 'superadmin' }).first();
-        if (!row) throw fail(422, '归属账号不存在或尚未支持该角色');
-        return row;
+        return accountContext(db, await db('accounts').where({ id }).first());
     }
     async resolve(principal, managedOnly = false) {
         const device = await this.db('devices').where('public_id', principal.sub).first();
@@ -226,10 +225,7 @@ export class DeviceIngress {
         }
         if (credential.revoked || credential.credential_id !== principal.jti)
             throw fail(401, '设备凭证已撤销');
-        const owner = await this.db('accounts')
-            .where({ id: device.owner_account_id, enabled: true, role: 'superadmin' })
-            .first();
-        if (!owner) throw fail(401, '设备归属账号已停用');
+        await this.owner(device.owner_account_id);
         return device;
     }
     async principal(req) {
@@ -240,10 +236,15 @@ export class DeviceIngress {
     async register(req) {
         const profile = profileSchema.parse(req.body);
         req.clientLogDeviceId = profile.deviceId;
-        const p = await this.auth.verify(bearer(req), 'enrollment');
+        const p = await this.auth.verify(bearer(req), 'enrollment', null);
         const result = await this.db.transaction(async (trx) => {
             const ticket = await trx('device_enrollments').where('id', p.sub).first();
-            if (!ticket || ticket.expires_at <= Date.now() || ticket.apk_id !== profile.apkId)
+            if (
+                !ticket ||
+                ticket.project_id !== p.projectId ||
+                ticket.expires_at <= Date.now() ||
+                ticket.apk_id !== profile.apkId
+            )
                 throw fail(401, '登记码已失效或 APK ID 不匹配');
             const route = await trx('apk_routes')
                 .where({ apk_id: ticket.apk_id, enabled: true })
@@ -296,7 +297,7 @@ export class DeviceIngress {
             'device',
             device.public_id,
             Math.floor(expiresAt / 1000),
-            { jti: credential.credential_id },
+            { jti: credential.credential_id, projectId: device.project_id },
         );
         await this.store.audit('device_registered', 'http', device.public_id);
         return {
@@ -375,7 +376,7 @@ export class DeviceIngress {
             'device',
             result.device.public_id,
             Math.floor(expiresAt / 1000),
-            { jti: result.credential.credential_id },
+            { jti: result.credential.credential_id, projectId: result.device.project_id },
         );
         await this.store.audit(
             result.created ? 'device_auto_registered' : 'device_auto_renewed',
@@ -1128,10 +1129,16 @@ export class DeviceIngress {
     }
     accountRoutes() {
         const router = Router();
-        router.get('/apk-routes', async (_req, res) =>
+        router.get('/apk-routes', async (req, res) =>
             res.json({
                 data: await this.db('apk_routes')
                     .join('accounts', 'accounts.id', 'apk_routes.owner_account_id')
+                    .modify((query) => {
+                        if (req.user.role !== 'superadmin')
+                            query.where('apk_routes.project_id', req.user.project_id);
+                        if (req.user.role === 'member')
+                            query.where('apk_routes.owner_account_id', req.user.id);
+                    })
                     .select('apk_routes.*', 'accounts.username'),
             }),
         );
@@ -1140,7 +1147,12 @@ export class DeviceIngress {
             const route = await this.db('apk_routes')
                 .where({ apk_id: apkId, enabled: true })
                 .first();
-            if (!route) throw fail(404, 'APK ID 不存在或已停用');
+            if (
+                !route ||
+                (req.user.role !== 'superadmin' && route.project_id !== req.user.project_id) ||
+                (req.user.role === 'member' && route.owner_account_id !== req.user.id)
+            )
+                throw fail(404, 'APK ID 不存在或已停用');
             await this.owner(route.owner_account_id);
             const id = randomUUID(),
                 expiresAt = Date.now() + 10 * 60000;
@@ -1158,6 +1170,7 @@ export class DeviceIngress {
                     'enrollment',
                     id,
                     Math.floor(expiresAt / 1000),
+                    { projectId: route.project_id },
                 ),
                 expiresAt,
             });
