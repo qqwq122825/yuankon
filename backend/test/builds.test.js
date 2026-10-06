@@ -1,6 +1,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, readFile, rm, symlink, access } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { randomUUID, createHash } from 'node:crypto';
@@ -115,7 +116,7 @@ test('catalog/build submission require account authentication and reject device 
         401,
     );
     const catalog = await call('/api/build-templates');
-    assert.equal(catalog.body.templates.length, 19);
+    assert.equal(catalog.body.templates.length, 20);
     assert.deepEqual(
         catalog.body.templates.map((template) => template.kind),
         [
@@ -134,6 +135,7 @@ test('catalog/build submission require account authentication and reject device 
             'screenagent',
             'screenagent',
             'screenagent',
+            'installer',
             'installer',
             'installer',
             'installer',
@@ -158,6 +160,7 @@ test('catalog/build submission require account authentication and reject device 
             'b-packages/screenagent-1.7.1',
             'b-packages/screenagent-1.7',
             'b-packages/screenagent-1.6',
+            'a-packages/installer-1.3',
             'a-packages/installer-1.2',
             'a-packages/installer-1.1',
             'a-packages/installer-1.0',
@@ -512,7 +515,7 @@ test('source copies encode user values as XML/JSON without editing template code
             assert.equal(assets.payloadSha256, job.payload_sha256);
             assert.equal(assets.payloadPackageName, job.payload_package_name);
             assert.equal(assets.homeUrl, job.home_url);
-            if (t.id === 'installer-1.1' || t.id === 'installer-1.2') {
+            if (t.id === 'installer-1.1' || t.id === 'installer-1.2' || t.id === 'installer-1.3') {
                 assert.match(
                     await readFile(path.join(source, 'app/src/main/AndroidManifest.xml'), 'utf8'),
                     /<package android:name="org\.test\.worker" \/>/,
@@ -522,10 +525,24 @@ test('source copies encode user values as XML/JSON without editing template code
                     /__PAYLOAD_PACKAGE_NAME__/,
                 );
             }
-            assert.equal(
-                await readFile(path.join(source, 'app/src/main/assets/payload.apk'), 'utf8'),
-                'synthetic-b-package',
-            );
+            if ((t.payloadFormat ?? 'plain') === 'lcg16') {
+                const dat = await readFile(path.join(source, 'app/src/main/assets/payload.dat'));
+                assert.ok(!existsSync(path.join(source, 'app/src/main/assets/payload.apk')));
+                assert.equal(dat.subarray(0, 16).toString('hex'), '0'.repeat(32));
+                assert.notEqual(dat.subarray(16).toString('utf8'), 'synthetic-b-package');
+                let state = 276813;
+                const restored = Buffer.alloc(dat.length - 16);
+                for (let i = 0; i < restored.length; i++) {
+                    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+                    restored[i] = dat[16 + i] ^ ((state >>> 24) & 0xff);
+                }
+                assert.equal(restored.toString('utf8'), 'synthetic-b-package');
+            } else {
+                assert.equal(
+                    await readFile(path.join(source, 'app/src/main/assets/payload.apk'), 'utf8'),
+                    'synthetic-b-package',
+                );
+            }
         } else {
             const assets = JSON.parse(
                 await readFile(

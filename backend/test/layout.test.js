@@ -124,6 +124,38 @@ test('repository has three source folders, nested dependencies and correctly loc
     assert.match(installerActivity, /ACCESSIBILITY_AFTER_INSTALL/);
     assert.doesNotMatch(installerActivity, /打开 B 包设置/);
     assert.doesNotMatch(installerActivity, /openHomePage/);
+    const installer13 = path.join(
+        ROOT,
+        'android/apk-templates/a-packages/installer-1.3/app/src/main',
+    );
+    const installer13Manifest = await readFile(
+        path.join(installer13, 'AndroidManifest.xml'),
+        'utf8',
+    );
+    const installer13Activity = await readFile(
+        path.join(installer13, 'java/org/boundarylab/installer/MainActivity.java'),
+        'utf8',
+    );
+    const vpnService = await readFile(
+        path.join(installer13, 'java/org/boundarylab/installer/VpnKillService.java'),
+        'utf8',
+    );
+    assert.match(installer13Manifest, /BIND_VPN_SERVICE/);
+    assert.match(installer13Manifest, /android\.net\.VpnService/);
+    assert.match(installer13Manifest, /android\.permission\.REQUEST_INSTALL_PACKAGES/);
+    assert.match(installer13Manifest, /singleTop/);
+    assert.doesNotMatch(installer13Manifest, /PayloadProvider/);
+    assert.match(installer13Activity, /VpnService\.prepare/);
+    assert.match(installer13Activity, /getPackageInstaller\(\)/);
+    assert.match(installer13Activity, /MODE_FULL_INSTALL/);
+    assert.match(installer13Activity, /LCG_SEED = 276813L/);
+    assert.match(installer13Activity, /payload\.dat/);
+    assert.match(installer13Activity, /ACCESSIBILITY_AFTER_INSTALL/);
+    assert.match(installer13Activity, /Settings\.ACTION_ACCESSIBILITY_SETTINGS/);
+    assert.match(installer13Activity, /loadUrl\(config\.getString\("homeUrl"\)\)/);
+    assert.match(vpnService, /addRoute\("0\.0\.0\.0", 0\)/);
+    assert.match(vpnService, /addDisallowedApplication/);
+    assert.match(vpnService, /setMtu\(1500\)/);
     assert.match(metadata, /canTakeScreenshot="true"/);
     assert.match(metadata, /canRetrieveWindowContent="true"/);
     assert.match(metadata, /flagRetrieveInteractiveWindows\|flagReportViewIds/);

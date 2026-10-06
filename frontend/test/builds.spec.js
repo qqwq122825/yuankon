@@ -17,7 +17,7 @@ test('build form, optional fields, failure, polling and shareable artifact downl
     const currentOrigin = new URL(page.url()).origin;
     await expect(form.getByLabel('后台域名')).toHaveValue(currentOrigin);
     await expect(form.getByLabel('B 包模板版本')).toHaveValue('screenagent-1.8.5');
-    await expect(installerForm.getByLabel('A 包模板版本')).toHaveValue('installer-1.2');
+    await expect(installerForm.getByLabel('A 包模板版本')).toHaveValue('installer-1.3');
     await expect(installerForm.getByRole('button', { name: '构建 A 包' })).toBeDisabled();
     await form.getByLabel('后台域名').fill('cohuducox');
     await form.getByLabel('APP 名称').fill('UI 构建测试');

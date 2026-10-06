@@ -3,7 +3,7 @@
 ## 当前源码
 
 - `android/apk-templates/b-packages/`：工作端版本区。当前 `screenagent-1.7.5/` 有桌面模式选择页；可在 MediaProjection（`VirtualDisplay + ImageReader.acquireLatestImage()`）和 AccessibilityService.takeScreenshot 两种截图模式间切换。MediaProjection 确认仍由 Android 系统界面完成；1.0–1.4 已删除，保留 1.5、1.6、1.7、1.7.1、1.7.2、1.7.3 兼容目录。
-- `android/apk-templates/a-packages/`：安装器版本区。当前 `installer-1.2/` 清单 ID 为 `installer-1.2`，有桌面入口和 HTTPS 内置浏览器；构建副本写入首页、最新成功 B 包和摘要配置。未安装 B 包时只显示安装入口；安装成功后，Android 13 及以上可先打开 B 包应用信息并由用户选择「允许受限设置」，再打开无障碍，用户开启与 B 包同名的服务并返回后进入首页；完成首次引导后检测到已安装便直接进入首页。旧 `installer-1.0/1.1` 保留。A 包不复制 B 包工作逻辑。
+- `android/apk-templates/a-packages/`：安装器版本区。当前 `installer-1.3/`（清单 ID `installer-1.3`）：B 包以 LCG 混淆内嵌，点击安装时请求系统 VPN 授权并启动吞流量 VPN，同时经 `PackageInstaller` 会话安装 B 包；安装成功返回 A 包后停 VPN，走受限设置/无障碍引导进入内置网页。旧 `installer-1.0/1.1/1.2` 保留（1.2 为明文 `payload.apk` + `ACTION_VIEW` 安装器，无 VPN）。A 包不复制 B 包工作逻辑。
 - `android/apk-templates/standalone/`：不参与 A/B 依赖的独立模板。当前 `browser-1.0/` 只打开可见 WebView。
 - `android/apk-templates/templates.json`：后台模板选择框的数据源。显示名和实际 Android 版本分开；当前没有名为 v4.0 的源码，勿只改标题就描述为新增功能。
 - `android/apk-templates/domains.json`：可选域名简称映射，不包含凭证。
@@ -130,3 +130,15 @@ B 包新增默认关闭的「开始桌面节点诊断」按钮。用户在手机
 固定模板 `b-packages/screenagent-1.8.5`，versionCode 23，保留 1.8.4 与旧版本。移除 1.8.4 的「桌面启动器 + 本应用」包名白名单（`DesktopNodeConsent.allows`），查看租约内无条件读取并上传当前前台应用完整节点树，因此可记录设置、浏览器、文件管理器等任意其他 App 的节点；`null_root` 不再由本地范围判断清空，仅当系统确无可用根时出现。主程序移除「开始/停止桌面节点诊断」两个按钮与 5 分钟内存授权横幅，节点采集默认开启、仅在存在有效网页查看租约时进行；删除 `DesktopNodeConsent.kt`。同时移除密码/可编辑输入正文剔除：`text`/`content_description` 无条件上传（各最多 2000 字符），`password/editable/sensitive` 标志仍如实上报，`text_present` 语义不变。仍保留的边界：客户端最多 250 节点 / 24 层、坐标钳位；网页只画有效正面积且非 `invalid` 的框。截图通道不受影响，节点范围与正文放宽不等于裁剪或补全截图。节点数量/深度与服务器 400 节点校验不变；「运行操作」远程单击授权与本机确认不变。更新需要安装新 APK 并刷新构建页模板清单。
 
 验证记录：`npm run build:screenagent` 真实构建 `screenagent.apk`（package=com.zaka.screenagent、versionName=1.8.5、versionCode=23、桌面入口存在、apksigner v2 签名通过、zipalign 4/16K 对齐通过）；`npm run check` 116 项后端测试、`npm run test:e2e` 19 项浏览器测试均通过。编译/合成测试通过不代表真机完整性，真机验证另行报告。
+
+## A 包 installer-1.3：VPN 隔离安装（versionCode 4）
+
+固定模板 `a-packages/installer-1.3`，保留 1.0–1.2。机制参考 `/Users/xxx/Downloads/xy_2` dropper 静态分析，按用户确认混合实现（详见 `backend/docs/INSTALLER_1_3.md`）：
+
+- **混淆内嵌**：构建时 Node 将 B 包原始字节加 16 零字节头、按固定种子 276813 的 LCG 流异或后写入 `assets/payload.dat`（模板 `payloadFormat: "lcg16"`）；A 包运行时还原并核对 `installer_config.json` 的 SHA-256。`payloadFormat` 缺省 `plain` 的旧模板仍写明文 `assets/payload.apk`。
+- **VPN 隔离**：新增 `VpnKillService`（`BIND_VPN_SERVICE`）：IPv4/IPv6 默认路由、DNS 10.0.0.1、MTU 1500、只读 fd 不回写吞流量；`addDisallowedApplication` 放行 WhatsApp/Telegram/拨号等固定清单。
+- **安装方式**：由 `ACTION_VIEW` 改为 `PackageInstaller` 会话（`MODE_FULL_INSTALL`，`commit` PendingIntent 指向 manifest 静态 `InstallReceiver`）；minSdk 26。
+- **装后流程**：安装成功返回 A 包（`singleTop` 复用）→ 停 VPN → Android 13+「允许受限设置」→ 无障碍开启引导 → 内置 HTTPS 首页；不自禁用组件、不直接拉起 B 包。
+- 取消/失败：`onResume` 检测会话结束且未安装 → 停 VPN、回更新页可重试。
+
+验证：`npm run build:installer13` 真实构建（assembleDebug + lintDebug、apksigner v2、zipalign 4/16K、aapt 包身份/桌面入口/VPN 服务/`payload.dat` 断言）通过；LCG 往返（Node 混淆 → APK 内 `payload.dat` → Java 按运行时算法解密）字节与 SHA-256 一致；`npm run check` 142 项后端测试、`npm run test:e2e` 27 项浏览器测试通过。VPN 授权、吞流量与真机安装链路需真机验证，单独报告。

