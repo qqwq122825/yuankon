@@ -1,4 +1,5 @@
 import knex from 'knex';
+import { migrateStudioExpiry } from './studio-expiry.js';
 import { migrateAccountHierarchy } from './account-hierarchy.js';
 import {
     migrateAccounts,
@@ -122,6 +123,7 @@ export async function openDatabase(filename) {
     await migrateDeviceDebugScreenshots(db);
     await migrateServerLogs(db);
     await migrateAccountHierarchy(db);
+    await migrateStudioExpiry(db);
     if (filename !== ':memory:') chmodSync(filename, 0o600);
     return db;
 }

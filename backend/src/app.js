@@ -1,4 +1,5 @@
 import express from 'express';
+import { StudioExpiry } from './studio-expiry.js';
 import { AccountManagement } from './account-management.js';
 import helmet from 'helmet';
 import { rateLimit } from 'express-rate-limit';
@@ -50,7 +51,8 @@ export async function createApplication(
     const ingress = new DeviceIngress(db, auth, store, config);
     const deviceManagement = new DeviceManagement(db, store, ingress);
     const deviceMemos = new DeviceMemos(db, store);
-    const accountManagement = new AccountManagement(db, accounts);
+    const studioExpiry = new StudioExpiry(db, accounts, config);
+    const accountManagement = new AccountManagement(db, accounts, studioExpiry);
     const translations = new Map([[config.projectId, translation]]);
     const builds = new BuildQueue(db, config, buildOptions);
     await builds.initialize();
@@ -149,6 +151,10 @@ export async function createApplication(
     app.use('/api', (_req, _res, next) =>
         installation.installed ? next() : next(fail(503, '请先完成初始化安装')),
     );
+    app.use('/api', async (_req, _res, next) => {
+        await studioExpiry.sweep();
+        next();
+    });
     app.use('/api', builds.publicRoutes());
     app.use('/api', ingress.deviceRoutes());
     app.use('/api', (req, _res, next) => {
@@ -496,8 +502,8 @@ export async function createApplication(
         });
     });
     const ws = attachWebSockets(server, store, auth, config, { dev, accounts, ingress });
-    accounts.onAccountsChanged = async ({ ids }) => {
-        const rows = await db('devices').whereIn('owner_account_id', ids);
+    accounts.onAccountsChanged = async ({ ids, devices = [] }) => {
+        const rows = [...devices, ...(await db('devices').whereIn('owner_account_id', ids))];
         for (const device of rows) {
             ingress.frames.delete(device.id);
             ingress.recentImages.delete(device.id);
@@ -505,8 +511,17 @@ export async function createApplication(
             ingress.viewerLeases.delete(device.id);
             ingress.grants.delete(device.id);
             ingress.pendingCaptures.delete(device.id);
-            ws.disconnectDevice(device.public_id);
+            ingress.tapFrames.delete(device.id);
+            ingress.autoCaptureAt.delete(device.id);
+            ingress.debugSessions.delete(device.id);
+            ws.disconnectDevice(device.public_id, devices.length > 0);
         }
+    };
+    ingress.beforeResolve = () => studioExpiry.sweep();
+    studioExpiry.onError = (error) => serverLogs.record('studio_expiry_failed', { error });
+    studioExpiry.onTransferred = async ({ devices }) => {
+        await serverLogs.record('studio_expiry_takeover');
+        for (const device of devices) if (!device.deleted_at) await ws.publish(device.public_id);
     };
     ingress.publish = ws.publish;
     ingress.notifyFrame = ws.frameReady;
@@ -519,6 +534,8 @@ export async function createApplication(
                   timestamp: Date.now(),
               })
             : ws.publish(device.public_id);
+    await studioExpiry.sweep();
+    studioExpiry.start();
     await db('protocol_logs')
         .where('ts', '<', Date.now() - 7 * 86400000)
         .delete();
@@ -545,10 +562,12 @@ export async function createApplication(
         ingress,
         deviceManagement,
         accountManagement,
+        studioExpiry,
         builds,
         serverLogs,
         async close() {
             clearInterval(prune);
+            await studioExpiry.close();
             await serverLogs.record('server_stopping');
             ingress.close();
             await environment.close();

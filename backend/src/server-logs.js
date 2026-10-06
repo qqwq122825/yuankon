@@ -8,6 +8,8 @@ const events = {
     server_stopping: ['info', 'runtime', '服务器正在停止'],
     server_stopped: ['info', 'runtime', '服务器已停止'],
     server_start_failed: ['error', 'runtime', '服务器启动失败'],
+    studio_expiry_takeover: ['info', 'runtime', '到期总台的设备已由超管接管'],
+    studio_expiry_failed: ['error', 'runtime', '到期设备接管失败，将自动重试'],
     http_request: ['info', 'http', 'HTTP 请求完成'],
     http_rejected: ['warn', 'http', 'HTTP 请求被拒绝'],
     http_error: ['error', 'http', 'HTTP 请求处理异常'],

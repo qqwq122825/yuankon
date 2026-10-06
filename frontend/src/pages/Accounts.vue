@@ -171,6 +171,9 @@ async function status(row) {
             {{ result.enabledMembers }} / {{ result.memberLimit }}；停用释放名额，账号与记录保留。
         </p>
         <p v-else>超管创建总台；总台管理自己的子账号。用户名和固定 APK ID 创建后保持不变。</p>
+        <p class="text-muted">
+            总台到期未续费时，本台及子账号的设备自动归超管；历史记录保留，续费不自动归还已接管设备。
+        </p>
         <div v-if="error && !dialog?.open" class="alert alert-danger" role="alert">
             {{ error }}<button class="btn" @click="load">重试</button>
         </div>
@@ -247,6 +250,10 @@ async function status(row) {
                             <td>
                                 {{ validityDisplay(row.validUntil).label
                                 }}<small v-if="row.inheritsValidity">（继承总台）</small>
+                                <small v-if="row.expiryTakeover" class="d-block text-muted"
+                                    >最近到期接管 {{ row.expiryTakeover.deviceCount }} 台 ·
+                                    {{ formatDate(row.expiryTakeover.transferredAt) }}</small
+                                >
                             </td>
                             <td>{{ formatDate(row.createdAt) }}</td>
                             <td>{{ row.note || '—' }}</td>
@@ -323,6 +330,9 @@ async function status(row) {
                     }}
                 </h2>
                 <p v-if="target">{{ target.username }} · APK ID {{ target.apkId }}</p>
+                <p v-if="mode === 'validity' && !members" class="text-muted">
+                    续期仅恢复账号使用期限；已归超管的设备不会自动归还。
+                </p>
                 <div v-if="error" class="alert alert-danger" role="alert">{{ error }}</div>
                 <template v-if="mode === 'create'"
                     ><label v-if="!members" class="form-label" for="studio-name">总台名称</label

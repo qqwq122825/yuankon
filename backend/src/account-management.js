@@ -24,8 +24,8 @@ const createSchema = (studio) =>
         .strict()
         .refine((v) => v.password === v.confirmPassword, { message: '两次密码不一致' });
 export class AccountManagement {
-    constructor(db, accounts) {
-        Object.assign(this, { db, accounts });
+    constructor(db, accounts, studioExpiry) {
+        Object.assign(this, { db, accounts, studioExpiry });
     }
     manager(user) {
         if (!['superadmin', 'studio_admin'].includes(user.role))
@@ -83,6 +83,13 @@ export class AccountManagement {
             row.role === 'studio_admin'
                 ? await this.db('projects').where('id', row.project_id).first()
                 : null;
+        const takeover =
+            row.role === 'studio_admin'
+                ? await this.db('studio_expiry_takeovers')
+                      .where('studio_account_id', row.id)
+                      .orderBy('id', 'desc')
+                      .first()
+                : null;
         const { n } = await this.db('accounts')
             .where({ parent_account_id: row.id, role: 'member', enabled: true })
             .count('* as n')
@@ -103,6 +110,13 @@ export class AccountManagement {
             name: project?.name || '',
             enabledMembers: Number(n),
             memberLimit: MEMBER_LIMIT,
+            expiryTakeover: takeover
+                ? {
+                      expiredAt: takeover.expired_at,
+                      transferredAt: takeover.transferred_at,
+                      deviceCount: takeover.device_count,
+                  }
+                : null,
         };
     }
     async create(user, input, studio, parentId) {
@@ -204,6 +218,10 @@ export class AccountManagement {
                     : null;
             if (action === 'validity')
                 this.validateDeadline(patch.validUntil, parent, row.role === 'studio_admin');
+            const takeovers =
+                action === 'validity' && row.role === 'studio_admin'
+                    ? await this.studioExpiry.transferExpired(trx, { studioId: row.id })
+                    : [];
             if (action === 'status' && patch.enabled) {
                 if (parent) await accountContext(trx, parent);
                 this.validateDeadline(row.valid_until, null, row.role === 'studio_admin');
@@ -232,8 +250,9 @@ export class AccountManagement {
                 `account_${action}_changed`,
                 action === 'password' ? { sessionsRevoked: true } : patch,
             );
-            return { row: { ...row, ...values }, ids };
+            return { row: { ...row, ...values }, ids, takeovers };
         });
+        await this.studioExpiry.notify(changed.takeovers);
         for (const userId of changed.ids)
             this.accounts.emit('sessionChanged', {
                 userId,

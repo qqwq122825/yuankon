@@ -2,7 +2,7 @@ import { accountContext } from './account-hierarchy.js';
 import { randomUUID } from 'node:crypto';
 import { nodeDiagnosticEvents, nodeRejectionEvent } from './node-diagnostics.js';
 import path from 'node:path';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, writeFile, rm } from 'node:fs/promises';
 import { Router } from 'express';
 import multer from 'multer';
 import { rateLimit } from 'express-rate-limit';
@@ -211,7 +211,21 @@ export class DeviceIngress {
     async owner(id, db = this.db) {
         return accountContext(db, await db('accounts').where({ id }).first());
     }
+    async assertOwnership(device, db = this.db) {
+        const current = await db('devices').where('id', device.id).first();
+        if (
+            !current ||
+            current.is_blacklisted ||
+            current.deleted_at ||
+            current.project_id !== device.project_id ||
+            current.owner_account_id !== device.owner_account_id
+        )
+            throw fail(401, '设备状态或归属已变更');
+        if (current.owner_account_id) await this.owner(current.owner_account_id, db);
+        return current;
+    }
     async resolve(principal, managedOnly = false) {
+        await this.beforeResolve?.();
         const device = await this.db('devices').where('public_id', principal.sub).first();
         if (!device || device.source !== 'api' || device.project_id !== principal.projectId)
             throw fail(401, '设备凭证与登记不匹配');
@@ -318,11 +332,30 @@ export class DeviceIngress {
                 .where({ apk_id: profile.apkId, enabled: true })
                 .first();
             if (!route) throw fail(404, 'APK ID 不存在或已停用');
-            const owner = await this.owner(route.owner_account_id, trx);
             let device = await trx('devices').where('public_id', profile.deviceId).first();
             if (device?.is_blacklisted || device?.deleted_at) throw fail(403, '设备已拉黑或删除');
+            const takeover = device
+                ? await trx('device_expiry_takeovers as d')
+                      .join('studio_expiry_takeovers as t', 't.id', 'd.takeover_id')
+                      .where('d.device_id', device.id)
+                      .first('t.*')
+                : null;
+            // Only an already transferred device with the same immutable APK ID
+            // reconnects as platform-owned. Routes/IDs are not globally redirected.
+            const transferred =
+                takeover &&
+                device.source === 'api' &&
+                device.apk_id === route.apk_id &&
+                takeover.from_project_id === route.project_id &&
+                device.project_id === takeover.to_project_id &&
+                device.owner_account_id === takeover.to_owner_account_id;
+            const owner = await this.owner(
+                transferred ? device.owner_account_id : route.owner_account_id,
+                trx,
+            );
             if (
                 device &&
+                !transferred &&
                 (device.source !== 'api' ||
                     device.project_id !== route.project_id ||
                     device.apk_id !== route.apk_id ||
@@ -394,9 +427,7 @@ export class DeviceIngress {
         };
     }
     async status(device, input) {
-        const current = await this.db('devices').where('id', device.id).first();
-        if (!current || current.is_blacklisted || current.deleted_at)
-            throw fail(401, '设备已拉黑或删除');
+        await this.assertOwnership(device);
         input = z
             .object({ deviceId: deviceIdSchema.optional(), apkId: apkIdSchema.optional() })
             .passthrough()
@@ -407,12 +438,15 @@ export class DeviceIngress {
         // Capture readiness is metadata, never permission to initiate collection.
         const status = statusSchema.parse({ ...input, type: 'device_heartbeat' });
         const previous = this.store.live.get(device.public_id);
-        this.store.live.set(device.public_id, { ...previous, ...status, seen: Date.now() });
         const patch = { last_heartbeat_at: new Date().toISOString() };
         if (status.batteryLevel !== undefined) patch.battery = status.batteryLevel;
         if (status.accessibilityAlive !== undefined)
             patch.accessibility_enabled = status.accessibilityAlive;
-        await this.db('devices').where('id', device.id).update(patch);
+        await this.db.transaction(async (trx) => {
+            await this.assertOwnership(device, trx);
+            await trx('devices').where('id', device.id).update(patch);
+        });
+        this.store.live.set(device.public_id, { ...previous, ...status, seen: Date.now() });
         await this.publish?.(device.public_id, previous ? 'device_status_update' : 'device_online');
         return {
             ok: true,
@@ -530,7 +564,10 @@ export class DeviceIngress {
             screenshot_height: null,
             screenshot_size: null,
         }));
-        await this.db('device_debug_reports').insert(rows);
+        await this.db.transaction(async (trx) => {
+            await this.assertOwnership(device, trx);
+            await trx('device_debug_reports').insert(rows);
+        });
         await this.store.audit('device_debug_report', 'device', device.public_id, rows.length);
         return { ok: true, stored: rows.length, active: true };
     }
@@ -566,30 +603,41 @@ export class DeviceIngress {
             throw fail(422, '调试截图损坏或像素超限');
         }
         if (output.data.length > MAX_FILE) throw fail(413, '调试截图体积超限');
+        await this.resolve(req.deviceIdentity.principal, true);
         const dir = path.join(this.config.privateDir, 'debug-screenshots', String(device.id));
         await mkdir(dir, { recursive: true, mode: 0o700 });
         const filename = `${Date.now()}-${randomUUID()}.jpg`;
         const relative = `debug-screenshots/${device.id}/${filename}`;
         await writeFile(path.join(dir, filename), output.data, { mode: 0o600 });
-        const [id] = await this.db('device_debug_reports').insert({
-            project_id: device.project_id,
-            device_id: device.id,
-            public_id: device.public_id,
-            session_id: state.sessionId,
-            ts: body.ts || Date.now(),
-            level: 'info',
-            source: body.source,
-            stage: body.stage,
-            message: 'debug screenshot uploaded',
-            elapsed_ms: body.elapsedMs ?? null,
-            capture_mode: body.captureMode ?? null,
-            command_id: body.commandId ?? null,
-            details: JSON.stringify({ content: 'jpeg', retained: 'private-debug' }),
-            screenshot_path: relative,
-            screenshot_width: output.info.width,
-            screenshot_height: output.info.height,
-            screenshot_size: output.data.length,
-        });
+        let id;
+        try {
+            [id] = await this.db.transaction(async (trx) => {
+                await this.assertOwnership(device, trx);
+                if (this.debugSessions.get(device.id) !== state) throw fail(410, '诊断会话已结束');
+                return trx('device_debug_reports').insert({
+                    project_id: device.project_id,
+                    device_id: device.id,
+                    public_id: device.public_id,
+                    session_id: state.sessionId,
+                    ts: body.ts || Date.now(),
+                    level: 'info',
+                    source: body.source,
+                    stage: body.stage,
+                    message: 'debug screenshot uploaded',
+                    elapsed_ms: body.elapsedMs ?? null,
+                    capture_mode: body.captureMode ?? null,
+                    command_id: body.commandId ?? null,
+                    details: JSON.stringify({ content: 'jpeg', retained: 'private-debug' }),
+                    screenshot_path: relative,
+                    screenshot_width: output.info.width,
+                    screenshot_height: output.info.height,
+                    screenshot_size: output.data.length,
+                });
+            });
+        } catch (error) {
+            await rm(path.join(dir, filename), { force: true });
+            throw error;
+        }
         await this.store.audit(
             'device_debug_screenshot',
             'device',

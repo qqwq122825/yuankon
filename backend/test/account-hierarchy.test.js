@@ -405,7 +405,7 @@ test('superadmin can build for an explicit studio without giving other studios a
     assert.equal((await req(`/api/builds/${job.id}`, sb)).status, 200);
     assert.equal((await req(`/api/builds/${job.id}`, sa)).status, 404);
 });
-test('device JWT carries actual project; ingress stops on parent expiry and reset revokes descendant sessions without deleting records', async () => {
+test('device JWT carries actual project; parent expiry transfers to superadmin and reset revokes descendant sessions without deleting records', async () => {
     const profile = {
         deviceId: 'TENANT-PHONE',
         apkId: m1.apkId,
@@ -423,7 +423,9 @@ test('device JWT carries actual project; ingress stops on parent expiry and rese
         .update({ valid_until: Date.now() - 1 });
     assert.equal((await req('/api/devices', sm1)).status, 401);
     await assert.rejects(app.ingress.resolve(principal), { status: 401 });
-    assert.equal((await req('/api/client/online', null, 'POST', profile)).status, 401);
+    const reconnected = await req('/api/client/online', null, 'POST', profile);
+    assert.equal(reconnected.status, 201);
+    assert.equal(decodeJwt(reconnected.body.deviceToken).projectId, 1);
     await db('accounts').where('id', a.id).update({ valid_until: date });
     assert.equal(
         (
@@ -437,7 +439,7 @@ test('device JWT carries actual project; ingress stops on parent expiry and rese
     assert.equal((await req('/api/devices', sm1)).status, 401);
     assert.equal(
         (await db('devices').where('public_id', 'TENANT-PHONE').first()).owner_account_id,
-        m1.id,
+        (await db('accounts').where('role', 'superadmin').first()).id,
     );
     const serialized = JSON.stringify(await db('account_audit'));
     assert.ok(!serialized.includes(password));

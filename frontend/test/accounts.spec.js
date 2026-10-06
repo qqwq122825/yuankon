@@ -37,6 +37,11 @@ test('admin creates studio and member via left navigation, real list refresh, ke
     await page.getByRole('link', { name: '账号', exact: true }).click();
     await expect(page).toHaveURL('/accounts');
     await expect(page.getByRole('heading', { name: '总台账号管理' })).toBeVisible();
+    await expect(
+        page.getByText(
+            '总台到期未续费时，本台及子账号的设备自动归超管；历史记录保留，续费不自动归还已接管设备。',
+        ),
+    ).toBeVisible();
     const username = `ui_${randomUUID().slice(0, 8)}`;
     const create = page.getByRole('button', { name: '创建总台', exact: true });
     await create.click();
@@ -125,6 +130,9 @@ test('account duplicate/business errors leave form usable and reset password/val
     await page.goto('/accounts');
     const row = page.getByRole('row').filter({ hasText: name });
     await row.getByRole('button', { name: '期限', exact: true }).click();
+    await expect(
+        page.getByText('续期仅恢复账号使用期限；已归超管的设备不会自动归还。'),
+    ).toBeVisible();
     await page.getByLabel('到期日（北京时间）').fill('2027-12-31');
     await page.getByRole('button', { name: '保存', exact: true }).click();
     await expect(row).toContainText('2027-12-31');
@@ -147,4 +155,66 @@ test('account duplicate/business errors leave form usable and reset password/val
     await logout(page);
     await login(page, name, 'NewFixturePass123!');
     await expect(page.locator('.console-account')).toContainText('2027-12-31');
+});
+
+test('expired studio fleet is visibly taken over and renewal does not return the device', async ({
+    page,
+}) => {
+    await login(page);
+    const username = `expire_${randomUUID().slice(0, 8)}`;
+    const created = await page.request.post('/api/accounts/studios', {
+        headers: { 'X-Boundary-Request': '1' },
+        data: {
+            requestId: randomUUID(),
+            username,
+            password,
+            confirmPassword: password,
+            validUntil: Date.now() + 2000,
+            name: '到期合成总台',
+            note: 'expiry fixture',
+        },
+    });
+    expect(created.status()).toBe(201);
+    const studio = (await created.json()).account;
+    const deviceId = `EXPIRY-UI-${randomUUID().slice(0, 8)}`;
+    const online = await page.request.post('/api/client/online', {
+        headers: { 'X-Boundary-Request': '1' },
+        data: {
+            deviceId,
+            apkId: studio.apkId,
+            model: '到期合成设备',
+            brand: 'Fixture',
+            osVersion: '15',
+        },
+    });
+    expect(online.status()).toBe(201);
+    const device = await online.json();
+    await expect(async () => {
+        const response = await page.request.get(`/api/accounts?q=${username}`);
+        expect(response.status()).toBe(200);
+        expect((await response.json()).data[0].expiryTakeover?.deviceCount).toBe(1);
+    }).toPass({ timeout: 7000, intervals: [100, 200] });
+    await page.goto('/accounts');
+    const row = page.getByRole('row').filter({ hasText: username });
+    await expect(row).toContainText('最近到期接管 1 台');
+    await page.screenshot({ path: 'test-results/accounts-expiry-takeover.png', fullPage: true });
+    await row.getByRole('button', { name: '期限', exact: true }).click();
+    await page.getByLabel('到期日（北京时间）').fill('2027-12-31');
+    await page.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(row).toContainText('2027-12-31');
+    await expect(row).toContainText('最近到期接管 1 台');
+    const owner = await page.request.get(`/api/devices/${device.localId}/ownership`);
+    expect((await owner.json()).owner.username).toBe('mtx');
+    await logout(page);
+    await login(page, username, password);
+    await expect(page.getByText('暂无匹配设备；可调整筛选条件。', { exact: true })).toBeVisible();
+    expect((await page.request.get(`/api/devices/${device.localId}`)).status()).toBe(404);
+    // Remove only this synthetic fixture from the shared fleet listing.
+    await logout(page);
+    await login(page);
+    const cleanup = await page.request.delete(`/api/devices/${device.localId}`, {
+        headers: { 'X-Boundary-Request': '1' },
+        data: {},
+    });
+    expect(cleanup.status()).toBe(200);
 });

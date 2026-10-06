@@ -145,3 +145,5 @@ npm run device:token -- TEST_DEVICE_001
 ## 三级账号 API
 
 GET /api/accounts 支持 q/page/sort(username,apkId,createdAt,validUntil)/direction 与超管 parentId；每页20条。POST /api/accounts/studios 仅超管；POST /api/accounts/members 仅总台；POST /api/accounts/studios/:id/members 仅超管代管。创建字段 requestId(UUID)/username/password/confirmPassword/validUntil/note，总台另需 name；不接受 role、project_id 或自定义编号。PATCH /api/accounts/:id/status(enabled)、PATCH /api/accounts/:id/validity(validUntil)、PUT /api/accounts/:id/password(password/confirmPassword) 仅合法管理者；子账号403，跨归属对象404，格式422，重复/配额409。新账号密码8–128字；到期截止为UTC毫秒，子账号NULL继承总台，总台必须有限期限。具体上下文及单机隔离见 ACCOUNT_DESIGN.md。
+
+`GET /api/accounts` 总台行新增 `expiryTakeover: null | {expiredAt,transferredAt,deviceCount}`，展示最近一次到期接管的真实数量/时间。后台按截止时间幂等转移本台及子账号设备给 APK ID 1 的超管，设备与历史记录 project_id 同步改为平台。续期事务先处理已经到期的旧期限，续期不自动归还设备。原 APK 路由保持不变，已转移设备同一 ID + APK ID 重连返回超管 owner 和新平台 JWT；旧项目 JWT 返回 401，到期路由未登记设备仍返回 401。账户、路由和凭证 ID 不改写，拉黑/删除/撤销状态继续生效。

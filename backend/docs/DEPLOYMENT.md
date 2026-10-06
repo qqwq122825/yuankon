@@ -117,3 +117,7 @@ PATH=/www/server/nodejs/v22.23.3/bin:$PATH npm run build
 宝塔显示未启动但域名正常时，核对 ss -ltnp 8081、ps PID/PPID/用户/命令与 /proc/PID/cwd：独立 nohup 进程可能仍在提供服务。记录原 PID 和启动参数，仅在端口、目录、命令完全匹配 yuankon 后终止该进程；不要全局 pkill node。确认 8081 已释放后，通过宝塔保存并启动 yuankon，生产命令为 env NODE_PORT=8081 NODE_PUBLIC_ORIGIN=https://yk1.jk92.cc NODE_TRUST_PROXY=1 NODE_ENV=production npm --prefix backend start。同时核对宝塔运行状态、管理器 PID、实际监听子进程及公网健康接口；不另起 nohup。
 
 公网验收使用既有超管：确认 /accounts、/logs 和构建环境入口正常。真实总台/子账号由超管自行创建；部署不生成生产测试账号，不重置密码。
+
+## 到期设备接管升级
+
+增量迁移 `018_studio_expiry_takeover` 增加两张接管台账，不重建或清空既有设备/账号表。部署前备份整份 `.node-private`；升级启动即会处理已经到期、未提前续期的总台（含其子账号设备），不要把这一步当只读迁移。接管账号为 APK ID 1 的有效超管；不可用时整笔转移回滚并自动重试。转移包括设备关联历史记录，结束旧租约和缓存；原 APK 路由不全局改写，已接管设备原 APK 重连后取得新平台 JWT，已到期路由的新设备被拒绝。新机 APK/无障碍源码不需要改动；真机重连仍应另行验收。到期后续费不会自动归还已接管设备。
