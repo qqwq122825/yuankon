@@ -116,7 +116,7 @@ test('catalog/build submission require account authentication and reject device 
         401,
     );
     const catalog = await call('/api/build-templates');
-    assert.equal(catalog.body.templates.length, 27);
+    assert.equal(catalog.body.templates.length, 29);
     assert.deepEqual(
         catalog.body.templates.map((template) => template.kind),
         [
@@ -135,6 +135,8 @@ test('catalog/build submission require account authentication and reject device 
             'screenagent',
             'screenagent',
             'screenagent',
+            'installer',
+            'installer',
             'installer',
             'installer',
             'installer',
@@ -168,6 +170,8 @@ test('catalog/build submission require account authentication and reject device 
             'b-packages/screenagent-1.7',
             'b-packages/screenagent-1.6',
             'a-packages/installer-1.3.1',
+            'a-packages/installer-1.2.8',
+            'a-packages/installer-1.2.7',
             'a-packages/installer-1.2.6',
             'a-packages/installer-1.2.5',
             'a-packages/installer-1.2.4',

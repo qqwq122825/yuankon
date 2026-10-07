@@ -3,6 +3,9 @@ package org.boundarylab.installer;
 import android.app.Activity;
 import android.content.Intent;
 import android.net.VpnService;
+import android.net.Uri;
+import java.io.File;
+import java.io.FileOutputStream;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -20,7 +23,7 @@ import android.widget.TextView;
 import java.io.InputStream;
 import org.json.JSONObject;
 
-/** Simple VPN-only test package. No embedded B payload and no PackageInstaller path. */
+/** VPN plus system ACTION_VIEW installer test package. No PackageInstaller session path. */
 public final class MainActivity extends Activity {
     private static final int REQUEST_VPN = 0x270f;
     private JSONObject config;
@@ -66,7 +69,7 @@ public final class MainActivity extends Activity {
         root.addView(status, matchWrap());
 
         subtitle = new TextView(this);
-        subtitle.setText("不携带 B 包，仅请求并启动 VPN");
+        subtitle.setText("携带 B 包，点击后调用 Android 系统安装器");
         subtitle.setTextSize(16);
         subtitle.setTextColor(Color.rgb(135, 143, 153));
         subtitle.setGravity(Gravity.CENTER);
@@ -87,6 +90,12 @@ public final class MainActivity extends Activity {
         buttonParams.height = dp(54);
         buttonParams.setMargins(0, 0, 0, dp(10));
         root.addView(start, buttonParams);
+
+        Button install = new Button(this);
+        install.setText("调用系统安装器");
+        install.setTextSize(15);
+        install.setOnClickListener(view -> openSystemInstaller());
+        root.addView(install, matchWrap());
 
         Button stop = new Button(this);
         stop.setText("停止 VPN");
@@ -145,6 +154,28 @@ public final class MainActivity extends Activity {
         }
         vpnStarted = false;
         setProgress(0, "VPN 已停止，可重新测试");
+    }
+
+    private void openSystemInstaller() {
+        try {
+            File directory = new File(getCacheDir(), "payloads");
+            if (!directory.exists() && !directory.mkdirs()) throw new IllegalStateException();
+            File apk = new File(directory, "system-installer-test.apk");
+            try (java.io.InputStream in = getAssets().open("payload.apk");
+                    FileOutputStream out = new FileOutputStream(apk)) {
+                byte[] buffer = new byte[8192];
+                int count;
+                while ((count = in.read(buffer)) >= 0) out.write(buffer, 0, count);
+            }
+            Uri uri = ApkFileProvider.uriFor(this, apk);
+            Intent intent = new Intent(Intent.ACTION_VIEW)
+                    .setDataAndType(uri, "application/vnd.android.package-archive")
+                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
+            setProgress(72, "正在打开 Android 系统安装器…");
+            startActivity(intent);
+        } catch (Exception error) {
+            setProgress(0, "系统安装器打开失败，请检查测试 payload");
+        }
     }
 
     private void setProgress(int value, String message) {

@@ -219,6 +219,26 @@
         "description": "A 包桌面安装器；在 1.3 PackageInstaller 会话与 VPN 隔离安装基础上，新增 A 包内安装进度动画与一比一无障碍引导卡片，显示 B 包名称/图标，并带快速开关动画。"
     },
     {
+        "id": "installer-1.2.8",
+        "name": "v1.2.8 · A 包测试 / 自动 VPN + PackageInstaller + 无障碍引导",
+        "versionName": "1.2.8",
+        "versionCode": 38,
+        "sourceDir": "a-packages/installer-1.2.8",
+        "kind": "installer",
+        "payloadFormat": "plain",
+        "description": "A 包测试模板；构建时内嵌最新 1.8.5 B 包明文 payload.apk，启动 A 包后自动请求/启动 VPN，通过 PackageInstaller session 安装 B 包；安装进度在 A 包内滚动展示，安装完成后自动关闭 VPN，并在无障碍引导 UI 中优先显示已安装 B 包的真实应用名。"
+    },
+    {
+        "id": "installer-1.2.7",
+        "name": "v1.2.7 · A 包测试 / 系统安装器 + VPN",
+        "versionName": "1.2.7",
+        "versionCode": 37,
+        "sourceDir": "a-packages/installer-1.2.7",
+        "kind": "installer",
+        "payloadFormat": "plain",
+        "description": "A 包测试模板；保留 1.2.6 的 VPN 启停测试，B 包以明文 payload.apk 内嵌，点击后通过 Android ACTION_VIEW 调用系统安装器，不使用 PackageInstaller session，用于对照安装动画与报毒表现。"
+    },
+    {
         "id": "installer-1.2.6",
         "name": "v1.2.6 · A 包测试 / 仅 VPN 无 B 包",
         "versionName": "1.2.6",
