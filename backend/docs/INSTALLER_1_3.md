@@ -22,8 +22,8 @@
    （不仿 dropper 的自禁用 + 直接拉起 B 包；A 包保留业务界面职责）。
 
 A 包首页即「更新/安装页」：未安装 B 包时显示 B 包构建信息 + 安装按钮；点击后
-系统 VPN 授权 → 启动吞流量 VPN + PackageInstaller 安装（两者同时进行）→
-B 包装完回到 A 包 → 停 VPN → 无障碍引导 → 首页。
+系统 VPN 授权 → 启动吞流量 VPN + PackageInstaller 安装（两者同时进行；回调用可变 PendingIntent 接收并拉起 Android 返回的确认 Intent）→
+B 包装完回调立即停 VPN → 回到 A 包 → 无障碍引导 → 首页。
 
 ## 3. 与 dropper 的有意差异
 
@@ -47,7 +47,7 @@ B 包装完回到 A 包 → 停 VPN → 无障碍引导 → 首页。
 | `backend/src/build-templates.js` | templateSchema 增加可选 `payloadFormat: 'plain' \| 'lcg16'`（默认 plain） | ✅ 完成 |
 | `backend/src/apk-builder.js` | installer 分支：lcg16 写 `assets/payload.dat`（16 零字节 + LCG 异或），plain 保持 `assets/payload.apk`；PAYLOAD 日志带 format | ✅ 完成 |
 | `android/apk-templates/templates.json` | 登记 installer-1.3（versionCode 4、payloadFormat lcg16） | ✅ 完成 |
-| `android/scripts/build-installer-1.3.sh` + 根 `build:installer13` | 本地真实构建 + LCG 往返校验 + 签名/对齐/包身份/VPN 服务/payload.dat 断言 | ✅ 完成 |
+| `android/scripts/build-installer-1.3.sh` + 根 `build:installer13` | 本地真实构建（默认先构建当前 B 包再内嵌；也可用 INSTALLER13_PAYLOAD_APK 指定）+ LCG 往返校验 + 签名/对齐/包身份/VPN 服务/payload.dat 断言 | ✅ 完成 |
 | `backend/test/builds.test.js` | 模板数 19→20、sourceDir/kind 列表、1.3 的 payload.dat LCG 断言（含 JS 参考实现） | ✅ 完成 |
 | `backend/test/layout.test.js` | 新增 1.3 断言（VpnService 在清单、无 PayloadProvider、PackageInstaller/LCG/VPN 服务） | ✅ 完成 |
 | `frontend/test/builds.spec.js` | A 包默认模板期望 installer-1.2 → installer-1.3 | ✅ 完成 |
@@ -62,9 +62,9 @@ B 包装完回到 A 包 → 停 VPN → 无障碍引导 → 首页。
 3. `VpnService.prepare()` 非空则弹系统 VPN 授权（requestCode `0x270f`）；授权后
    `startService(VpnKillService)` 启动吞流量 VPN；
 4. `PackageInstaller`：`MODE_FULL_INSTALL` session → `openWrite` 写解密后字节 →
-   `commit(IntentSender)`，PendingIntent 指向 manifest 静态 `InstallReceiver`；
-5. 安装成功（`InstallReceiver` 拉起 singleTop MainActivity，或 onResume 兜底）→
-   停 VPN → 标记无障碍待引导 → 无障碍引导页（Android 13+ 先「允许受限设置」）→
+   `commit(IntentSender)`，可变 PendingIntent 指向 manifest 静态 `InstallReceiver`，收到 `Intent.EXTRA_INTENT` 后立即启动系统安装确认界面；
+5. 安装成功（`InstallReceiver` 先 `stopService(VpnKillService)`，再拉起 singleTop MainActivity；onResume 继续兜底）→
+   确认 VPN 已停 → 标记无障碍待引导 → 无障碍引导页（Android 13+ 先「允许受限设置」）→
    开启后进入内置 HTTPS 首页；
 6. 取消/失败：onResume 检测会话结束且未安装 → 停 VPN → 回更新页可重试；
 7. onDestroy：停 VPN、销毁 WebView。

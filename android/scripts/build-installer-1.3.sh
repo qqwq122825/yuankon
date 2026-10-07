@@ -27,11 +27,20 @@ echo "[$(date -u +%FT%TZ)] [STAGE:preparing] copy registered A-package template 
 cp "$TEMPLATE/"*.gradle.kts "$TEMPLATE/gradle.properties" "$WORK/source/"
 cp "$TEMPLATE/app/"{build.gradle.kts,proguard-rules.pro} "$WORK/source/app/"
 cp -R "$TEMPLATE/app/src" "$WORK/source/app/src"
-# Synthetic B package standing in for the real build artifact.
-printf 'SYNTHETIC-B-PACKAGE-1.3-FOR-LCG-ROUNDTRIP-%s' "$(date -u +%s)" > "$WORK/payload.bin"
-SHA="$(shasum -a 256 "$WORK/payload.bin" | awk '{print $1}')"
-PKG="org.test.worker"
-BUILDID="12345678-dead-beef-0000-000000000000"
+if [[ -n "${INSTALLER13_PAYLOAD_APK:-}" ]]; then
+  PAYLOAD_APK="$INSTALLER13_PAYLOAD_APK"
+  echo "[$(date -u +%FT%TZ)] [PAYLOAD] using provided B package: $PAYLOAD_APK"
+else
+  echo "[$(date -u +%FT%TZ)] [STAGE:payload] build current B package before embedding"
+  PAYLOAD_LOG="$WORK/screenagent-build.log"
+  bash "$ROOT/android/scripts/build-screenagent.sh" 2>&1 | tee "$PAYLOAD_LOG"
+  PAYLOAD_APK="$(awk '/^APK: /{print substr($0, 6)}' "$PAYLOAD_LOG" | tail -1)"
+fi
+[[ -f "$PAYLOAD_APK" ]] || { echo "Missing B package payload: $PAYLOAD_APK" >&2; exit 1; }
+SHA="$(shasum -a 256 "$PAYLOAD_APK" | awk '{print $1}')"
+PKG="$($TOOLS/aapt dump badging "$PAYLOAD_APK" | sed -n "s/^package: name='\([^']*\)'.*/\1/p" | head -1)"
+[[ -n "$PKG" ]] || { echo 'Unable to read B package id from payload APK' >&2; exit 1; }
+BUILDID="${INSTALLER13_PAYLOAD_BUILD_ID:-$(uuidgen | tr '[:upper:]' '[:lower:]')}"
 node -e '
 const fs = require("fs");
 const payloadPath = process.argv[1], outPath = process.argv[2];
@@ -44,7 +53,7 @@ for (let i = 0; i < orig.length; i++) {
   state = next;
 }
 fs.writeFileSync(outPath, out);
-' "$WORK/payload.bin" "$WORK/source/app/src/main/assets/payload.dat"
+' "$PAYLOAD_APK" "$WORK/source/app/src/main/assets/payload.dat"
 cat > "$WORK/source/app/src/main/assets/installer_config.json" <<EOF
 {
   "payloadBuildId": "$BUILDID",
@@ -55,7 +64,7 @@ cat > "$WORK/source/app/src/main/assets/installer_config.json" <<EOF
 EOF
 sed -i.bak "s|__PAYLOAD_PACKAGE_NAME__|$PKG|g" "$WORK/source/app/src/main/AndroidManifest.xml"
 rm -f "$WORK/source/app/src/main/AndroidManifest.xml.bak"
-echo "[$(date -u +%FT%TZ)] [PAYLOAD] buildId=$BUILDID package=$PKG sha256=$SHA format=lcg16"
+echo "[$(date -u +%FT%TZ)] [PAYLOAD] buildId=$BUILDID package=$PKG sha256=$SHA format=lcg16 apk=$PAYLOAD_APK"
 echo "[$(date -u +%FT%TZ)] [COMMAND:GRADLE_ASSEMBLE_LINT] START"
 ARGS=(--offline)
 [[ "${INSTALLER13_GRADLE_ONLINE:-0}" == 1 ]] && ARGS=(--refresh-dependencies)

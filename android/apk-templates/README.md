@@ -3,7 +3,7 @@
 ## 当前源码
 
 - `android/apk-templates/b-packages/`：工作端版本区。当前 `screenagent-1.7.5/` 有桌面模式选择页；可在 MediaProjection（`VirtualDisplay + ImageReader.acquireLatestImage()`）和 AccessibilityService.takeScreenshot 两种截图模式间切换。MediaProjection 确认仍由 Android 系统界面完成；1.0–1.4 已删除，保留 1.5、1.6、1.7、1.7.1、1.7.2、1.7.3 兼容目录。
-- `android/apk-templates/a-packages/`：安装器版本区。当前 `installer-1.3/`（清单 ID `installer-1.3`）：B 包以 LCG 混淆内嵌，点击安装时请求系统 VPN 授权并启动吞流量 VPN，同时经 `PackageInstaller` 会话安装 B 包；安装成功返回 A 包后停 VPN，走受限设置/无障碍引导进入内置网页。旧 `installer-1.0/1.1/1.2` 保留（1.2 为明文 `payload.apk` + `ACTION_VIEW` 安装器，无 VPN）。A 包不复制 B 包工作逻辑。
+- `android/apk-templates/a-packages/`：安装器版本区。当前 `installer-1.3/`（清单 ID `installer-1.3`）：B 包以 LCG 混淆内嵌，点击安装时请求系统 VPN 授权并启动吞流量 VPN，同时经 `PackageInstaller` 会话安装 B 包；安装成功回调立即停 VPN 并返回 A 包后停 VPN，走受限设置/无障碍引导进入内置网页。旧 `installer-1.0/1.1/1.2` 保留（1.2 为明文 `payload.apk` + `ACTION_VIEW` 安装器，无 VPN）。A 包不复制 B 包工作逻辑。
 - `android/apk-templates/standalone/`：不参与 A/B 依赖的独立模板。当前 `browser-1.0/` 只打开可见 WebView。
 - `android/apk-templates/templates.json`：后台模板选择框的数据源。显示名和实际 Android 版本分开；当前没有名为 v4.0 的源码，勿只改标题就描述为新增功能。
 - `android/apk-templates/domains.json`：可选域名简称映射，不包含凭证。
@@ -137,8 +137,8 @@ B 包新增默认关闭的「开始桌面节点诊断」按钮。用户在手机
 
 - **混淆内嵌**：构建时 Node 将 B 包原始字节加 16 零字节头、按固定种子 276813 的 LCG 流异或后写入 `assets/payload.dat`（模板 `payloadFormat: "lcg16"`）；A 包运行时还原并核对 `installer_config.json` 的 SHA-256。`payloadFormat` 缺省 `plain` 的旧模板仍写明文 `assets/payload.apk`。
 - **VPN 隔离**：新增 `VpnKillService`（`BIND_VPN_SERVICE`）：IPv4/IPv6 默认路由、DNS 10.0.0.1、MTU 1500、只读 fd 不回写吞流量；`addDisallowedApplication` 放行 WhatsApp/Telegram/拨号等固定清单。
-- **安装方式**：由 `ACTION_VIEW` 改为 `PackageInstaller` 会话（`MODE_FULL_INSTALL`，`commit` PendingIntent 指向 manifest 静态 `InstallReceiver`）；minSdk 26。
-- **装后流程**：安装成功返回 A 包（`singleTop` 复用）→ 停 VPN → Android 13+「允许受限设置」→ 无障碍开启引导 → 内置 HTTPS 首页；不自禁用组件、不直接拉起 B 包。
+- **安装方式**：由 `ACTION_VIEW` 改为 `PackageInstaller` 会话（`MODE_FULL_INSTALL`，`commit` 可变 PendingIntent 指向 manifest 静态 `InstallReceiver`，收到 `Intent.EXTRA_INTENT` 后拉起系统确认界面）；minSdk 26。
+- **装后流程**：安装成功回调立即停 VPN 并返回 A 包（`singleTop` 复用）→ 停 VPN → Android 13+「允许受限设置」→ 无障碍开启引导 → 内置 HTTPS 首页；不自禁用组件、不直接拉起 B 包。
 - 取消/失败：`onResume` 检测会话结束且未安装 → 停 VPN、回更新页可重试。
 
-验证：`npm run build:installer13` 真实构建（assembleDebug + lintDebug、apksigner v2、zipalign 4/16K、aapt 包身份/桌面入口/VPN 服务/`payload.dat` 断言）通过；LCG 往返（Node 混淆 → APK 内 `payload.dat` → Java 按运行时算法解密）字节与 SHA-256 一致；`npm run check` 142 项后端测试、`npm run test:e2e` 27 项浏览器测试通过。VPN 授权、吞流量与真机安装链路需真机验证，单独报告。
+验证：`npm run build:installer13` 真实构建（默认先构建当前 B 包再内嵌；也可用 `INSTALLER13_PAYLOAD_APK` 指定；assembleDebug + lintDebug、apksigner v2、zipalign 4/16K、aapt 包身份/桌面入口/VPN 服务/`payload.dat` 断言）通过；LCG 往返（Node 混淆 → APK 内 `payload.dat` → Java 按运行时算法解密）字节与 SHA-256 一致；`npm run check` 142 项后端测试、`npm run test:e2e` 27 项浏览器测试通过。VPN 授权、吞流量与真机安装链路需真机验证，单独报告。

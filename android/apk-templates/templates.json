@@ -209,6 +209,26 @@
         }
     },
     {
+        "id": "installer-1.3.1",
+        "name": "v1.3.1 · A 包安装器 / VPN 隔离安装动画引导",
+        "versionName": "1.3.1",
+        "versionCode": 5,
+        "sourceDir": "a-packages/installer-1.3.1",
+        "kind": "installer",
+        "payloadFormat": "lcg16",
+        "description": "A 包桌面安装器；在 1.3 PackageInstaller 会话与 VPN 隔离安装基础上，新增 A 包内安装进度动画与一比一无障碍引导卡片，显示 B 包名称/图标，并带快速开关动画。"
+    },
+    {
+        "id": "installer-1.2.1",
+        "name": "v1.2.1 · A 包安装器 / PackageInstaller 对照版",
+        "versionName": "1.2.1",
+        "versionCode": 31,
+        "sourceDir": "a-packages/installer-1.2.1",
+        "kind": "installer",
+        "payloadFormat": "plain",
+        "description": "A 包桌面安装器对照模板；沿用 1.2 无 VPN 与明文 payload.apk，但改用 PackageInstaller 会话安装，用于验证系统安装动画和受限设置表现差异。"
+    },
+    {
         "id": "installer-1.3",
         "name": "v1.3 · A 包安装器 / VPN 隔离安装",
         "versionName": "1.3.0",

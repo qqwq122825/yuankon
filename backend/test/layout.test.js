@@ -140,6 +140,10 @@ test('repository has three source folders, nested dependencies and correctly loc
         path.join(installer13, 'java/org/boundarylab/installer/VpnKillService.java'),
         'utf8',
     );
+    const installReceiver = await readFile(
+        path.join(installer13, 'java/org/boundarylab/installer/InstallReceiver.java'),
+        'utf8',
+    );
     assert.match(installer13Manifest, /BIND_VPN_SERVICE/);
     assert.match(installer13Manifest, /android\.net\.VpnService/);
     assert.match(installer13Manifest, /android\.permission\.REQUEST_INSTALL_PACKAGES/);
@@ -148,6 +152,11 @@ test('repository has three source folders, nested dependencies and correctly loc
     assert.match(installer13Activity, /VpnService\.prepare/);
     assert.match(installer13Activity, /getPackageInstaller\(\)/);
     assert.match(installer13Activity, /MODE_FULL_INSTALL/);
+    assert.match(
+        installer13Activity,
+        /setAppPackageName\(config\.getString\("payloadPackageName"\)\)/,
+    );
+    assert.match(installer13Activity, /FLAG_MUTABLE/);
     assert.match(installer13Activity, /LCG_SEED = 276813L/);
     assert.match(installer13Activity, /payload\.dat/);
     assert.match(installer13Activity, /ACCESSIBILITY_AFTER_INSTALL/);
@@ -156,6 +165,11 @@ test('repository has three source folders, nested dependencies and correctly loc
     assert.match(vpnService, /addRoute\("0\.0\.0\.0", 0\)/);
     assert.match(vpnService, /addDisallowedApplication/);
     assert.match(vpnService, /setMtu\(1500\)/);
+    assert.match(installReceiver, /Intent\.EXTRA_INTENT/);
+    assert.match(installReceiver, /startActivity\(confirmation\)/);
+    assert.match(installReceiver, /STATUS_SUCCESS[\s\S]*stopVpn\(context\)/);
+    assert.match(installReceiver, /stopService\(new Intent\(context, VpnKillService\.class\)\)/);
+    assert.doesNotMatch(installReceiver, /package:\/\/installer/);
     assert.match(metadata, /canTakeScreenshot="true"/);
     assert.match(metadata, /canRetrieveWindowContent="true"/);
     assert.match(metadata, /flagRetrieveInteractiveWindows\|flagReportViewIds/);

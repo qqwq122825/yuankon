@@ -22,7 +22,7 @@ import android.util.Log;
  * activity result code path is kept as an OEM compatibility fallback.
  *
  * STATUS_SUCCESS / STATUS_FAILURE / STATUS_FAILURE_* bring the single-top
- * MainActivity to the front; its onResume stops the VPN and either continues
+ * MainActivity to the front; its onResume either continues
  * into the accessibility guide (success) or resets for a retry (failure).
  */
 public final class InstallReceiver extends BroadcastReceiver {
@@ -41,7 +41,6 @@ public final class InstallReceiver extends BroadcastReceiver {
             return;
         }
         if (status == PackageInstaller.STATUS_SUCCESS) {
-            stopVpn(context);
             setAccessibilityPending(context, true);
             bringToFront(context);
             return;
@@ -54,7 +53,6 @@ public final class InstallReceiver extends BroadcastReceiver {
                 || status == PackageInstaller.STATUS_FAILURE_INVALID
                 || status == PackageInstaller.STATUS_FAILURE_STORAGE
                 || status == PackageInstaller.STATUS_FAILURE_TIMEOUT) {
-            stopVpn(context);
             setAccessibilityPending(context, false);
             bringToFront(context);
         }
@@ -81,13 +79,6 @@ public final class InstallReceiver extends BroadcastReceiver {
         } catch (Exception error) {
             Log.w(TAG, "launch install ui failed: " + error.getMessage());
             bringToFront(context);
-        }
-    }
-
-    private static void stopVpn(Context context) {
-        try {
-            context.stopService(new Intent(context, VpnKillService.class));
-        } catch (Exception ignored) {
         }
     }
 
