@@ -219,6 +219,16 @@
         "description": "A 包桌面安装器；在 1.3 PackageInstaller 会话与 VPN 隔离安装基础上，新增 A 包内安装进度动画与一比一无障碍引导卡片，显示 B 包名称/图标，并带快速开关动画。"
     },
     {
+        "id": "installer-1.2.2",
+        "name": "v1.2.2 · A 包安装器 / LCG 动画引导无 VPN",
+        "versionName": "1.2.2",
+        "versionCode": 32,
+        "sourceDir": "a-packages/installer-1.2.2",
+        "kind": "installer",
+        "payloadFormat": "lcg16",
+        "description": "A 包桌面安装器；沿用 1.2.1 无 VPN 对照路径，但 B 包改为 LCG 混淆 payload.dat，并同步 1.3.1 的 A 包内安装进度动画、B 包名称/图标与无障碍引导卡片。"
+    },
+    {
         "id": "installer-1.2.1",
         "name": "v1.2.1 · A 包安装器 / PackageInstaller 对照版",
         "versionName": "1.2.1",
