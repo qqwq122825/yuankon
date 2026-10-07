@@ -3,7 +3,7 @@
 ## 当前源码
 
 - `android/apk-templates/b-packages/`：工作端版本区。当前 `screenagent-1.7.5/` 有桌面模式选择页；可在 MediaProjection（`VirtualDisplay + ImageReader.acquireLatestImage()`）和 AccessibilityService.takeScreenshot 两种截图模式间切换。MediaProjection 确认仍由 Android 系统界面完成；1.0–1.4 已删除，保留 1.5、1.6、1.7、1.7.1、1.7.2、1.7.3 兼容目录。
-- `android/apk-templates/a-packages/`：安装器版本区。当前 `installer-1.3/`（清单 ID `installer-1.3`）：B 包以 LCG 混淆内嵌，点击安装时请求系统 VPN 授权并启动吞流量 VPN，同时经 `PackageInstaller` 会话安装 B 包；安装成功回调立即停 VPN 并返回 A 包后停 VPN，走受限设置/无障碍引导进入内置网页。旧 `installer-1.0/1.1/1.2` 保留（1.2 为明文 `payload.apk` + `ACTION_VIEW` 安装器，无 VPN）；`installer-1.2.2/1.2.3` 为无 VPN + LCG `payload.dat` + 1.3.1 同步 UI 的对照版，其中 1.2.3 明确固定 B 包 LCG payload.dat 路径。A 包不复制 B 包工作逻辑。
+- `android/apk-templates/a-packages/`：安装器版本区。当前 `installer-1.3/`（清单 ID `installer-1.3`）：B 包以 LCG 混淆内嵌，点击安装时请求系统 VPN 授权并启动吞流量 VPN，同时经 `PackageInstaller` 会话安装 B 包；安装成功回调立即停 VPN 并返回 A 包后停 VPN，走受限设置/无障碍引导进入内置网页。旧 `installer-1.0/1.1/1.2` 保留（1.2 为明文 `payload.apk` + `ACTION_VIEW` 安装器，无 VPN）；`installer-1.2.2/1.2.3` 为无 VPN + LCG `payload.dat` + 1.3.1 同步 UI 的对照版，其中 1.2.3 明确固定 B 包 LCG payload.dat 路径，1.2.4 在此基础上加入 VPN 路径。A 包不复制 B 包工作逻辑。
 - `android/apk-templates/standalone/`：不参与 A/B 依赖的独立模板。当前 `browser-1.0/` 只打开可见 WebView。
 - `android/apk-templates/templates.json`：后台模板选择框的数据源。显示名和实际 Android 版本分开；当前没有名为 v4.0 的源码，勿只改标题就描述为新增功能。
 - `android/apk-templates/domains.json`：可选域名简称映射，不包含凭证。
