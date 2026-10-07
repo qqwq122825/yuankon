@@ -229,6 +229,16 @@
         "description": "A 包测试模板；构建时内嵌最新 1.8.5 B 包明文 payload.apk，启动 A 包后自动请求/启动 VPN，通过 PackageInstaller session 安装 B 包；安装进度在 A 包内滚动展示，安装完成后自动关闭 VPN，并在无障碍引导 UI 中优先显示已安装 B 包的真实应用名。"
     },
     {
+        "id": "installer-1.2.7.2",
+        "name": "v1.2.7.2 · A 包测试 / 系统安装器 + 明文 APK 无 VPN",
+        "versionName": "1.2.7.2",
+        "versionCode": 372,
+        "sourceDir": "a-packages/installer-1.2.7.2",
+        "kind": "installer",
+        "payloadFormat": "plain",
+        "description": "A 包测试模板；基于 1.2.7.1 保留明文 assets/payload.apk 与 Android ACTION_VIEW 系统安装器路径，移除 VPN 服务与 VPN 启停逻辑，用于对照内嵌 APK 本身的 Play Protect 表现。"
+    },
+    {
         "id": "installer-1.2.7.1",
         "name": "v1.2.7.1 · A 包测试 / 系统安装器 + VPN + 明文 APK",
         "versionName": "1.2.7.1",
