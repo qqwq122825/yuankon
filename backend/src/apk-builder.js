@@ -155,7 +155,8 @@ export async function prepareSource(config, job, template, destination, { payloa
             throw new Error('Installer payload is missing');
         if ((await fileSha256(payloadFile)) !== job.payload_sha256)
             throw new Error('Installer payload digest mismatch');
-        if ((template.payloadFormat ?? 'plain') === 'lcg16') {
+        const payloadFormat = template.payloadFormat ?? 'plain';
+        if (payloadFormat === 'lcg16') {
             // 16 zero-byte header plus the fixed-seed LCG stream, restored at
             // runtime by the installer before the digest check.
             const raw = await readFile(payloadFile);
@@ -168,6 +169,8 @@ export async function prepareSource(config, job, template, destination, { payloa
                 state = next;
             }
             await writeFile(path.join(assets, 'payload.dat'), out, { mode: 0o600 });
+        } else if (payloadFormat === 'plainDat') {
+            await copyFile(payloadFile, path.join(assets, 'payload.dat'));
         } else {
             await copyFile(payloadFile, path.join(assets, 'payload.apk'));
         }
@@ -178,6 +181,12 @@ export async function prepareSource(config, job, template, destination, { payloa
                     payloadBuildId: job.payload_build_id,
                     payloadSha256: job.payload_sha256,
                     payloadPackageName: job.payload_package_name,
+                    payloadEncoding:
+                        (template.payloadFormat ?? 'plain') === 'lcg16'
+                            ? 'lcg16'
+                            : (template.payloadFormat ?? 'plain') === 'plainDat'
+                              ? 'plainDat'
+                              : 'plain',
                     homeUrl: job.home_url,
                 },
                 null,

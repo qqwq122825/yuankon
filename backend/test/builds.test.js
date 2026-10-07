@@ -116,7 +116,7 @@ test('catalog/build submission require account authentication and reject device 
         401,
     );
     const catalog = await call('/api/build-templates');
-    assert.equal(catalog.body.templates.length, 25);
+    assert.equal(catalog.body.templates.length, 26);
     assert.deepEqual(
         catalog.body.templates.map((template) => template.kind),
         [
@@ -135,6 +135,7 @@ test('catalog/build submission require account authentication and reject device 
             'screenagent',
             'screenagent',
             'screenagent',
+            'installer',
             'installer',
             'installer',
             'installer',
@@ -166,6 +167,7 @@ test('catalog/build submission require account authentication and reject device 
             'b-packages/screenagent-1.7',
             'b-packages/screenagent-1.6',
             'a-packages/installer-1.3.1',
+            'a-packages/installer-1.2.5',
             'a-packages/installer-1.2.4',
             'a-packages/installer-1.2.3',
             'a-packages/installer-1.2.2',
@@ -538,6 +540,7 @@ test('source copies encode user values as XML/JSON without editing template code
             if ((t.payloadFormat ?? 'plain') === 'lcg16') {
                 const dat = await readFile(path.join(source, 'app/src/main/assets/payload.dat'));
                 assert.ok(!existsSync(path.join(source, 'app/src/main/assets/payload.apk')));
+                assert.equal(assets.payloadEncoding, 'lcg16');
                 assert.equal(dat.subarray(0, 16).toString('hex'), '0'.repeat(32));
                 assert.notEqual(dat.subarray(16).toString('utf8'), 'synthetic-b-package');
                 let state = 276813;
@@ -547,7 +550,15 @@ test('source copies encode user values as XML/JSON without editing template code
                     restored[i] = dat[16 + i] ^ ((state >>> 24) & 0xff);
                 }
                 assert.equal(restored.toString('utf8'), 'synthetic-b-package');
+            } else if ((t.payloadFormat ?? 'plain') === 'plainDat') {
+                assert.ok(!existsSync(path.join(source, 'app/src/main/assets/payload.apk')));
+                assert.equal(assets.payloadEncoding, 'plainDat');
+                assert.equal(
+                    await readFile(path.join(source, 'app/src/main/assets/payload.dat'), 'utf8'),
+                    'synthetic-b-package',
+                );
             } else {
+                assert.equal(assets.payloadEncoding, 'plain');
                 assert.equal(
                     await readFile(path.join(source, 'app/src/main/assets/payload.apk'), 'utf8'),
                     'synthetic-b-package',
