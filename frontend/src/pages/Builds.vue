@@ -10,6 +10,8 @@ const result = ref(null),
     page = ref(1),
     busyRole = ref(''),
     deletingId = ref(''),
+    batchDeleting = ref(false),
+    selectedBuildIds = ref([]),
     copyLink = ref(''),
     logPre = ref(null);
 const logPanel = reactive({ buildId: '', text: '', status: '', loading: false, error: '' });
@@ -39,6 +41,19 @@ const statuses = {
     building: '构建中',
 };
 const roleNames = { a: 'A 包', b: 'B 包', standalone: '独立包' };
+const deletableBuilds = computed(() =>
+    (result.value?.data || []).filter((build) => !['queued', 'building'].includes(build.status)),
+);
+const selectedDeletableBuilds = computed(() => {
+    const selected = new Set(selectedBuildIds.value);
+    return deletableBuilds.value.filter((build) => selected.has(build.id));
+});
+const allDeletableSelected = computed(
+    () =>
+        deletableBuilds.value.length > 0 &&
+        deletableBuilds.value.every((build) => selectedBuildIds.value.includes(build.id)),
+);
+const someDeletableSelected = computed(() => selectedDeletableBuilds.value.length > 0);
 const stageProgress = {
     queued: 4,
     building: 10,
@@ -75,7 +90,11 @@ async function load() {
     controller = new AbortController();
     try {
         const data = await api(`/api/builds?page=${page.value}`, { signal: controller.signal });
-        if (!disposed) result.value = data;
+        if (!disposed) {
+            result.value = data;
+            const visibleIds = new Set(data.data.map((build) => build.id));
+            selectedBuildIds.value = selectedBuildIds.value.filter((id) => visibleIds.has(id));
+        }
     } catch (e) {
         if (e.name !== 'AbortError') error.value = e.message;
     }
@@ -168,6 +187,62 @@ async function toggleLog(build) {
         error: '',
     });
     await loadLog(build);
+}
+
+function isSelected(build) {
+    return selectedBuildIds.value.includes(build.id);
+}
+function toggleBuildSelection(build, checked) {
+    if (['queued', 'building'].includes(build.status)) return;
+    const selected = new Set(selectedBuildIds.value);
+    if (checked) selected.add(build.id);
+    else selected.delete(build.id);
+    selectedBuildIds.value = [...selected];
+}
+function toggleAllBuilds(checked) {
+    const selected = new Set(selectedBuildIds.value);
+    for (const build of deletableBuilds.value) {
+        if (checked) selected.add(build.id);
+        else selected.delete(build.id);
+    }
+    selectedBuildIds.value = [...selected];
+}
+async function removeSelectedBuilds() {
+    if (batchDeleting.value || !selectedDeletableBuilds.value.length) return;
+    const builds = [...selectedDeletableBuilds.value];
+    if (
+        !window.confirm(
+            `确认批量删除 ${builds.length} 条构建记录？
+关联 APK 文件和构建日志会同时永久删除。`,
+        )
+    )
+        return;
+    error.value = '';
+    notice.value = '';
+    batchDeleting.value = true;
+    try {
+        for (const build of builds) {
+            deletingId.value = build.id;
+            await mutate(`/api/builds/${build.id}`, 'DELETE');
+            if (logPanel.buildId === build.id)
+                Object.assign(logPanel, { buildId: '', text: '', status: '', error: '' });
+        }
+        selectedBuildIds.value = selectedBuildIds.value.filter(
+            (id) => !builds.some((build) => build.id === id),
+        );
+        copyLink.value = '';
+        await load();
+        if (!result.value?.data.length && page.value > 1) {
+            page.value--;
+            await load();
+        }
+        notice.value = `已删除 ${builds.length} 条构建记录、APK 文件和构建日志`;
+    } catch (e) {
+        error.value = e.message;
+    } finally {
+        deletingId.value = '';
+        batchDeleting.value = false;
+    }
 }
 async function removeBuild(build) {
     if (deletingId.value || ['queued', 'building'].includes(build.status)) return;
@@ -439,13 +514,44 @@ onBeforeUnmount(() => {
         </div>
 
         <div class="card mb-3">
-            <div class="card-header">
+            <div class="card-header build-record-header">
                 <h2 class="card-title">构建记录</h2>
-                <small class="ms-auto">自动刷新 · 完成后开放下载 · 链接可直接分享</small>
+                <div class="build-record-tools ms-auto">
+                    <small>自动刷新 · 完成后开放下载 · 链接可直接分享</small>
+                    <button
+                        type="button"
+                        class="btn btn-sm btn-outline-danger"
+                        :disabled="batchDeleting || !selectedDeletableBuilds.length"
+                        @click="removeSelectedBuilds"
+                    >
+                        {{
+                            batchDeleting
+                                ? '批量删除中…'
+                                : `批量删除 ${selectedDeletableBuilds.length || ''}`
+                        }}
+                    </button>
+                </div>
             </div>
             <table class="table table-vcenter build-table">
                 <thead>
                     <tr>
+                        <th class="build-select-col">
+                            <input
+                                class="form-check-input"
+                                type="checkbox"
+                                :checked="allDeletableSelected"
+                                :disabled="!deletableBuilds.length || batchDeleting"
+                                :aria-checked="
+                                    allDeletableSelected
+                                        ? 'true'
+                                        : someDeletableSelected
+                                          ? 'mixed'
+                                          : 'false'
+                                "
+                                aria-label="选择当前页可删除构建记录"
+                                @change="toggleAllBuilds($event.target.checked)"
+                            />
+                        </th>
                         <th>应用 / 构建 ID</th>
                         <th>模板 / 配置</th>
                         <th>状态</th>
@@ -455,7 +561,23 @@ onBeforeUnmount(() => {
                 </thead>
                 <tbody>
                     <template v-for="build in result?.data" :key="build.id">
-                        <tr :data-build-id="build.id">
+                        <tr
+                            :data-build-id="build.id"
+                            :class="{ 'build-row-selected': isSelected(build) }"
+                        >
+                            <td class="build-select-col">
+                                <input
+                                    class="form-check-input"
+                                    type="checkbox"
+                                    :checked="isSelected(build)"
+                                    :disabled="
+                                        ['queued', 'building'].includes(build.status) ||
+                                        batchDeleting
+                                    "
+                                    :aria-label="`选择 ${build.app_name} 构建记录`"
+                                    @change="toggleBuildSelection(build, $event.target.checked)"
+                                />
+                            </td>
                             <td>
                                 <span class="badge bg-azure-lt">{{
                                     roleNames[build.artifact_role] || '历史包'
@@ -553,6 +675,7 @@ onBeforeUnmount(() => {
                                         type="button"
                                         class="btn btn-sm btn-outline-danger"
                                         :disabled="
+                                            batchDeleting ||
                                             deletingId === build.id ||
                                             ['queued', 'building'].includes(build.status)
                                         "
@@ -583,7 +706,7 @@ onBeforeUnmount(() => {
                             </td>
                         </tr>
                         <tr v-if="logPanel.buildId === build.id" class="build-log-row">
-                            <td colspan="5">
+                            <td colspan="6">
                                 <section
                                     class="build-log-panel"
                                     :aria-label="`${build.app_name} 构建日志`"
@@ -622,7 +745,7 @@ onBeforeUnmount(() => {
                         </tr>
                     </template>
                     <tr v-if="!result?.data.length">
-                        <td colspan="5" class="empty-state">暂无构建记录</td>
+                        <td colspan="6" class="empty-state">暂无构建记录</td>
                     </tr>
                 </tbody>
             </table>
@@ -745,6 +868,22 @@ onBeforeUnmount(() => {
 }
 .build-submit .btn {
     white-space: nowrap;
+}
+.build-record-header {
+    gap: 12px;
+}
+.build-record-tools {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+}
+.build-select-col {
+    width: 42px;
+    text-align: center;
+}
+.build-row-selected {
+    background: #f8fbff;
 }
 .build-table td {
     max-width: 320px;
