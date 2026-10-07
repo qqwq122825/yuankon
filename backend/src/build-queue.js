@@ -131,7 +131,7 @@ export class BuildQueue {
                 job,
                 await resolveBuildRecipient(trx, parsed.apkId, owner, job.project_id),
             );
-            if (role === 'a') {
+            if (role === 'a' && (template.payloadFormat ?? 'plain') !== 'none') {
                 const payload = await this.latestB(
                     job.owner_account_id,
                     trx,
@@ -239,7 +239,7 @@ export class BuildQueue {
                 );
                 const template = templateSchema.parse(JSON.parse(job.template_snapshot));
                 let payloadFile;
-                if (job.artifact_role === 'a') {
+                if (job.artifact_role === 'a' && (template.payloadFormat ?? 'plain') !== 'none') {
                     const payload = await this.db('apk_builds')
                         .where({
                             id: job.payload_build_id,

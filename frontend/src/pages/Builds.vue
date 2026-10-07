@@ -472,8 +472,15 @@ onBeforeUnmount(() => {
                         ></label
                     >
                 </fieldset>
-                <div class="latest-b-card" :class="{ missing: !result?.latestB }">
-                    <template v-if="result?.latestB">
+                <div
+                    class="latest-b-card"
+                    :class="{ missing: !result?.latestB && aTemplate?.payloadFormat !== 'none' }"
+                >
+                    <template v-if="aTemplate?.payloadFormat === 'none'">
+                        <strong>此模板不携带 B 包</strong>
+                        <span>仅构建 A 包自身，用于 VPN 单独测试。</span>
+                    </template>
+                    <template v-else-if="result?.latestB">
                         <strong>将携带 B 包 {{ result.latestB.id.slice(0, 8) }}</strong>
                         <span
                             >{{ result.latestB.app_name }} · {{ result.latestB.package_name }}</span
@@ -504,7 +511,7 @@ onBeforeUnmount(() => {
                             Boolean(busyRole) ||
                             !catalog?.worker.ready ||
                             !aTemplate ||
-                            !result?.latestB
+                            (aTemplate.payloadFormat !== 'none' && !result?.latestB)
                         "
                     >
                         {{ busyRole === 'a' ? '正在提交…' : '构建 A 包' }}

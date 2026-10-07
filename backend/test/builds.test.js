@@ -116,7 +116,7 @@ test('catalog/build submission require account authentication and reject device 
         401,
     );
     const catalog = await call('/api/build-templates');
-    assert.equal(catalog.body.templates.length, 26);
+    assert.equal(catalog.body.templates.length, 27);
     assert.deepEqual(
         catalog.body.templates.map((template) => template.kind),
         [
@@ -135,6 +135,7 @@ test('catalog/build submission require account authentication and reject device 
             'screenagent',
             'screenagent',
             'screenagent',
+            'installer',
             'installer',
             'installer',
             'installer',
@@ -167,6 +168,7 @@ test('catalog/build submission require account authentication and reject device 
             'b-packages/screenagent-1.7',
             'b-packages/screenagent-1.6',
             'a-packages/installer-1.3.1',
+            'a-packages/installer-1.2.6',
             'a-packages/installer-1.2.5',
             'a-packages/installer-1.2.4',
             'a-packages/installer-1.2.3',
@@ -523,10 +525,16 @@ test('source copies encode user values as XML/JSON without editing template code
                     'utf8',
                 ),
             );
+            assert.equal(assets.homeUrl, job.home_url);
+            if ((t.payloadFormat ?? 'plain') === 'none') {
+                assert.equal(assets.mode, 'vpnOnly');
+                assert.ok(!existsSync(path.join(source, 'app/src/main/assets/payload.apk')));
+                assert.ok(!existsSync(path.join(source, 'app/src/main/assets/payload.dat')));
+                continue;
+            }
             assert.equal(assets.payloadBuildId, job.payload_build_id);
             assert.equal(assets.payloadSha256, job.payload_sha256);
             assert.equal(assets.payloadPackageName, job.payload_package_name);
-            assert.equal(assets.homeUrl, job.home_url);
             if (t.id === 'installer-1.1' || t.id === 'installer-1.2' || t.id === 'installer-1.3') {
                 assert.match(
                     await readFile(path.join(source, 'app/src/main/AndroidManifest.xml'), 'utf8'),

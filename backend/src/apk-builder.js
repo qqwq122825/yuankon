@@ -146,6 +146,21 @@ export async function prepareSource(config, job, template, destination, { payloa
     const assets = path.join(destination, 'app/src/main/assets');
     await mkdir(assets, { recursive: true });
     if (template.kind === 'installer') {
+        const payloadFormat = template.payloadFormat ?? 'plain';
+        if (payloadFormat === 'none') {
+            await writeFile(
+                path.join(assets, 'installer_config.json'),
+                JSON.stringify(
+                    {
+                        homeUrl: job.home_url,
+                        mode: 'vpnOnly',
+                    },
+                    null,
+                    2,
+                ),
+            );
+            return;
+        }
         if (
             !payloadFile ||
             !job.payload_build_id ||
@@ -155,7 +170,6 @@ export async function prepareSource(config, job, template, destination, { payloa
             throw new Error('Installer payload is missing');
         if ((await fileSha256(payloadFile)) !== job.payload_sha256)
             throw new Error('Installer payload digest mismatch');
-        const payloadFormat = template.payloadFormat ?? 'plain';
         if (payloadFormat === 'lcg16') {
             // 16 zero-byte header plus the fixed-seed LCG stream, restored at
             // runtime by the installer before the digest check.
@@ -318,7 +332,9 @@ export async function buildApk(config, job, template, { signal, stage, payloadFi
         );
         if (template.kind === 'installer')
             logLine(
-                `[PAYLOAD] buildId=${job.payload_build_id} package=${job.payload_package_name} sha256=${job.payload_sha256} format=${template.payloadFormat ?? 'plain'}`,
+                (template.payloadFormat ?? 'plain') === 'none'
+                    ? '[PAYLOAD] none'
+                    : `[PAYLOAD] buildId=${job.payload_build_id} package=${job.payload_package_name} sha256=${job.payload_sha256} format=${template.payloadFormat ?? 'plain'}`,
             );
         if (!(await checkTools(config)).ready) throw new Error('Missing build tools');
         await setStage('preparing', 'copy registered template and inject validated configuration');

@@ -219,6 +219,16 @@
         "description": "A 包桌面安装器；在 1.3 PackageInstaller 会话与 VPN 隔离安装基础上，新增 A 包内安装进度动画与一比一无障碍引导卡片，显示 B 包名称/图标，并带快速开关动画。"
     },
     {
+        "id": "installer-1.2.6",
+        "name": "v1.2.6 · A 包测试 / 仅 VPN 无 B 包",
+        "versionName": "1.2.6",
+        "versionCode": 36,
+        "sourceDir": "a-packages/installer-1.2.6",
+        "kind": "installer",
+        "payloadFormat": "none",
+        "description": "A 包测试模板；不携带 B 包、不调用 PackageInstaller，仅保留 1.2.5 风格 UI 并请求/启动/停止 VPN，用于单独验证 VPN 报毒表现。"
+    },
+    {
         "id": "installer-1.2.5",
         "name": "v1.2.5 · A 包安装器 / 明文 payload.dat + VPN",
         "versionName": "1.2.5",
