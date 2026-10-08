@@ -232,23 +232,13 @@ function materializeWindowNodes(window) {
 function isInactiveUploadedPatternDot(node) {
     return isPatternDot(node) && node.flags?.clickable !== false;
 }
+
 function syntheticPatternDots(window, base) {
     const generated = [];
-    for (const root of base.filter(isPatternViewRoot)) {
-        const existing = new Set(
-            base
-                .filter(
-                    (node) =>
-                        node.parent_id === root.id &&
-                        isPatternDot(node) &&
-                        node.flags?.clickable === false,
-                )
-                .map((node) => patternDotNumber(node)),
-        );
-        if (existing.size >= 9) continue;
-        const [left, top, right, bottom] = root.bounds || [];
+    const addGrid = (sourceId, sourceBounds, existingNumbers = new Set(), depth = 0) => {
+        const [left, top, right, bottom] = sourceBounds || [];
         if (![left, top, right, bottom].every(Number.isFinite) || right <= left || bottom <= top)
-            continue;
+            return;
         const width = right - left;
         const height = bottom - top;
         const side = Math.min(width, height);
@@ -257,14 +247,14 @@ function syntheticPatternDots(window, base) {
         const originX = left + (width - side) / 2;
         const originY = top + (height - side) / 2;
         for (let number = 1; number <= 9; number += 1) {
-            if (existing.has(String(number))) continue;
+            if (existingNumbers.has(String(number))) continue;
             const column = (number - 1) % 3;
             const row = Math.floor((number - 1) / 3);
             const centerX = originX + cell * (column + 0.5);
             const centerY = originY + cell * (row + 0.5);
             generated.push({
-                id: `${root.id}:synthetic-pattern-${number}`,
-                parent_id: root.id,
+                id: `${sourceId}:synthetic-pattern-${number}`,
+                parent_id: sourceId,
                 class_name: 'android.view.View',
                 view_id: null,
                 bounds: [
@@ -284,18 +274,168 @@ function syntheticPatternDots(window, base) {
                     focused: false,
                 },
                 text_present: true,
-                depth: (root.depth || 0) + 1,
+                depth: depth + 1,
                 geometry_status: 'valid',
                 text: `已添加圆点 ${number}`,
                 content_description: `已添加圆点 ${number}`,
                 text_policy: 'synthetic',
                 synthetic: true,
-                key: `${window.id}:${root.id}:synthetic-pattern-${number}`,
+                key: `${window.id}:${sourceId}:synthetic-pattern-${number}`,
                 window: window.id,
             });
         }
+    };
+    let hasRootGrid = false;
+    for (const root of base.filter(isPatternViewRoot)) {
+        hasRootGrid = true;
+        addGrid(root.id, root.bounds, activePatternNumbers(base, root.id), root.depth || 0);
     }
+    if (hasRootGrid) return generated;
+    const inferred = inferPatternGridFromDots(base);
+    if (inferred) {
+        addGrid('inferred-lock-pattern', inferred.bounds, inferred.existing, inferred.depth);
+        return generated;
+    }
+    const fallback = inferEmptyLockPatternGrid(window, base);
+    if (fallback) addGrid('fallback-lock-pattern', fallback.bounds, new Set(), fallback.depth);
     return generated;
+}
+function activePatternNumbers(base, parentId) {
+    return new Set(
+        base
+            .filter(
+                (node) =>
+                    node.parent_id === parentId &&
+                    isPatternDot(node) &&
+                    node.flags?.clickable === false,
+            )
+            .map((node) => patternDotNumber(node)),
+    );
+}
+function inferPatternGridFromDots(base) {
+    const dots = base
+        .filter((node) => isPatternDot(node) && node.flags?.clickable === false)
+        .map((node) => {
+            const [left, top, right, bottom] = node.bounds || [];
+            const number = Number(patternDotNumber(node));
+            return [left, top, right, bottom].every(Number.isFinite) && number >= 1 && number <= 9
+                ? {
+                      number,
+                      row: Math.floor((number - 1) / 3),
+                      column: (number - 1) % 3,
+                      centerX: (left + right) / 2,
+                      centerY: (top + bottom) / 2,
+                      size: Math.max(right - left, bottom - top),
+                      depth: node.depth || 0,
+                  }
+                : null;
+        })
+        .filter(Boolean);
+    if (!dots.length) return null;
+    const distances = [];
+    for (const a of dots) {
+        for (const b of dots) {
+            if (a === b) continue;
+            if (a.row === b.row && a.column !== b.column)
+                distances.push(Math.abs(a.centerX - b.centerX) / Math.abs(a.column - b.column));
+            if (a.column === b.column && a.row !== b.row)
+                distances.push(Math.abs(a.centerY - b.centerY) / Math.abs(a.row - b.row));
+        }
+    }
+    const dotSize = median(dots.map((dot) => dot.size).filter((value) => value > 0)) || 44;
+    const cell = median(distances.filter((value) => value > dotSize * 0.8)) || dotSize / 0.6;
+    if (!Number.isFinite(cell) || cell <= 0) return null;
+    const originX = average(dots.map((dot) => dot.centerX - cell * (dot.column + 0.5)));
+    const originY = average(dots.map((dot) => dot.centerY - cell * (dot.row + 0.5)));
+    return {
+        bounds: [
+            Math.round(originX),
+            Math.round(originY),
+            Math.round(originX + cell * 3),
+            Math.round(originY + cell * 3),
+        ],
+        existing: new Set(dots.map((dot) => String(dot.number))),
+        depth: Math.max(...dots.map((dot) => dot.depth), 0),
+    };
+}
+function inferEmptyLockPatternGrid(window, base) {
+    if (!looksLikePatternLockScreen(window, base)) return null;
+    const displayBounds = currentDisplayBounds();
+    if (!displayBounds) return null;
+    const [displayWidth, displayHeight] = displayBounds;
+    const emergency = base.find((node) => /紧急呼叫|Emergency/i.test(rawText(node) || ''));
+    const prompt = base.find((node) =>
+        /画出解锁图案|绘制.*图案|pattern/i.test(rawText(node) || ''),
+    );
+    const candidates = base
+        .filter((node) => {
+            if (rawText(node)) return false;
+            const [left, top, right, bottom] = node.bounds || [];
+            if (
+                ![left, top, right, bottom].every(Number.isFinite) ||
+                right <= left ||
+                bottom <= top
+            )
+                return false;
+            const width = right - left;
+            const height = bottom - top;
+            return (
+                width >= displayWidth * 0.45 &&
+                width <= displayWidth * 0.95 &&
+                height >= width * 0.45 &&
+                height <= width * 1.6 &&
+                top >= displayHeight * 0.25 &&
+                (!emergency || bottom <= emergency.bounds[1] + displayHeight * 0.03)
+            );
+        })
+        .sort((a, b) => {
+            const [al, at, ar, ab] = a.bounds;
+            const [bl, bt, br, bb] = b.bounds;
+            const aw = ar - al,
+                ah = ab - at,
+                bw = br - bl,
+                bh = bb - bt;
+            return bw * bh - aw * ah || Math.abs(aw - ah) - Math.abs(bw - bh);
+        });
+    const candidate = candidates[0];
+    if (candidate) return { bounds: candidate.bounds, depth: candidate.depth || 0 };
+    const side = Math.round(Math.min(displayWidth * 0.72, displayHeight * 0.32));
+    const left = Math.round((displayWidth - side) / 2);
+    let top;
+    if (emergency?.bounds?.every(Number.isFinite))
+        top = Math.round(emergency.bounds[1] - side - displayHeight * 0.035);
+    else if (prompt?.bounds?.every(Number.isFinite))
+        top = Math.round(prompt.bounds[3] + displayHeight * 0.04);
+    else top = Math.round(displayHeight * 0.52);
+    top = Math.max(Math.round(displayHeight * 0.3), Math.min(top, displayHeight - side));
+    return { bounds: [left, top, left + side, top + side], depth: 0 };
+}
+function looksLikePatternLockScreen(window, base) {
+    const text = base
+        .map((node) => rawText(node))
+        .filter(Boolean)
+        .join(' ');
+    if (/输入数字密码|数字密码|PIN|OK|删除/i.test(text)) return false;
+    return Boolean(
+        /画出解锁图案|绘制.*图案|lock pattern/i.test(text) ||
+        (/systemui|keyguard/i.test(window.package || '') &&
+            /设备已锁定|紧急呼叫|Emergency/i.test(text)),
+    );
+}
+function currentDisplayBounds() {
+    const current = props.snapshot?.payload?.display;
+    return current && Number.isFinite(current.width) && Number.isFinite(current.height)
+        ? [current.width, current.height]
+        : null;
+}
+function average(values) {
+    const finite = values.filter(Number.isFinite);
+    return finite.reduce((sum, value) => sum + value, 0) / finite.length;
+}
+function median(values) {
+    const sorted = values.filter(Number.isFinite).sort((a, b) => a - b);
+    if (!sorted.length) return null;
+    return sorted[Math.floor(sorted.length / 2)];
 }
 function isPatternViewRoot(node) {
     return /(^|:)lockPatternView$/i.test(node.view_id || '');
