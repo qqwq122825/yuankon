@@ -472,17 +472,40 @@ function isActivePatternDot(node) {
 function displayLabel(node) {
     return patternDotNumber(node) || label(node);
 }
+function hasDrawableChild(node) {
+    return nodes.value.some(
+        (child) =>
+            child.parent_id === node.id &&
+            child.window === node.window &&
+            child.geometry_status !== 'invalid',
+    );
+}
+function isStructuralContainer(node) {
+    return /(FrameLayout|LinearLayout|RelativeLayout|ViewGroup|ViewPager|PagedView)$/.test(
+        node.class_name || '',
+    );
+}
 function isActionNode(node) {
     if (isPatternDot(node)) return false;
     const flags = node.flags || {};
     const klass = node.class_name || '';
+    const viewId = node.view_id || '';
+    const text = rawText(node);
+    if (
+        isStructuralContainer(node) &&
+        hasDrawableChild(node) &&
+        !text &&
+        !/button|icon|key/i.test(viewId)
+    )
+        return false;
     return Boolean(
         /Button$/.test(klass) ||
         (flags.clickable &&
-            (rawText(node) ||
-                /ImageButton$/.test(klass) ||
-                /button|icon|key/i.test(node.view_id || ''))),
+            (text || /ImageButton$/.test(klass) || /button|icon|key/i.test(viewId))),
     );
+}
+function shouldHighlightSelection(node) {
+    return !live.value || isActionNode(node) || isSensitiveNode(node) || isPatternDot(node);
 }
 function isSensitiveNode(node) {
     const flags = node.flags || {};
@@ -490,7 +513,7 @@ function isSensitiveNode(node) {
 }
 function nodeClasses(node) {
     return {
-        selected: selected.value?.key === node.key,
+        selected: selected.value?.key === node.key && shouldHighlightSelection(node),
         'reader-map-node-action': isActionNode(node),
         'reader-map-node-sensitive': isSensitiveNode(node),
         'reader-map-node-pattern': isPatternDot(node),
