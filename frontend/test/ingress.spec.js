@@ -343,7 +343,7 @@ test('APK ownership, automatic online and an actual synthetic JPEG are visible i
     await expect(textInput).toHaveValue('');
     await page.setViewportSize({ width: 1440, height: 706 });
     const compactStage = await stage.boundingBox();
-    expect(compactStage.width).toBe(298);
+    expect(compactStage.width).toBe(300);
     expect(compactStage.height).toBeGreaterThan(640);
     expect(compactStage.width / compactStage.height).toBeCloseTo(360 / 800, 2);
     for (const viewer of [panel, reader]) {
@@ -451,8 +451,8 @@ test('APK ownership, automatic online and an actual synthetic JPEG are visible i
     expect(streamed.at(-1).y).toBeCloseTo(0.75, 1);
     const landscape = await publishFrame(800, 360);
     expect((await panel.boundingBox()).width).toBe(300);
-    expect((await stage.boundingBox()).height).toBeCloseTo((298 * 360) / 800, 0);
-    await image.click({ position: { x: 223.5, y: (await image.boundingBox()).height * 0.25 } });
+    expect((await stage.boundingBox()).height).toBeCloseTo((300 * 360) / 800, 0);
+    await image.click({ position: { x: 225, y: (await image.boundingBox()).height * 0.25 } });
     await expect(page.locator('.device-browser-toast')).toHaveText('手机已完成触控');
     expect(receivedTouches.at(-1).frameId).toBe(landscape.frameId);
     expect(receivedTouches.at(-1).x).toBeCloseTo(0.75, 2);

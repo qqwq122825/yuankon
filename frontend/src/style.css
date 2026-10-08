@@ -186,7 +186,10 @@ select:focus-visible,
 .floating-viewer-live .floating-content {
     display: flex;
     flex: 1 1 auto;
+    width: calc(100% + 2px);
     min-height: 0;
+    margin-right: -1px;
+    margin-left: -1px;
     overflow: hidden;
 }
 .floating-viewer-live .floating-content,
@@ -484,6 +487,7 @@ select:focus-visible,
     justify-content: center;
     padding: 0;
     overflow: hidden;
+    box-sizing: border-box;
     color: #111;
     background: #ffffff26;
     border: 1px solid #ccc;
@@ -494,6 +498,48 @@ select:focus-visible,
     text-overflow: clip;
     white-space: normal;
     overflow-wrap: anywhere;
+}
+.node-reader-live .reader-map-node-action {
+    z-index: 45 !important;
+    background: rgb(255 255 255 / 0.06);
+    border: 3px solid #1d4ed8;
+    border-radius: 10px;
+    color: #1e3a8a;
+    font-weight: 700;
+    box-shadow:
+        0 0 0 1px rgb(255 255 255 / 0.94) inset,
+        0 0 0 1px rgb(29 78 216 / 0.16);
+}
+.node-reader-live .reader-map-node-pattern {
+    z-index: 47 !important;
+    background: rgb(168 85 247 / 0.08);
+    border: 2px solid rgb(168 85 247 / 0.7);
+    border-radius: 999px;
+    color: #7e22ce;
+    font-weight: 700;
+    box-shadow: 0 0 0 1px rgb(255 255 255 / 0.78) inset;
+}
+.node-reader-live .reader-map-node-pattern-active {
+    z-index: 48 !important;
+    background: rgb(139 92 246 / 0.26) !important;
+    border: 3px solid #8b5cf6 !important;
+    color: #6d28d9 !important;
+    font-weight: 800;
+    box-shadow:
+        0 0 0 1px rgb(255 255 255 / 0.88) inset,
+        0 0 0 3px rgb(139 92 246 / 0.18) !important;
+}
+.node-reader-live .reader-map-node-pattern-active span {
+    color: #6d28d9;
+}
+.node-reader-live .reader-map-node-sensitive {
+    z-index: 46 !important;
+    background: rgb(254 226 226 / 0.6);
+    border: 2px dashed #ef4444;
+    border-radius: 6px;
+    color: #dc2626;
+    font-weight: 700;
+    box-shadow: 0 0 0 1px rgb(254 202 202 / 0.7) inset;
 }
 .reader-map-node span {
     max-width: 100%;
@@ -537,9 +583,9 @@ select:focus-visible,
     font-size: 11px;
 }
 .node-reader-pending-shell .reader-pending {
-    flex: 1 1 auto;
+    flex: 0 0 auto;
     min-height: 0;
-    aspect-ratio: auto;
+    aspect-ratio: 9 / 19.5;
 }
 .reader-body {
     font-size: var(--reader-size);

@@ -147,13 +147,7 @@ function withGestureFrame(payload) {
 }
 const live = computed(() => props.snapshot?.source === 'live');
 const nodes = computed(() =>
-    (props.snapshot?.payload?.windows || []).flatMap((window) =>
-        window.nodes.map((node) => ({
-            ...node,
-            key: `${window.id}:${node.id}`,
-            window: window.id,
-        })),
-    ),
+    (props.snapshot?.payload?.windows || []).flatMap((window) => materializeWindowNodes(window)),
 );
 const display = computed(() => props.snapshot?.payload?.display || { width: 1, height: 1 });
 const drawableNodes = computed(() =>
@@ -226,6 +220,86 @@ function rawText(node) {
         .map((value) => (typeof value === 'string' ? value.trim() : ''))
         .find(Boolean);
 }
+function materializeWindowNodes(window) {
+    const uploaded = (window.nodes || []).map((node) => ({
+        ...node,
+        key: `${window.id}:${node.id}`,
+        window: window.id,
+    }));
+    const visible = uploaded.filter((node) => !isInactiveUploadedPatternDot(node));
+    return [...visible, ...syntheticPatternDots(window, uploaded)];
+}
+function isInactiveUploadedPatternDot(node) {
+    return isPatternDot(node) && node.flags?.clickable !== false;
+}
+function syntheticPatternDots(window, base) {
+    const generated = [];
+    for (const root of base.filter(isPatternViewRoot)) {
+        const existing = new Set(
+            base
+                .filter(
+                    (node) =>
+                        node.parent_id === root.id &&
+                        isPatternDot(node) &&
+                        node.flags?.clickable === false,
+                )
+                .map((node) => patternDotNumber(node)),
+        );
+        if (existing.size >= 9) continue;
+        const [left, top, right, bottom] = root.bounds || [];
+        if (![left, top, right, bottom].every(Number.isFinite) || right <= left || bottom <= top)
+            continue;
+        const width = right - left;
+        const height = bottom - top;
+        const side = Math.min(width, height);
+        const cell = side / 3;
+        const dot = Math.max(24, Math.round(cell * 0.6));
+        const originX = left + (width - side) / 2;
+        const originY = top + (height - side) / 2;
+        for (let number = 1; number <= 9; number += 1) {
+            if (existing.has(String(number))) continue;
+            const column = (number - 1) % 3;
+            const row = Math.floor((number - 1) / 3);
+            const centerX = originX + cell * (column + 0.5);
+            const centerY = originY + cell * (row + 0.5);
+            generated.push({
+                id: `${root.id}:synthetic-pattern-${number}`,
+                parent_id: root.id,
+                class_name: 'android.view.View',
+                view_id: null,
+                bounds: [
+                    Math.round(centerX - dot / 2),
+                    Math.round(centerY - dot / 2),
+                    Math.round(centerX + dot / 2),
+                    Math.round(centerY + dot / 2),
+                ],
+                flags: {
+                    visible: true,
+                    enabled: true,
+                    clickable: true,
+                    scrollable: false,
+                    editable: false,
+                    password: false,
+                    sensitive: false,
+                    focused: false,
+                },
+                text_present: true,
+                depth: (root.depth || 0) + 1,
+                geometry_status: 'valid',
+                text: `已添加圆点 ${number}`,
+                content_description: `已添加圆点 ${number}`,
+                text_policy: 'synthetic',
+                synthetic: true,
+                key: `${window.id}:${root.id}:synthetic-pattern-${number}`,
+                window: window.id,
+            });
+        }
+    }
+    return generated;
+}
+function isPatternViewRoot(node) {
+    return /(^|:)lockPatternView$/i.test(node.view_id || '');
+}
 function originalLabel(node) {
     return rawText(node) || (live.value ? '' : node.class_name.split('.').pop() || node.id);
 }
@@ -245,6 +319,44 @@ function nodeIcon(node) {
         return '🔒';
     return '';
 }
+function patternDotNumber(node) {
+    const match = (rawText(node) || '').match(/^已添加圆点\s*(\d+)$/);
+    return match?.[1] || '';
+}
+function isPatternDot(node) {
+    return Boolean(patternDotNumber(node));
+}
+function isActivePatternDot(node) {
+    return isPatternDot(node) && !node.flags?.clickable;
+}
+function displayLabel(node) {
+    return patternDotNumber(node) || label(node);
+}
+function isActionNode(node) {
+    if (isPatternDot(node)) return false;
+    const flags = node.flags || {};
+    const klass = node.class_name || '';
+    return Boolean(
+        /Button$/.test(klass) ||
+        (flags.clickable &&
+            (rawText(node) ||
+                /ImageButton$/.test(klass) ||
+                /button|icon|key/i.test(node.view_id || ''))),
+    );
+}
+function isSensitiveNode(node) {
+    const flags = node.flags || {};
+    return Boolean(flags.password || flags.sensitive || flags.editable);
+}
+function nodeClasses(node) {
+    return {
+        selected: selected.value?.key === node.key,
+        'reader-map-node-action': isActionNode(node),
+        'reader-map-node-sensitive': isSensitiveNode(node),
+        'reader-map-node-pattern': isPatternDot(node),
+        'reader-map-node-pattern-active': isActivePatternDot(node),
+    };
+}
 function nodeStyle(node) {
     const icon = nodeIcon(node);
     return readerNodeStyle(
@@ -252,7 +364,7 @@ function nodeStyle(node) {
         display.value,
         mapWidth.value,
         scale.value,
-        icon || label(node) || '',
+        icon || displayLabel(node) || '',
         { icon: Boolean(icon) },
     );
 }
@@ -335,9 +447,9 @@ async function translate() {
                     :key="node.key"
                     :data-node-key="node.key"
                     class="reader-map-node"
-                    :class="{ selected: selected?.key === node.key }"
+                    :class="nodeClasses(node)"
                     :style="nodeStyle(node)"
-                    :title="label(node) || node.class_name"
+                    :title="displayLabel(node) || node.class_name"
                     tabindex="0"
                     @click="selected = node"
                     @keydown.enter="selected = node"
@@ -345,7 +457,7 @@ async function translate() {
                     <span v-if="nodeIcon(node)" class="reader-node-icon" aria-hidden="true">{{
                         nodeIcon(node)
                     }}</span>
-                    <span v-else-if="label(node)">{{ label(node) }}</span>
+                    <span v-else-if="displayLabel(node)">{{ displayLabel(node) }}</span>
                 </div>
             </div>
             <div v-if="selected && !live" class="reader-properties">
