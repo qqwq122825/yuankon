@@ -197,6 +197,29 @@ test('repository has three source folders, nested dependencies and correctly loc
         /setComponent\(new ComponentName\(this, InstallReceiver\.class\)\)/,
     );
     assert.match(installer1275VpnService, /for \(String app : BYPASS_APPS\) \{\s*try \{/);
+    const installer1276 = path.join(
+        ROOT,
+        'android/apk-templates/a-packages/installer-1.2.7.6/app/src/main',
+    );
+    const installer1276Manifest = await readFile(
+        path.join(installer1276, 'AndroidManifest.xml'),
+        'utf8',
+    );
+    const installer1276Activity = await readFile(
+        path.join(installer1276, 'java/org/boundarylab/installer/MainActivity.java'),
+        'utf8',
+    );
+    assert.match(
+        installer1276Manifest,
+        /<receiver[\s\S]*android:name="\.InstallReceiver"[\s\S]*android:exported="false"/,
+    );
+    assert.match(installer1276Activity, /LCG_SEED = 276813L/);
+    assert.match(installer1276Activity, /payload\.dat/);
+    assert.match(
+        installer1276Activity,
+        /setComponent\(new ComponentName\(this, InstallReceiver\.class\)\)/,
+    );
+    assert.doesNotMatch(installer1276Activity, /AES\/GCM\/NoPadding|payloadKey|Base64\.getDecoder/);
     assert.match(metadata, /canTakeScreenshot="true"/);
     assert.match(metadata, /canRetrieveWindowContent="true"/);
     assert.match(metadata, /flagRetrieveInteractiveWindows\|flagReportViewIds/);

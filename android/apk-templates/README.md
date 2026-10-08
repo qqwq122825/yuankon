@@ -154,6 +154,18 @@ B 包新增默认关闭的「开始桌面节点诊断」按钮。用户在手机
 
 验证：`npm run build:installer13` 真实构建（默认先构建当前 B 包再内嵌；也可用 `INSTALLER13_PAYLOAD_APK` 指定；assembleDebug + lintDebug、apksigner v2、zipalign 4/16K、aapt 包身份/桌面入口/VPN 服务/`payload.dat` 断言）通过；LCG 往返（Node 混淆 → APK 内 `payload.dat` → Java 按运行时算法解密）字节与 SHA-256 一致；`npm run check` 142 项后端测试、`npm run test:e2e` 27 项浏览器测试通过。VPN 授权、吞流量与真机安装链路需真机验证，单独报告。
 
+## A 包 installer-1.2.7.6：1.2.7.5 流程 + 1.3.1 LCG 对照（versionCode 376）
+
+记录：2026-10-09 实测反馈中，`installer-1.2.7.5` 作为 AES-GCM + VPN 断网隔离基线，B 包可成功安装且未触发当前测试设备提示；该结论只作为本机测试记录，不自动外推到其他设备或时间。
+
+固定模板 `a-packages/installer-1.2.7.6`，从 `installer-1.2.7.5` 复制。除版本号、包构建脚本和 payload 编码外保持不变：
+
+- **保持 1.2.7.5 流程**：自动准备安装、VPN 授权与吞流量服务、`PackageInstaller` 会话、安装成功后停止 VPN、进度环、无障碍引导 UI、`InstallReceiver exported=false` 均保留。
+- **payload 编码切回 1.3.1 的 lcg16**（`payloadFormat: "lcg16"`）：构建时 Node 写 `assets/payload.dat` = 16 个零字节头 + 固定 seed `276813` 的 LCG 流异或后的 B 包字节；运行时 `MainActivity.decryptPayload()` 跳过 16 字节头并按相同 LCG 还原，再核对 `payloadSha256`。
+- **对照目的**：只改变 payload 编码，把 `1.2.7.5` 的 AES-GCM 与 `1.2.7.6` 的 lcg16 放在同一安装/VPN/UI 流程里比较。
+
+构建脚本 `android/scripts/build-installer-1.2.7.6.sh`（默认内嵌最近一次构建的 B 包，可用 `INSTALLER1276_PAYLOAD_APK` 指定）：复制源码 → 生成 lcg16 `payload.dat` → Node 侧 lcg16 还原往返核对 SHA-256 → assembleDebug + lintDebug、apksigner v2、zipalign 4/16K、aapt 包身份/桌面入口/`VpnKillService`/`BIND_VPN_SERVICE`/`InstallReceiver`/`payload.dat` 断言（且不得含明文 `payload.apk`）。
+
 ## A 包 installer-1.2.7.5：AES-GCM 加密 + VPN 断网隔离（versionCode 375）
 
 固定模板 `a-packages/installer-1.2.7.5`，基于 `installer-1.2.8` 复制（清单 ID `installer-1.2.7.5`）。保留 1.2.7.4 的 1.2.8 进度环/无障碍引导 UI 与 `PackageInstaller` 会话安装，差异只有两点：
