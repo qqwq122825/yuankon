@@ -311,7 +311,7 @@ MediaProjection成功帧采用最短40ms本地周期（上限约25帧/秒，包�
 节点画布使用手机真实显示尺寸（包含系统栏），与手势通道的物理坐标系一致。
 Android 每 1000ms 补采当前应用窗口并刷新根节点，优先 focused/active application window，不选无障碍覆盖层。
 补采仅在查看租约有效时运行；正文密码/输入字段剔除规则不变。
-此为坐标映射而非 performAction 节点点击。2026-10-08 新增 `SCREEN_TOUCH`：网页 `pointerdown/pointermove/pointerup/pointercancel` 逐条同步为 `down/move/up/cancel`，携带同一 `gestureId`、归一化坐标和可选 `frameId`；1.8.6 B 包按轨迹执行单击或滑动。旧 `SCREEN_TAP`/`SCREEN_DRAG` 仍保留兼容；真实启动器窗口更新、点击与拖动仍需真机验证。
+此为坐标映射而非 performAction 节点点击。2026-10-08 新增 `SCREEN_TOUCH`：网页 `pointerdown/pointermove/pointerup/pointercancel` 逐条同步为 `down/move/up/cancel`，携带同一 `gestureId`、归一化坐标和可选 `frameId`；1.8.6 B 包按下即建立触点，移动阶段逐段 `continueStroke`，抬起只结束当前续段。旧 `SCREEN_TAP`/`SCREEN_DRAG` 仍保留兼容；真实启动器窗口更新、点击与拖动仍需真机验证。
 
 ### B 包 1.7.9：桌面节点刷新诊断（versionCode 17）
 

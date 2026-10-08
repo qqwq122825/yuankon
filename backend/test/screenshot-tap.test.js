@@ -238,6 +238,10 @@ test('1.8.6 adds locally authorized long-press drag without replacing tap', asyn
     assert.match(controller, /fun drag\(params: JSONObject/);
     assert.match(controller, /fun touch\(params: JSONObject/);
     assert.match(controller, /phase == "cancel"/);
+    assert.match(controller, /dispatchTouchDown/);
+    assert.match(controller, /queueTouchPoint\(session, px to py, false\)/);
+    assert.match(controller, /queueTouchPoint\(session, px to py, true\)/);
+    assert.match(controller, /touch_released/);
     assert.match(controller, /touch_completed/);
     assert.match(controller, /continueStroke/);
     assert.match(controller, /drag_completed/);

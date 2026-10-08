@@ -1,6 +1,7 @@
 package com.zaka.screenagent.accessibility
 
 import android.accessibilityservice.AccessibilityService
+import android.annotation.TargetApi
 import android.accessibilityservice.GestureDescription
 import android.graphics.BitmapFactory
 import android.graphics.Color
@@ -27,7 +28,12 @@ class ScreenTapController(private val service: AccessibilityService, private val
         val viewerId: String,
         val display: Geometry,
         val startedAt: Long,
-        val points: MutableList<Pair<Float, Float>>
+        val points: MutableList<Pair<Float, Float>>,
+        var stroke: GestureDescription.StrokeDescription? = null,
+        var lastDispatched: Pair<Float, Float>? = null,
+        var pendingPoint: Pair<Float, Float>? = null,
+        var dispatching: Boolean = false,
+        var ending: Boolean = false
     )
     private val frames = LinkedHashMap<String, Frame>()
     private var locallyAllowed = false
@@ -115,7 +121,7 @@ class ScreenTapController(private val service: AccessibilityService, private val
                 complete(false, "local_consent_required"); return
             }
             service.magnificationController.scale != 1f -> { complete(false, "magnification_active"); return }
-            busy -> { complete(false, "tap_busy"); return }
+            busy || activeTouch != null -> { complete(false, "tap_busy"); return }
             !x.isFinite() || !y.isFinite() || x !in 0.0..1.0 || y !in 0.0..1.0 -> { complete(false, "invalid_point"); return }
             frameId.isNotBlank() && (frame == null || frame.viewerId != viewerId || now - frame.at > 5000 || frame.geometry != geometry()) -> {
                 complete(false, "stale_frame"); return
@@ -182,7 +188,13 @@ class ScreenTapController(private val service: AccessibilityService, private val
         }
         consentViewer = viewerId
         if (phase == "cancel") {
-            if (activeTouch?.gestureId == gestureId) activeTouch = null
+            val session = activeTouch?.takeIf { it.gestureId == gestureId && it.viewerId == viewerId }
+            if (session != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val release = session.lastDispatched ?: session.points.last()
+                queueTouchPoint(session, release, true)
+            } else if (session != null) {
+                activeTouch = null
+            }
             complete(true, "touch_cancelled")
             return
         }
@@ -197,8 +209,13 @@ class ScreenTapController(private val service: AccessibilityService, private val
                 if (activeTouch != null) {
                     complete(false, "touch_busy"); return
                 }
-                activeTouch = TouchSession(gestureId, viewerId, display, now, mutableListOf(px to py))
-                complete(true, "touch_down")
+                val session = TouchSession(gestureId, viewerId, display, now, mutableListOf(px to py))
+                activeTouch = session
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    dispatchTouchDown(session, complete)
+                } else {
+                    complete(true, "touch_down")
+                }
             }
             "move" -> {
                 val session = activeTouch
@@ -209,6 +226,7 @@ class ScreenTapController(private val service: AccessibilityService, private val
                 if (hypot((px - last.first).toDouble(), (py - last.second).toDouble()) >= 2.0) {
                     session.points.add(px to py)
                     while (session.points.size > 48) session.points.removeAt(1)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) queueTouchPoint(session, px to py, false)
                 }
                 complete(true, "touch_move")
             }
@@ -217,14 +235,98 @@ class ScreenTapController(private val service: AccessibilityService, private val
                 if (session == null || session.gestureId != gestureId || session.viewerId != viewerId) {
                     complete(false, "touch_inactive"); return
                 }
-                activeTouch = null
                 val last = session.points.last()
                 if (hypot((px - last.first).toDouble(), (py - last.second).toDouble()) >= 1.0) {
                     session.points.add(px to py)
                 }
-                dispatchTouchSession(session, params.optInt("durationMs", (now - session.startedAt).toInt()).coerceIn(50, 2500).toLong(), complete)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    queueTouchPoint(session, px to py, true)
+                    complete(true, "touch_released")
+                } else {
+                    activeTouch = null
+                    dispatchTouchSession(session, params.optInt("durationMs", (now - session.startedAt).toInt()).coerceIn(50, 2500).toLong(), complete)
+                }
             }
         }
+    }
+
+    @TargetApi(Build.VERSION_CODES.O)
+    private fun dispatchTouchDown(session: TouchSession, complete: (Boolean, String) -> Unit) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) { complete(true, "touch_down"); return }
+        val start = session.points.first()
+        val path = Path().apply { moveTo(start.first, start.second) }
+        val stroke = GestureDescription.StrokeDescription(path, 0, 120, true)
+        session.stroke = stroke
+        session.lastDispatched = start
+        session.dispatching = true
+        val accepted = dispatchTouchGesture(session, stroke) { dispatchQueuedTouch(session) }
+        if (accepted) complete(true, "touch_down")
+        else {
+            if (activeTouch?.gestureId == session.gestureId) activeTouch = null
+            complete(false, "gesture_failed")
+        }
+    }
+
+    @TargetApi(Build.VERSION_CODES.O)
+    private fun queueTouchPoint(session: TouchSession, point: Pair<Float, Float>, ending: Boolean) {
+        session.pendingPoint = point
+        if (ending) session.ending = true
+        if (!session.dispatching) dispatchQueuedTouch(session)
+    }
+
+    @TargetApi(Build.VERSION_CODES.O)
+    private fun dispatchQueuedTouch(session: TouchSession) {
+        if (activeTouch?.gestureId != session.gestureId && !session.ending) return
+        val point = session.pendingPoint ?: return
+        session.pendingPoint = null
+        val finish = session.ending
+        val previous = session.stroke ?: return
+        val from = session.lastDispatched ?: session.points.first()
+        val distance = hypot((point.first - from.first).toDouble(), (point.second - from.second).toDouble())
+        val path = Path().apply {
+            moveTo(from.first, from.second)
+            if (distance >= 1.0) lineTo(point.first, point.second)
+        }
+        val duration = when {
+            finish && distance < 1.0 -> 50L
+            finish -> 90L
+            else -> 70L
+        }
+        val next = previous.continueStroke(path, 0, duration, !finish)
+        session.stroke = next
+        session.lastDispatched = point
+        session.dispatching = true
+        val accepted = dispatchTouchGesture(session, next) {
+            if (finish) {
+                if (activeTouch?.gestureId == session.gestureId) activeTouch = null
+            } else {
+                dispatchQueuedTouch(session)
+            }
+        }
+        if (!accepted) {
+            if (activeTouch?.gestureId == session.gestureId) activeTouch = null
+        }
+    }
+
+    @TargetApi(Build.VERSION_CODES.O)
+    private fun dispatchTouchGesture(
+        session: TouchSession,
+        stroke: GestureDescription.StrokeDescription,
+        after: () -> Unit
+    ): Boolean {
+        val gesture = GestureDescription.Builder().addStroke(stroke).build()
+        return runCatching {
+            service.dispatchGesture(gesture, object : AccessibilityService.GestureResultCallback() {
+                override fun onCompleted(gestureDescription: GestureDescription?) {
+                    session.dispatching = false
+                    after()
+                }
+                override fun onCancelled(gestureDescription: GestureDescription?) {
+                    session.dispatching = false
+                    if (activeTouch?.gestureId == session.gestureId) activeTouch = null
+                }
+            }, main)
+        }.getOrDefault(false)
     }
 
     private fun dispatchTouchSession(session: TouchSession, duration: Long, complete: (Boolean, String) -> Unit) {
@@ -289,7 +391,7 @@ class ScreenTapController(private val service: AccessibilityService, private val
                 complete(false, "local_consent_required"); return
             }
             service.magnificationController.scale != 1f -> { complete(false, "magnification_active"); return }
-            busy -> { complete(false, "tap_busy"); return }
+            busy || activeTouch != null -> { complete(false, "tap_busy"); return }
             !x1.isFinite() || !y1.isFinite() || !x2.isFinite() || !y2.isFinite() ||
                 x1 !in 0.0..1.0 || y1 !in 0.0..1.0 || x2 !in 0.0..1.0 || y2 !in 0.0..1.0 -> {
                 complete(false, "invalid_point"); return

@@ -166,4 +166,4 @@ API 调试以“一次收集→复制/导出报告”为主，日志默认折叠
 
 ### 1.8.6 阅读器与截图拖动（2026-10-08）
 
-实时截图图像和实时无障碍阅读器共用指针交互：网页 `pointerdown/pointermove/pointerup/pointercancel` 会同步为 `SCREEN_TOUCH` 的 `down/move/up/cancel`，同一 `gestureId` 串联轨迹；短距离释放在手机端执行单击，移动轨迹在手机端执行滑动。阅读器不再因节点帧与截图帧编号不同隐藏十字；触控仍使用当前查看租约、在线状态和手机本机「运行操作」授权。
+实时截图图像和实时无障碍阅读器共用指针交互：网页 `pointerdown/pointermove/pointerup/pointercancel` 会同步为 `SCREEN_TOUCH` 的 `down/move/up/cancel`，同一 `gestureId` 串联轨迹；手机端按下即建立触点，移动阶段逐段续写手势，因此从 1 移到 2 时移动中即可反映，不再等抬起才合成完整滑动。阅读器不再因节点帧与截图帧编号不同隐藏十字；触控仍使用当前查看租约、在线状态和手机本机「运行操作」授权。
