@@ -486,22 +486,6 @@ export function attachWebSockets(
                 )
                     throw fail(410, '截图查看租约已结束');
                 if (!connections.has(device.public_id)) throw fail(409, '设备当前离线');
-                if (params.frameId) {
-                    try {
-                        ingress.validateTap(device, viewer.viewerId, params.frameId);
-                    } catch {
-                        return send(ws, {
-                            type: 'command_ack',
-                            sessionId: device.public_id,
-                            data: {
-                                command: 'SCREEN_TOUCH',
-                                commandId: message.data.commandId,
-                                result: 'rejected',
-                                reasonCode: 'stale_frame',
-                            },
-                        });
-                    }
-                }
                 if (
                     !sendDeviceCommand(
                         device.public_id,
@@ -765,6 +749,10 @@ export function attachWebSockets(
                         const sentAt = pendingDevicePings.get(envelope.data.commandId);
                         pendingDevicePings.delete(envelope.data.commandId);
                         if (sentAt) envelope.data.latencyMs = receivedAt - sentAt;
+                    }
+                    if (envelope.data.command === 'SCREEN_TOUCH') {
+                        await store.audit(envelope.type, 'device', id, size);
+                        return;
                     }
                     await publishSubscribers(id, {
                         type: envelope.type,

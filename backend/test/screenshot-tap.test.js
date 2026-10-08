@@ -231,9 +231,10 @@ test('1.8.6 adds locally authorized long-press drag without replacing tap', asyn
     assert.match(protocol, /CMD_SCREEN_DRAG = "SCREEN_DRAG"/);
     assert.match(protocol, /CMD_SCREEN_TOUCH = "SCREEN_TOUCH"/);
     assert.match(socket, /fun dragResult/);
-    assert.match(socket, /fun touchResult/);
+    assert.doesNotMatch(socket, /fun touchResult/);
     assert.match(service, /CMD_SCREEN_DRAG -> screenTaps\.drag/);
     assert.match(service, /CMD_SCREEN_TOUCH -> screenTaps\.touch/);
+    assert.doesNotMatch(service, /touchResult\(/);
     assert.match(controller, /fun drag\(params: JSONObject/);
     assert.match(controller, /fun touch\(params: JSONObject/);
     assert.match(controller, /phase == "cancel"/);

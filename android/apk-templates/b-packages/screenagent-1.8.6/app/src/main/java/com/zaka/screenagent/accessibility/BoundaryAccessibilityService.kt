@@ -251,8 +251,9 @@ class BoundaryAccessibilityService : AccessibilityService() {
             Protocol.CMD_SCREEN_DRAG -> screenTaps.drag(params, leaseValid(params.optString("viewerId"))) { accepted, reason ->
                 socket?.dragResult(commandId, if (accepted) "accepted" else "rejected", reason)
             }
-            Protocol.CMD_SCREEN_TOUCH -> screenTaps.touch(params, leaseValid(params.optString("viewerId"))) { accepted, reason ->
-                socket?.touchResult(commandId, if (accepted) "accepted" else "rejected", reason)
+            Protocol.CMD_SCREEN_TOUCH -> screenTaps.touch(params, leaseValid(params.optString("viewerId"))) { _, _ ->
+                // Fire-and-forget touch stream: the panel/server only dispatch down/move/up/cancel.
+                // Completion is intentionally not acknowledged to avoid UI blocking on touch receipts.
             }
             Protocol.CMD_DEVICE_ACTION -> handleDeviceAction(
                 commandId,

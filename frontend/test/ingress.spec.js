@@ -384,14 +384,14 @@ test('APK ownership, automatic online and an actual synthetic JPEG are visible i
     const portrait = await publishFrame(360, 800);
     await expect(image).toHaveCSS('cursor', 'crosshair');
     await image.click({ position: { x: 74.5, y: (await image.boundingBox()).height * 0.75 } });
-    await expect(page.locator('.device-browser-toast')).toHaveText('请先在手机点击运行操作');
+    await expect(page.locator('.device-browser-toast')).toHaveText('触控已下发');
     expect(receivedTouches.at(-1).phase).toBe('up');
     expect(receivedTouches.at(-1).frameId).toBe(portrait.frameId);
     expect(receivedTouches.at(-1).x).toBeCloseTo(0.25, 2);
     expect(receivedTouches.at(-1).y).toBeCloseTo(0.75, 2);
     tapConsent = true;
     await image.click();
-    await expect(page.locator('.device-browser-toast')).toHaveText('手机已完成触控');
+    await expect(page.locator('.device-browser-toast')).toHaveText('触控已下发');
     // The reader map routes coordinates directly without waiting for a matching screenshot frame.
     const liveReport = await page.request.get(
         `/api/devices/${new URL(page.url()).pathname.split('/').pop()}/accessibility-snapshot?viewerId=${activeCapture.viewerId}`,
@@ -420,7 +420,7 @@ test('APK ownership, automatic online and an actual synthetic JPEG are visible i
             y: (await map.boundingBox()).height * 0.5,
         },
     });
-    await expect(page.locator('.device-browser-toast')).toHaveText('手机已完成触控');
+    await expect(page.locator('.device-browser-toast')).toHaveText('触控已下发');
     await expect.poll(() => receivedTouches.length).toBe(beforeReaderTap + 2);
     expect(receivedTouches.at(-1).phase).toBe('up');
     expect([portrait.frameId, undefined]).toContain(receivedTouches.at(-1).frameId);
@@ -439,7 +439,7 @@ test('APK ownership, automatic online and an actual synthetic JPEG are visible i
     await page.mouse.down();
     await page.mouse.move(box.x + box.width * 0.75, box.y + box.height * 0.75, { steps: 4 });
     await page.mouse.up();
-    await expect(page.locator('.device-browser-toast')).toHaveText('手机已完成触控');
+    await expect(page.locator('.device-browser-toast')).toHaveText('触控已下发');
     await expect.poll(() => receivedTouches.length).toBeGreaterThanOrEqual(beforeReaderDrag + 3);
     const streamed = receivedTouches.slice(beforeReaderDrag);
     expect(streamed[0].phase).toBe('down');
@@ -453,7 +453,7 @@ test('APK ownership, automatic online and an actual synthetic JPEG are visible i
     expect((await panel.boundingBox()).width).toBe(300);
     expect((await stage.boundingBox()).height).toBeCloseTo((300 * 360) / 800, 0);
     await image.click({ position: { x: 225, y: (await image.boundingBox()).height * 0.25 } });
-    await expect(page.locator('.device-browser-toast')).toHaveText('手机已完成触控');
+    await expect(page.locator('.device-browser-toast')).toHaveText('触控已下发');
     expect(receivedTouches.at(-1).frameId).toBe(landscape.frameId);
     expect(receivedTouches.at(-1).x).toBeCloseTo(0.75, 2);
     expect(receivedTouches.at(-1).y).toBeCloseTo(0.25, 2);

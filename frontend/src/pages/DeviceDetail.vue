@@ -218,14 +218,13 @@ const off = onMessage((message) => {
     }
     if (
         message.type === 'command_ack' &&
-        ['SCREEN_TAP', 'SCREEN_DRAG', 'SCREEN_TOUCH'].includes(message.data?.command) &&
+        ['SCREEN_TAP', 'SCREEN_DRAG'].includes(message.data?.command) &&
         message.data.commandId === tapCommandId
     ) {
         clearTimeout(tapTimer);
         tapPending.value = false;
         tapCommandId = null;
-        const isDrag = message.data.command === 'SCREEN_DRAG',
-            isTouch = message.data.command === 'SCREEN_TOUCH';
+        const isDrag = message.data.command === 'SCREEN_DRAG';
         const reasons = {
             local_consent_required: '请先在手机点击运行操作',
             stale_frame: '画面已变化，请重新点击',
@@ -240,13 +239,11 @@ const off = onMessage((message) => {
         };
         showActionToast(
             message.data.result === 'accepted'
-                ? isTouch
-                    ? '手机已完成触控'
-                    : isDrag
-                      ? '手机已完成滑动'
-                      : '手机已完成单击'
+                ? isDrag
+                    ? '手机已完成滑动'
+                    : '手机已完成单击'
                 : reasons[message.data.reasonCode] ||
-                      (isTouch ? '手机未执行触控' : isDrag ? '手机未执行滑动' : '手机未执行单击'),
+                      (isDrag ? '手机未执行滑动' : '手机未执行单击'),
             message.data.result === 'accepted' ? 'success' : 'error',
         );
     }
@@ -560,17 +557,9 @@ function runScreenDrag(gesture) {
 }
 function runScreenTouch(touch) {
     if (!viewerId || !data.value || data.value.device.status !== 'online') return;
-    if (tapPending.value && touch.phase === 'down') return;
-    const commandId = requestScreenTouch(data.value.device.public_id, viewerId, touch);
-    if (touch.phase !== 'up') return;
-    tapPending.value = true;
-    tapCommandId = commandId;
-    showActionToast('正在同步触控');
-    tapTimer = setTimeout(() => {
-        tapPending.value = false;
-        tapCommandId = null;
-        showActionToast('触控未收到回执，请确认手机已开启远程单击', 'error');
-    }, 6500);
+    requestScreenTouch(data.value.device.public_id, viewerId, touch);
+    if (touch.phase === 'down') showActionToast('触控已开始下发');
+    else if (touch.phase === 'up') showActionToast('触控已下发');
 }
 function runDeviceAction(action) {
     if (!viewerId || !data.value || data.value.device.status !== 'online') {
