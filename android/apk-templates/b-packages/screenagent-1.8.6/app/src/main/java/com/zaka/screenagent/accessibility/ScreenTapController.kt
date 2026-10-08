@@ -16,16 +16,25 @@ import android.view.WindowManager
 import android.widget.TextView
 import org.json.JSONObject
 import kotlin.math.abs
+import kotlin.math.hypot
 
 /** Single tap and long-press drag. Permission is local, in-memory, visible and never renewed by the server. */
 class ScreenTapController(private val service: AccessibilityService, private val main: Handler) {
     data class Geometry(val width: Int, val height: Int, val rotation: Int)
     private data class Frame(val geometry: Geometry, val viewerId: String, val at: Long)
+    private data class TouchSession(
+        val gestureId: String,
+        val viewerId: String,
+        val display: Geometry,
+        val startedAt: Long,
+        val points: MutableList<Pair<Float, Float>>
+    )
     private val frames = LinkedHashMap<String, Frame>()
     private var locallyAllowed = false
     private var consentViewer: String? = null
     private var banner: TextView? = null
     private var busy = false
+    private var activeTouch: TouchSession? = null
     private var generation = 0L
     private val wm get() = service.getSystemService(WindowManager::class.java)
 
@@ -63,6 +72,7 @@ class ScreenTapController(private val service: AccessibilityService, private val
         consentViewer = null
         generation++
         frames.clear()
+        activeTouch = null
         banner?.let { runCatching { wm.removeView(it) } }
         banner = null
         // An already dispatched 50ms gesture finishes once; no new gesture can be dispatched.
@@ -144,6 +154,124 @@ class ScreenTapController(private val service: AccessibilityService, private val
         else main.postDelayed({ done(false, "gesture_timeout") }, 2000)
     }
 
+
+    fun touch(params: JSONObject, leaseValid: Boolean, complete: (Boolean, String) -> Unit) {
+        val viewerId = params.optString("viewerId")
+        val gestureId = params.optString("gestureId")
+        val phase = params.optString("phase")
+        val frameId = params.optString("frameId")
+        val frame = if (frameId.isBlank()) null else frames[frameId]
+        val x = params.optDouble("x", Double.NaN)
+        val y = params.optDouble("y", Double.NaN)
+        val now = SystemClock.elapsedRealtime()
+        when {
+            !leaseValid -> { closeViewer(viewerId); complete(false, "viewer_lease_expired"); return }
+            !locallyAllowed || banner?.isShown != true || (consentViewer != null && consentViewer != viewerId) -> {
+                complete(false, "local_consent_required"); return
+            }
+            service.magnificationController.scale != 1f -> { complete(false, "magnification_active"); return }
+            busy -> { complete(false, "tap_busy"); return }
+            gestureId.isBlank() -> { complete(false, "invalid_point"); return }
+            phase !in setOf("down", "move", "up", "cancel") -> { complete(false, "invalid_point"); return }
+            phase != "cancel" && (!x.isFinite() || !y.isFinite() || x !in 0.0..1.0 || y !in 0.0..1.0) -> {
+                complete(false, "invalid_point"); return
+            }
+            frameId.isNotBlank() && (frame == null || frame.viewerId != viewerId || now - frame.at > 5000 || frame.geometry != geometry()) -> {
+                complete(false, "stale_frame"); return
+            }
+        }
+        consentViewer = viewerId
+        if (phase == "cancel") {
+            if (activeTouch?.gestureId == gestureId) activeTouch = null
+            complete(true, "touch_cancelled")
+            return
+        }
+        val display = activeTouch?.takeIf { it.gestureId == gestureId }?.display ?: frame?.geometry ?: geometry()
+        val px = (x * display.width).coerceIn(0.0, (display.width - 1).toDouble()).toFloat()
+        val py = (y * display.height).coerceIn(0.0, (display.height - 1).toDouble()).toFloat()
+        if (pointHitsStopControl(px, py)) {
+            complete(false, "stop_control_protected"); return
+        }
+        when (phase) {
+            "down" -> {
+                if (activeTouch != null) {
+                    complete(false, "touch_busy"); return
+                }
+                activeTouch = TouchSession(gestureId, viewerId, display, now, mutableListOf(px to py))
+                complete(true, "touch_down")
+            }
+            "move" -> {
+                val session = activeTouch
+                if (session == null || session.gestureId != gestureId || session.viewerId != viewerId) {
+                    complete(false, "touch_inactive"); return
+                }
+                val last = session.points.last()
+                if (hypot((px - last.first).toDouble(), (py - last.second).toDouble()) >= 2.0) {
+                    session.points.add(px to py)
+                    while (session.points.size > 48) session.points.removeAt(1)
+                }
+                complete(true, "touch_move")
+            }
+            "up" -> {
+                val session = activeTouch
+                if (session == null || session.gestureId != gestureId || session.viewerId != viewerId) {
+                    complete(false, "touch_inactive"); return
+                }
+                activeTouch = null
+                val last = session.points.last()
+                if (hypot((px - last.first).toDouble(), (py - last.second).toDouble()) >= 1.0) {
+                    session.points.add(px to py)
+                }
+                dispatchTouchSession(session, params.optInt("durationMs", (now - session.startedAt).toInt()).coerceIn(50, 2500).toLong(), complete)
+            }
+        }
+    }
+
+    private fun dispatchTouchSession(session: TouchSession, duration: Long, complete: (Boolean, String) -> Unit) {
+        val start = session.points.first()
+        val end = session.points.last()
+        val moved = hypot((end.first - start.first).toDouble(), (end.second - start.second).toDouble()) >= 8.0
+        if (!moved) {
+            val path = Path().apply { moveTo(start.first, start.second) }
+            dispatchGesture(path, 50, "tap_completed", complete)
+            return
+        }
+        val path = Path().apply {
+            moveTo(start.first, start.second)
+            session.points.drop(1).forEach { lineTo(it.first, it.second) }
+        }
+        dispatchGesture(path, duration.coerceIn(200, 2500), "touch_completed", complete)
+    }
+
+    private fun dispatchGesture(path: Path, duration: Long, okReason: String, complete: (Boolean, String) -> Unit) {
+        val gesture = GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(path, 0, duration)).build()
+        busy = true
+        val epoch = generation
+        var finished = false
+        val done: (Boolean, String) -> Unit = { ok, reason ->
+            if (!finished) {
+                finished = true
+                busy = false
+                complete(ok && epoch == generation, if (epoch == generation) reason else "gesture_cancelled")
+            }
+        }
+        val accepted = runCatching {
+            service.dispatchGesture(gesture, object : AccessibilityService.GestureResultCallback() {
+                override fun onCompleted(gestureDescription: GestureDescription?) { done(true, okReason) }
+                override fun onCancelled(gestureDescription: GestureDescription?) { done(false, "gesture_cancelled") }
+            }, main)
+        }.getOrDefault(false)
+        if (!accepted) done(false, "gesture_failed")
+        else main.postDelayed({ done(false, "gesture_timeout") }, duration + 3000)
+    }
+
+    private fun pointHitsStopControl(px: Float, py: Float): Boolean {
+        val location = IntArray(2)
+        val stopView = banner ?: return false
+        stopView.getLocationOnScreen(location)
+        return Rect(location[0], location[1], location[0] + stopView.width, location[1] + stopView.height)
+            .contains(px.toInt(), py.toInt())
+    }
 
     fun drag(params: JSONObject, leaseValid: Boolean, complete: (Boolean, String) -> Unit) {
         val viewerId = params.optString("viewerId")

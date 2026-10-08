@@ -11,7 +11,7 @@ const props = defineProps({
     tapPending: Boolean,
     latestFrame: Object,
 });
-const emit = defineEmits(['count', 'action', 'text-input', 'tap', 'drag', 'diagnostic']);
+const emit = defineEmits(['count', 'action', 'text-input', 'tap', 'drag', 'touch', 'diagnostic']);
 const frame = ref(null),
     error = ref(''),
     stageAspect = ref(null),
@@ -21,7 +21,7 @@ let timer,
     loading = false,
     queued = false,
     controller,
-    pointerStart,
+    pointerGesture,
     loadGeneration = 0,
     imageController,
     downloading = false,
@@ -182,38 +182,68 @@ function beginGesture(event) {
     if (event.button !== 0 || !canGesture()) return;
     const point = eventPoint(event);
     if (!point) return;
-    pointerStart = {
-        point,
-        clientX: event.clientX,
-        clientY: event.clientY,
+    pointerGesture = {
+        id: crypto.randomUUID(),
         frameId: frame.value.frameId,
+        lastMoveAt: 0,
+        lastX: event.clientX,
+        lastY: event.clientY,
         startedAt: Date.now(),
     };
     event.currentTarget.setPointerCapture?.(event.pointerId);
+    emit('touch', {
+        phase: 'down',
+        gestureId: pointerGesture.id,
+        frameId: pointerGesture.frameId,
+        ...point,
+    });
 }
-function finishGesture(event) {
-    if (!pointerStart || !canGesture() || pointerStart.frameId !== frame.value?.frameId) {
-        pointerStart = null;
-        return;
-    }
-    const start = pointerStart;
-    pointerStart = null;
+function moveGesture(event) {
+    if (!pointerGesture || !canGesture() || pointerGesture.frameId !== frame.value?.frameId) return;
     const point = eventPoint(event);
     if (!point) return;
-    const distance = Math.hypot(event.clientX - start.clientX, event.clientY - start.clientY);
-    if (distance >= 8) {
-        emit('drag', {
-            frameId: start.frameId,
-            x1: start.point.x,
-            y1: start.point.y,
-            x2: point.x,
-            y2: point.y,
-            durationMs: Math.min(2500, Math.max(300, Date.now() - start.startedAt)),
-        });
-    } else emit('tap', { ...point, frameId: start.frameId });
+    const now = Date.now();
+    const distance = Math.hypot(
+        event.clientX - pointerGesture.lastX,
+        event.clientY - pointerGesture.lastY,
+    );
+    if (now - pointerGesture.lastMoveAt < 40 && distance < 4) return;
+    pointerGesture.lastMoveAt = now;
+    pointerGesture.lastX = event.clientX;
+    pointerGesture.lastY = event.clientY;
+    emit('touch', {
+        phase: 'move',
+        gestureId: pointerGesture.id,
+        frameId: pointerGesture.frameId,
+        ...point,
+    });
+}
+function finishGesture(event) {
+    if (!pointerGesture || !canGesture() || pointerGesture.frameId !== frame.value?.frameId) {
+        pointerGesture = null;
+        return;
+    }
+    const gesture = pointerGesture;
+    pointerGesture = null;
+    const point = eventPoint(event);
+    if (!point) return;
+    emit('touch', {
+        phase: 'up',
+        gestureId: gesture.id,
+        frameId: gesture.frameId,
+        durationMs: Math.min(2500, Math.max(50, Date.now() - gesture.startedAt)),
+        ...point,
+    });
 }
 function cancelGesture() {
-    pointerStart = null;
+    if (pointerGesture) {
+        emit('touch', {
+            phase: 'cancel',
+            gestureId: pointerGesture.id,
+            frameId: pointerGesture.frameId,
+        });
+    }
+    pointerGesture = null;
 }
 onMounted(() => {
     if (!frame.value) load();
@@ -252,6 +282,7 @@ onUnmounted(() => {
                 :src="frame.imageUrl"
                 :data-frame-id="frame.frameId"
                 @pointerdown="beginGesture"
+                @pointermove="moveGesture"
                 @pointerup="finishGesture"
                 @pointercancel="cancelGesture"
                 :class="{ 'tap-enabled': imageLoaded && !controlsDisabled && !tapPending }"

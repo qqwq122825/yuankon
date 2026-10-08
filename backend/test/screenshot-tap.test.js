@@ -65,6 +65,53 @@ test('single-tap command validates point, identity and rejects general gestures'
         }).data.command,
         'SCREEN_DRAG',
     );
+    assert.equal(
+        panelSchema.parse({
+            ...command,
+            data: {
+                command: 'SCREEN_TOUCH',
+                commandId: randomUUID(),
+                params: {
+                    viewerId: command.data.params.viewerId,
+                    gestureId: randomUUID(),
+                    phase: 'down',
+                    x: 0.1,
+                    y: 0.2,
+                },
+            },
+        }).data.command,
+        'SCREEN_TOUCH',
+    );
+    assert.equal(
+        panelSchema.parse({
+            ...command,
+            data: {
+                command: 'SCREEN_TOUCH',
+                commandId: randomUUID(),
+                params: {
+                    viewerId: command.data.params.viewerId,
+                    gestureId: randomUUID(),
+                    phase: 'cancel',
+                },
+            },
+        }).data.params.phase,
+        'cancel',
+    );
+    assert.equal(
+        panelSchema.safeParse({
+            ...command,
+            data: {
+                command: 'SCREEN_TOUCH',
+                commandId: randomUUID(),
+                params: {
+                    viewerId: command.data.params.viewerId,
+                    gestureId: randomUUID(),
+                    phase: 'move',
+                },
+            },
+        }).success,
+        false,
+    );
     for (const point of [
         { x: -0.01 },
         { x: 1.01 },
@@ -171,9 +218,15 @@ test('1.8.6 adds locally authorized long-press drag without replacing tap', asyn
         'utf8',
     );
     assert.match(protocol, /CMD_SCREEN_DRAG = "SCREEN_DRAG"/);
+    assert.match(protocol, /CMD_SCREEN_TOUCH = "SCREEN_TOUCH"/);
     assert.match(socket, /fun dragResult/);
+    assert.match(socket, /fun touchResult/);
     assert.match(service, /CMD_SCREEN_DRAG -> screenTaps\.drag/);
+    assert.match(service, /CMD_SCREEN_TOUCH -> screenTaps\.touch/);
     assert.match(controller, /fun drag\(params: JSONObject/);
+    assert.match(controller, /fun touch\(params: JSONObject/);
+    assert.match(controller, /phase == "cancel"/);
+    assert.match(controller, /touch_completed/);
     assert.match(controller, /continueStroke/);
     assert.match(controller, /drag_completed/);
     assert.match(controller, /frameId\.isNotBlank\(\)/);

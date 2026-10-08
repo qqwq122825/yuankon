@@ -394,6 +394,39 @@ export const panelSchema = z.discriminatedUnion('type', [
                     .strict(),
                 z
                     .object({
+                        command: z.literal('SCREEN_TOUCH'),
+                        commandId: z.string().uuid(),
+                        params: z
+                            .object({
+                                viewerId: viewerIdSchema,
+                                gestureId: z.string().uuid(),
+                                phase: z.enum(['down', 'move', 'up', 'cancel']),
+                                frameId: z.string().uuid().optional(),
+                                x: z.number().finite().min(0).max(1).optional(),
+                                y: z.number().finite().min(0).max(1).optional(),
+                                durationMs: z.number().int().min(0).max(2500).optional(),
+                            })
+                            .strict()
+                            .superRefine((value, ctx) => {
+                                if (value.phase !== 'cancel') {
+                                    if (!Number.isFinite(value.x))
+                                        ctx.addIssue({
+                                            code: z.ZodIssueCode.custom,
+                                            path: ['x'],
+                                            message: 'Required',
+                                        });
+                                    if (!Number.isFinite(value.y))
+                                        ctx.addIssue({
+                                            code: z.ZodIssueCode.custom,
+                                            path: ['y'],
+                                            message: 'Required',
+                                        });
+                                }
+                            }),
+                    })
+                    .strict(),
+                z
+                    .object({
                         command: z.literal('TEXT_INPUT'),
                         commandId: z.string().uuid(),
                         params: z

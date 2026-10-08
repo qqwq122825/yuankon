@@ -4,6 +4,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { once } from 'node:events';
+import { randomUUID } from 'node:crypto';
 import { WebSocket } from 'ws';
 import sharp from 'sharp';
 import { config } from '../src/config.js';
@@ -680,6 +681,20 @@ test('accessibility first thumbnail and leased panel screenshot use the same bou
     assert.equal(drag.data.command, 'SCREEN_DRAG');
     assert.deepEqual(drag.data.params, dragParams);
     assert.equal((await panelNext('command_dispatched')).data.command, 'SCREEN_DRAG');
+
+    const gestureId = randomUUID();
+    const touchParams = { viewerId, gestureId, phase: 'down', x: 0.2, y: 0.3 };
+    panel.send(
+        JSON.stringify({
+            type: 'command',
+            sessionId: d.deviceId,
+            data: { command: 'SCREEN_TOUCH', commandId: tapCommandId, params: touchParams },
+        }),
+    );
+    const touch = await deviceNext('command');
+    assert.equal(touch.data.command, 'SCREEN_TOUCH');
+    assert.deepEqual(touch.data.params, touchParams);
+    assert.equal((await panelNext('command_dispatched')).data.command, 'SCREEN_TOUCH');
 
     panel.send(
         JSON.stringify({

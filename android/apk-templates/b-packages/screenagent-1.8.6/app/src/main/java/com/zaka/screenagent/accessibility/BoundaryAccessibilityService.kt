@@ -251,6 +251,9 @@ class BoundaryAccessibilityService : AccessibilityService() {
             Protocol.CMD_SCREEN_DRAG -> screenTaps.drag(params, leaseValid(params.optString("viewerId"))) { accepted, reason ->
                 socket?.dragResult(commandId, if (accepted) "accepted" else "rejected", reason)
             }
+            Protocol.CMD_SCREEN_TOUCH -> screenTaps.touch(params, leaseValid(params.optString("viewerId"))) { accepted, reason ->
+                socket?.touchResult(commandId, if (accepted) "accepted" else "rejected", reason)
+            }
             Protocol.CMD_DEVICE_ACTION -> handleDeviceAction(
                 commandId,
                 params.optString("viewerId"),

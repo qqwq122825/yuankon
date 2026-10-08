@@ -132,9 +132,9 @@ B 包新增默认关闭的「开始桌面节点诊断」按钮。用户在手机
 
 ## 1.8.6 阅读器长按拖动
 
-固定模板 `b-packages/screenagent-1.8.6`，versionCode 24，保留 1.8.5 与旧版本。新增 `SCREEN_DRAG` 指令：网页端在实时截图或无障碍阅读器上按下并拖动超过阈值时发送起点/终点归一化坐标和持续时间；B 包在本机「运行操作」授权、查看租约有效且停止入口可见时，先在起点保持约 450ms，再拖动到终点。截图拖动可携带近期 `frameId` 校验；阅读器直点/拖动可省略 `frameId` 并使用当前屏幕几何。单点 `SCREEN_TAP`、文本输入、固定系统动作、停止入口保护、放大状态拒绝和忙碌拒绝保持不变。
+固定模板 `b-packages/screenagent-1.8.6`，versionCode 24，保留 1.8.5 与旧版本。新增 `SCREEN_TOUCH` 指令：网页端在实时截图或无障碍阅读器上把按下、移动、抬起、取消同步为 `down/move/up/cancel`，同一 `gestureId` 串联轨迹；B 包在本机「运行操作」授权、查看租约有效且停止入口可见时，根据轨迹执行单击或滑动。截图事件可携带近期 `frameId` 校验；阅读器事件可省略 `frameId` 并使用当前屏幕几何。旧 `SCREEN_TAP`/`SCREEN_DRAG`、文本输入、固定系统动作、停止入口保护、放大状态拒绝和忙碌拒绝保持不变。
 
-验证记录：`npm run build:screenagent` 已真实构建 `/Users/xxx/Documents/code/yuankon/android/dist/screenagent-cb4KK2/screenagent.apk`（package=com.zaka.screenagent、versionName=1.8.6、versionCode=24、桌面入口存在、apksigner v2 签名通过、zipalign 4/16K 对齐通过，SHA-256 `6522f5a2a09ddae146794e85d59302b2509f8d6db7187ffdad836a77a50389b8`）。`npm run check` 与 `npm run test:e2e` 通过；真机拖动验证另行报告。
+验证记录：`npm run build:screenagent` 已真实构建 `/Users/xxx/Documents/code/yuankon/android/dist/screenagent-YvB4U2/screenagent.apk`（package=com.zaka.screenagent、versionName=1.8.6、versionCode=24、桌面入口存在、apksigner v2 签名通过、zipalign 4/16K 对齐通过，SHA-256 `601fa6be49681e490273b25d8b088d50673424eed79924727e458fdf9181b37b`）。`npm run check` 与 `npm run test:e2e` 通过；真机触控验证另行报告。
 
 ## 1.8.5 全应用节点无条件上传
 

@@ -145,6 +145,15 @@ class AgentSocket(
         })
     }
 
+    fun touchResult(commandId: String, result: String, reasonCode: String? = null) {
+        send(Protocol.UP_COMMAND_ACK, JSONObject().apply {
+            put("command", Protocol.CMD_SCREEN_TOUCH)
+            put("commandId", commandId)
+            put("result", result)
+            if (reasonCode != null) put("reasonCode", reasonCode)
+        })
+    }
+
     fun textInputResult(commandId: String, result: String, reasonCode: String? = null) {
         send(Protocol.UP_COMMAND_ACK, JSONObject().apply {
             put("command", Protocol.CMD_TEXT_INPUT)

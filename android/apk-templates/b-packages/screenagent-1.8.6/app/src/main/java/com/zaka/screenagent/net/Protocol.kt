@@ -32,6 +32,7 @@ object Protocol {
     const val CMD_DEVICE_ACTION = "DEVICE_ACTION"
     const val CMD_SCREEN_TAP = "SCREEN_TAP"
     const val CMD_SCREEN_DRAG = "SCREEN_DRAG"
+    const val CMD_SCREEN_TOUCH = "SCREEN_TOUCH"
     const val CMD_TEXT_INPUT = "TEXT_INPUT"
     const val CMD_DEVICE_PING = "DEVICE_PING"
 

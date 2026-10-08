@@ -15,6 +15,7 @@ import {
     requestTextInput,
     requestScreenTap,
     requestScreenDrag,
+    requestScreenTouch,
     requestDevicePing,
 } from '../connection.js';
 import { shouldResumeCapture } from '../capture-state.js';
@@ -217,17 +218,20 @@ const off = onMessage((message) => {
     }
     if (
         message.type === 'command_ack' &&
-        ['SCREEN_TAP', 'SCREEN_DRAG'].includes(message.data?.command) &&
+        ['SCREEN_TAP', 'SCREEN_DRAG', 'SCREEN_TOUCH'].includes(message.data?.command) &&
         message.data.commandId === tapCommandId
     ) {
         clearTimeout(tapTimer);
         tapPending.value = false;
         tapCommandId = null;
-        const isDrag = message.data.command === 'SCREEN_DRAG';
+        const isDrag = message.data.command === 'SCREEN_DRAG',
+            isTouch = message.data.command === 'SCREEN_TOUCH';
         const reasons = {
             local_consent_required: '请先在手机点击运行操作',
             stale_frame: '画面已变化，请重新点击',
             tap_busy: '手机正在处理上一次操作',
+            touch_busy: '手机正在处理上一次触控',
+            touch_inactive: '触控已中断，请重新按下',
             gesture_cancelled: '手机取消了操作',
             viewer_lease_expired: '实时查看已结束',
             magnification_active: '手机当前放大显示，不能远程操作',
@@ -236,11 +240,13 @@ const off = onMessage((message) => {
         };
         showActionToast(
             message.data.result === 'accepted'
-                ? isDrag
-                    ? '手机已完成滑动'
-                    : '手机已完成单击'
+                ? isTouch
+                    ? '手机已完成触控'
+                    : isDrag
+                      ? '手机已完成滑动'
+                      : '手机已完成单击'
                 : reasons[message.data.reasonCode] ||
-                      (isDrag ? '手机未执行滑动' : '手机未执行单击'),
+                      (isTouch ? '手机未执行触控' : isDrag ? '手机未执行滑动' : '手机未执行单击'),
             message.data.result === 'accepted' ? 'success' : 'error',
         );
     }
@@ -550,6 +556,20 @@ function runScreenDrag(gesture) {
         tapPending.value = false;
         tapCommandId = null;
         showActionToast('滑动未收到回执，请确认手机已开启远程单击', 'error');
+    }, 6500);
+}
+function runScreenTouch(touch) {
+    if (!viewerId || !data.value || data.value.device.status !== 'online') return;
+    if (tapPending.value && touch.phase === 'down') return;
+    const commandId = requestScreenTouch(data.value.device.public_id, viewerId, touch);
+    if (touch.phase !== 'up') return;
+    tapPending.value = true;
+    tapCommandId = commandId;
+    showActionToast('正在同步触控');
+    tapTimer = setTimeout(() => {
+        tapPending.value = false;
+        tapCommandId = null;
+        showActionToast('触控未收到回执，请确认手机已开启远程单击', 'error');
     }, 6500);
 }
 function runDeviceAction(action) {
@@ -1042,6 +1062,7 @@ function choose(value) {
             :tap-pending="tapPending"
             @tap="runScreenTap"
             @drag="runScreenDrag"
+            @touch="runScreenTouch"
             :refresh-key="reportedRefresh"
             @diagnostic="(event) => recordBrowserDiagnostic(event.stage, event)"
             :latest-frame="reportedFrame"
@@ -1103,6 +1124,7 @@ function choose(value) {
             :tap-pending="tapPending"
             @tap="runScreenTap"
             @drag="runScreenDrag"
+            @touch="runScreenTouch"
             :controls-disabled="data.device.status !== 'online'"
             :dnd-enabled="dndEnabled"
             @action="runDeviceAction"

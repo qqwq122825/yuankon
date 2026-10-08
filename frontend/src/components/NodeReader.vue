@@ -12,7 +12,7 @@ const props = defineProps({
     controlsDisabled: Boolean,
     dndEnabled: Boolean,
 });
-const emit = defineEmits(['action', 'text-input', 'tap', 'drag', 'diagnostic']);
+const emit = defineEmits(['action', 'text-input', 'tap', 'drag', 'touch', 'diagnostic']);
 const headerTools = inject('viewerHeaderTools', ref(null));
 const mapElement = ref(null);
 const mapWidth = ref(300);
@@ -30,7 +30,7 @@ const scale = ref(55),
     useTranslation = ref(false),
     busy = ref(false),
     error = ref('');
-let pointerStart;
+let pointerGesture;
 const validDisplay = computed(
     () =>
         [display.value.width, display.value.height].every(Number.isFinite) &&
@@ -62,42 +62,88 @@ function beginMapGesture(event) {
     if (event.button !== 0 || !canTap.value) return;
     const point = mapPoint(event);
     if (!point) return;
-    pointerStart = {
-        point,
-        clientX: event.clientX,
-        clientY: event.clientY,
+    pointerGesture = {
+        id: crypto.randomUUID(),
         frameId: currentFrameId(),
+        lastMoveAt: 0,
+        lastX: event.clientX,
+        lastY: event.clientY,
         startedAt: Date.now(),
     };
     event.currentTarget.setPointerCapture?.(event.pointerId);
+    emit(
+        'touch',
+        withCurrentFrame({
+            phase: 'down',
+            gestureId: pointerGesture.id,
+            ...point,
+        }),
+    );
 }
-function finishMapGesture(event) {
-    if (!pointerStart || !canTap.value) {
-        pointerStart = null;
-        return;
-    }
-    const start = pointerStart;
-    pointerStart = null;
+function moveMapGesture(event) {
+    if (!pointerGesture || !canTap.value) return;
     const point = mapPoint(event);
     if (!point) return;
-    const frameId = start.frameId || currentFrameId();
-    const withFrame = (payload) => (frameId ? { ...payload, frameId } : payload);
-    const distance = Math.hypot(event.clientX - start.clientX, event.clientY - start.clientY);
-    if (distance >= 8) {
-        emit(
-            'drag',
-            withFrame({
-                x1: start.point.x,
-                y1: start.point.y,
-                x2: point.x,
-                y2: point.y,
-                durationMs: Math.min(2500, Math.max(300, Date.now() - start.startedAt)),
-            }),
-        );
-    } else emit('tap', withFrame(point));
+    const now = Date.now();
+    const distance = Math.hypot(
+        event.clientX - pointerGesture.lastX,
+        event.clientY - pointerGesture.lastY,
+    );
+    if (now - pointerGesture.lastMoveAt < 40 && distance < 4) return;
+    pointerGesture.lastMoveAt = now;
+    pointerGesture.lastX = event.clientX;
+    pointerGesture.lastY = event.clientY;
+    emit(
+        'touch',
+        withGestureFrame({
+            phase: 'move',
+            gestureId: pointerGesture.id,
+            ...point,
+        }),
+    );
+}
+function finishMapGesture(event) {
+    if (!pointerGesture || !canTap.value) {
+        pointerGesture = null;
+        return;
+    }
+    const gesture = pointerGesture;
+    const point = mapPoint(event);
+    if (!point) {
+        pointerGesture = null;
+        return;
+    }
+    emit(
+        'touch',
+        withGestureFrame({
+            phase: 'up',
+            gestureId: gesture.id,
+            durationMs: Math.min(2500, Math.max(50, Date.now() - gesture.startedAt)),
+            ...point,
+        }),
+    );
+    pointerGesture = null;
 }
 function cancelMapGesture() {
-    pointerStart = null;
+    if (pointerGesture) {
+        emit(
+            'touch',
+            withGestureFrame({
+                phase: 'cancel',
+                gestureId: pointerGesture.id,
+            }),
+        );
+    }
+    pointerGesture = null;
+}
+function withCurrentFrame(payload) {
+    const frameId = currentFrameId();
+    if (frameId) pointerGesture.frameId = frameId;
+    return frameId ? { ...payload, frameId } : payload;
+}
+function withGestureFrame(payload) {
+    const frameId = pointerGesture?.frameId || currentFrameId();
+    return frameId ? { ...payload, frameId } : payload;
 }
 const live = computed(() => props.snapshot?.source === 'live');
 const nodes = computed(() =>
@@ -258,6 +304,7 @@ async function translate() {
                 class="reader-map-stage"
                 :class="{ 'reader-tap-enabled': canTap }"
                 @pointerdown="beginMapGesture"
+                @pointermove="moveMapGesture"
                 @pointerup="finishMapGesture"
                 @pointercancel="cancelMapGesture"
                 :style="{ aspectRatio: `${display.width} / ${display.height}` }"

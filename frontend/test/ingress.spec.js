@@ -47,7 +47,8 @@ test('APK ownership, automatic online and an actual synthetic JPEG are visible i
     let receivedText = '';
     let activeCapture;
     const receivedTaps = [],
-        receivedDrags = [];
+        receivedDrags = [],
+        receivedTouches = [];
     let tapConsent = false;
     deviceSocket.on('message', (raw) => {
         const message = JSON.parse(String(raw));
@@ -156,6 +157,27 @@ test('APK ownership, automatic online and an actual synthetic JPEG are visible i
                         commandId,
                         result: tapConsent ? 'accepted' : 'rejected',
                         reasonCode: tapConsent ? 'drag_completed' : 'local_consent_required',
+                    },
+                }),
+            );
+            return;
+        }
+        if (message.data.command === 'SCREEN_TOUCH') {
+            receivedTouches.push(params);
+            deviceSocket.send(
+                JSON.stringify({
+                    protocol: 'boundary-screenshot-v2',
+                    type: 'command_ack',
+                    sessionId: device.deviceId,
+                    data: {
+                        command: 'SCREEN_TOUCH',
+                        commandId,
+                        result: tapConsent ? 'accepted' : 'rejected',
+                        reasonCode: tapConsent
+                            ? params.phase === 'up'
+                                ? 'touch_completed'
+                                : `touch_${params.phase}`
+                            : 'local_consent_required',
                     },
                 }),
             );
@@ -363,12 +385,13 @@ test('APK ownership, automatic online and an actual synthetic JPEG are visible i
     await expect(image).toHaveCSS('cursor', 'crosshair');
     await image.click({ position: { x: 74.5, y: (await image.boundingBox()).height * 0.75 } });
     await expect(page.locator('.device-browser-toast')).toHaveText('请先在手机点击运行操作');
-    expect(receivedTaps.at(-1).frameId).toBe(portrait.frameId);
-    expect(receivedTaps.at(-1).x).toBeCloseTo(0.25, 2);
-    expect(receivedTaps.at(-1).y).toBeCloseTo(0.75, 2);
+    expect(receivedTouches.at(-1).phase).toBe('up');
+    expect(receivedTouches.at(-1).frameId).toBe(portrait.frameId);
+    expect(receivedTouches.at(-1).x).toBeCloseTo(0.25, 2);
+    expect(receivedTouches.at(-1).y).toBeCloseTo(0.75, 2);
     tapConsent = true;
     await image.click();
-    await expect(page.locator('.device-browser-toast')).toHaveText('手机已完成单击');
+    await expect(page.locator('.device-browser-toast')).toHaveText('手机已完成触控');
     // The reader map routes coordinates directly without waiting for a matching screenshot frame.
     const liveReport = await page.request.get(
         `/api/devices/${new URL(page.url()).pathname.split('/').pop()}/accessibility-snapshot?viewerId=${activeCapture.viewerId}`,
@@ -390,45 +413,50 @@ test('APK ownership, automatic online and an actual synthetic JPEG are visible i
     await expect(map).toContainText('Fixture reader tap');
     await expect(map).toHaveClass(/reader-tap-enabled/);
     await expect(map).toHaveCSS('cursor', 'crosshair');
-    const beforeReaderTap = receivedTaps.length;
+    const beforeReaderTap = receivedTouches.length;
     await map.click({
         position: {
             x: (await map.boundingBox()).width * 0.5,
             y: (await map.boundingBox()).height * 0.5,
         },
     });
-    await expect(page.locator('.device-browser-toast')).toHaveText('手机已完成单击');
-    await expect.poll(() => receivedTaps.length).toBe(beforeReaderTap + 1);
-    expect([portrait.frameId, undefined]).toContain(receivedTaps.at(-1).frameId);
-    expect(receivedTaps.at(-1).x).toBeCloseTo(0.5, 2);
-    expect(receivedTaps.at(-1).y).toBeCloseTo(0.5, 2);
+    await expect(page.locator('.device-browser-toast')).toHaveText('手机已完成触控');
+    await expect.poll(() => receivedTouches.length).toBe(beforeReaderTap + 2);
+    expect(receivedTouches.at(-1).phase).toBe('up');
+    expect([portrait.frameId, undefined]).toContain(receivedTouches.at(-1).frameId);
+    expect(receivedTouches.at(-1).x).toBeCloseTo(0.5, 2);
+    expect(receivedTouches.at(-1).y).toBeCloseTo(0.5, 2);
     await expect(map).toHaveClass(/reader-tap-enabled/);
     await page.waitForTimeout(2600);
     await expect(map).toHaveClass(/reader-tap-enabled/);
-    const readerTapCount = receivedTaps.length;
+    const readerTapCount = receivedTouches.length;
     await map.click({ position: { x: 150, y: 160 } });
-    await expect.poll(() => receivedTaps.length).toBe(readerTapCount + 1);
-    expect([portrait.frameId, undefined]).toContain(receivedTaps.at(-1).frameId);
-    const beforeReaderDrag = receivedDrags.length;
+    await expect.poll(() => receivedTouches.length).toBe(readerTapCount + 2);
+    expect([portrait.frameId, undefined]).toContain(receivedTouches.at(-1).frameId);
+    const beforeReaderDrag = receivedTouches.length;
     const box = await map.boundingBox();
     await page.mouse.move(box.x + box.width * 0.25, box.y + box.height * 0.25);
     await page.mouse.down();
     await page.mouse.move(box.x + box.width * 0.75, box.y + box.height * 0.75, { steps: 4 });
     await page.mouse.up();
-    await expect(page.locator('.device-browser-toast')).toHaveText('手机已完成滑动');
-    await expect.poll(() => receivedDrags.length).toBe(beforeReaderDrag + 1);
-    expect(receivedDrags.at(-1).x1).toBeCloseTo(0.25, 1);
-    expect(receivedDrags.at(-1).y1).toBeCloseTo(0.25, 1);
-    expect(receivedDrags.at(-1).x2).toBeCloseTo(0.75, 1);
-    expect(receivedDrags.at(-1).y2).toBeCloseTo(0.75, 1);
+    await expect(page.locator('.device-browser-toast')).toHaveText('手机已完成触控');
+    await expect.poll(() => receivedTouches.length).toBeGreaterThanOrEqual(beforeReaderDrag + 3);
+    const streamed = receivedTouches.slice(beforeReaderDrag);
+    expect(streamed[0].phase).toBe('down');
+    expect(streamed.some((event) => event.phase === 'move')).toBe(true);
+    expect(streamed.at(-1).phase).toBe('up');
+    expect(streamed[0].x).toBeCloseTo(0.25, 1);
+    expect(streamed[0].y).toBeCloseTo(0.25, 1);
+    expect(streamed.at(-1).x).toBeCloseTo(0.75, 1);
+    expect(streamed.at(-1).y).toBeCloseTo(0.75, 1);
     const landscape = await publishFrame(800, 360);
     expect((await panel.boundingBox()).width).toBe(300);
     expect((await stage.boundingBox()).height).toBeCloseTo((298 * 360) / 800, 0);
     await image.click({ position: { x: 223.5, y: (await image.boundingBox()).height * 0.25 } });
-    await expect(page.locator('.device-browser-toast')).toHaveText('手机已完成单击');
-    expect(receivedTaps.at(-1).frameId).toBe(landscape.frameId);
-    expect(receivedTaps.at(-1).x).toBeCloseTo(0.75, 2);
-    expect(receivedTaps.at(-1).y).toBeCloseTo(0.25, 2);
+    await expect(page.locator('.device-browser-toast')).toHaveText('手机已完成触控');
+    expect(receivedTouches.at(-1).frameId).toBe(landscape.frameId);
+    expect(receivedTouches.at(-1).x).toBeCloseTo(0.75, 2);
+    expect(receivedTouches.at(-1).y).toBeCloseTo(0.25, 2);
     // Hold image downloads while ten direct JPEG frames arrive; renderer coalesces to newest.
     const metadataBefore = metadataRequests.length,
         imagesBefore = imageRequests.length;
