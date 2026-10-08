@@ -29,6 +29,10 @@ export function localDevicePage(result, query) {
             return false;
         return true;
     });
+    if (result.filters?.sort === 'id') {
+        const direction = result.filters.direction === 'desc' ? -1 : 1;
+        data.sort((a, b) => (Number(a.id) - Number(b.id)) * direction);
+    }
     const pages = Math.max(1, Math.ceil(data.length / DEVICE_PAGE_SIZE));
     const requestedPage = Number(query.page);
     const page = Math.min(

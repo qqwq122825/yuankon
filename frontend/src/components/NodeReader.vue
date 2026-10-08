@@ -234,8 +234,27 @@ function label(node) {
     if (live.value && useTranslation.value) return props.snapshot?.labels?.[node.key] || '界面元素';
     return originalLabel(node);
 }
+function nodeIcon(node) {
+    const text = rawText(node),
+        view = node.view_id || '',
+        klass = node.class_name || '';
+    if (
+        /ImageView$/.test(klass) &&
+        (/lock/i.test(view) || /锁|locked/i.test(text) || /keyguard/i.test(view))
+    )
+        return '🔒';
+    return '';
+}
 function nodeStyle(node) {
-    return readerNodeStyle(node, display.value, mapWidth.value, scale.value, label(node) || '');
+    const icon = nodeIcon(node);
+    return readerNodeStyle(
+        node,
+        display.value,
+        mapWidth.value,
+        scale.value,
+        icon || label(node) || '',
+        { icon: Boolean(icon) },
+    );
 }
 function nodeRecord(node) {
     const { key, ...record } = node;
@@ -323,7 +342,10 @@ async function translate() {
                     @click="selected = node"
                     @keydown.enter="selected = node"
                 >
-                    <span v-if="label(node)">{{ label(node) }}</span>
+                    <span v-if="nodeIcon(node)" class="reader-node-icon" aria-hidden="true">{{
+                        nodeIcon(node)
+                    }}</span>
+                    <span v-else-if="label(node)">{{ label(node) }}</span>
                 </div>
             </div>
             <div v-if="selected && !live" class="reader-properties">

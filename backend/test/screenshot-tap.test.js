@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { screenshotPoint } from '../../frontend/src/screenshot-geometry.js';
+import { readerNodeStyle } from '../../frontend/src/reader-node-style.js';
 import { panelSchema, normalizeLiveSnapshot } from '../src/protocol.js';
 import { DeviceIngress } from '../src/device-ingress.js';
 
@@ -25,6 +26,16 @@ test('portrait and landscape mapping uses actual contain area and rejects letter
     );
     assert.equal(screenshotPoint(NaN, 2, { left: 0, top: 0, width: 300, height: 300 }, 1, 1), null);
     assert.equal(screenshotPoint(0, 0, { left: 0, top: 0, width: 0, height: 300 }, 1, 1), null);
+});
+test('reader icon nodes fit small ImageView bounds without text shrinking them away', () => {
+    const node = { bounds: [474, 96, 606, 228], depth: 5 };
+    const label = readerNodeStyle(node, { width: 1080, height: 2400 }, 300, 55, '设备已锁定');
+    const icon = readerNodeStyle(node, { width: 1080, height: 2400 }, 300, 55, '🔒', {
+        icon: true,
+    });
+    assert.equal(label.width, icon.width);
+    assert.equal(label.height, icon.height);
+    assert.ok(Number.parseFloat(icon.fontSize) > Number.parseFloat(label.fontSize));
 });
 test('single-tap command validates point, identity and rejects general gestures', () => {
     const command = {

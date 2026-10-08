@@ -90,8 +90,29 @@ test('combined filters, unknown accessibility, empty results and page bounds sta
     assert.equal(localDevicePage(result, { status: 'offline' }).total, 21);
     assert.equal(localDevicePage(null, {}), null);
 });
-test('local filters preserve SQL ordering, row objects and current-page selection inputs', () => {
-    const descending = { ...result, data: [...rows].reverse() };
+test('default id ordering is enforced after local filters while preserving row objects', () => {
+    const shuffled = {
+        ...result,
+        data: [
+            rows[6],
+            rows[5],
+            rows[1],
+            rows[7],
+            rows[4],
+            rows[2],
+            rows[0],
+            rows[3],
+            ...rows.slice(8),
+        ],
+    };
+    const defaultVisible = localDevicePage(shuffled, {});
+    assert.deepEqual(
+        defaultVisible.data.map((row) => row.id),
+        [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+    );
+    assert.equal(defaultVisible.data[0], rows[0]);
+
+    const descending = { ...result, filters: { sort: 'id', direction: 'desc' }, data: [...rows] };
     const visible = localDevicePage(descending, { status: 'online' });
     assert.deepEqual(
         visible.data.map((row) => row.id),

@@ -500,6 +500,10 @@ select:focus-visible,
     overflow: hidden;
     text-overflow: clip;
 }
+.reader-map-node .reader-node-icon {
+    line-height: 1;
+    font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', system-ui, sans-serif;
+}
 .reader-map-node.selected,
 .reader-map-node:focus-visible {
     z-index: 50 !important;

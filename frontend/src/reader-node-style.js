@@ -1,4 +1,11 @@
-export function readerNodeStyle({ bounds, depth = 0 }, display, mapWidth, scale, text = '') {
+export function readerNodeStyle(
+    { bounds, depth = 0 },
+    display,
+    mapWidth,
+    scale,
+    text = '',
+    options = {},
+) {
     const width = display.width || 1,
         height = display.height || 1,
         left = Math.max(0, Math.min(width, bounds[0])),
@@ -15,14 +22,16 @@ export function readerNodeStyle({ bounds, depth = 0 }, display, mapWidth, scale,
     const boxHeight = Math.max(1, Math.ceil(scaledHeight) - 2);
     const requestedSize = (((16 * scale) / 100) * mapWidth) / 300;
     // Fit labels without changing the coordinate rectangle used by tap mapping.
-    const size = Math.max(
-        1,
-        Math.min(
-            requestedSize,
-            boxHeight / 1.15,
-            units ? Math.sqrt((boxWidth * boxHeight) / (units * 1.3)) : requestedSize,
-        ),
-    );
+    const size = options.icon
+        ? Math.max(8, Math.min(boxWidth, boxHeight) * 0.62)
+        : Math.max(
+              1,
+              Math.min(
+                  requestedSize,
+                  boxHeight / 1.15,
+                  units ? Math.sqrt((boxWidth * boxHeight) / (units * 1.3)) : requestedSize,
+              ),
+          );
     return {
         fontSize: `${size}px`,
         left: `${(left / width) * 100}%`,
