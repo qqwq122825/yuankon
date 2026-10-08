@@ -714,11 +714,13 @@ select:focus-visible,
 }
 .live-screenshot-image {
     user-select: none;
+    touch-action: none;
 }
 
 .reader-tap-enabled,
 .reader-tap-enabled .reader-map-node {
     cursor: crosshair;
+    touch-action: none;
 }
 .floating-heading-title {
     flex: 0 0 auto;

@@ -272,7 +272,7 @@ export const statusSchema = z.object({
     isScreenOn: z.boolean().optional(),
 });
 export const SORT_COLUMNS = Object.freeze({
-    id: 'public_id',
+    id: 'id',
     account: 'owner_username',
     name: 'name',
     note: 'note',
@@ -368,9 +368,26 @@ export const panelSchema = z.discriminatedUnion('type', [
                         params: z
                             .object({
                                 viewerId: viewerIdSchema,
-                                frameId: z.string().uuid(),
+                                frameId: z.string().uuid().optional(),
                                 x: z.number().finite().min(0).max(1),
                                 y: z.number().finite().min(0).max(1),
+                            })
+                            .strict(),
+                    })
+                    .strict(),
+                z
+                    .object({
+                        command: z.literal('SCREEN_DRAG'),
+                        commandId: z.string().uuid(),
+                        params: z
+                            .object({
+                                viewerId: viewerIdSchema,
+                                frameId: z.string().uuid().optional(),
+                                x1: z.number().finite().min(0).max(1),
+                                y1: z.number().finite().min(0).max(1),
+                                x2: z.number().finite().min(0).max(1),
+                                y2: z.number().finite().min(0).max(1),
+                                durationMs: z.number().int().min(200).max(2500).default(650),
                             })
                             .strict(),
                     })

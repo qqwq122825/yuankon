@@ -4,8 +4,8 @@ import { readFile } from 'node:fs/promises';
 test('1.7.9 preserves old templates and adds leased launcher freshness without input collection', async () => {
     const root = new URL('../../android/apk-templates/', import.meta.url);
     const templates = JSON.parse(await readFile(new URL('templates.json', root)));
-    assert.equal(templates[0].id, 'screenagent-1.8.5');
-    assert.equal(templates[0].versionCode, 23);
+    assert.equal(templates[0].id, 'screenagent-1.8.6');
+    assert.equal(templates[0].versionCode, 24);
     assert.ok(templates.some((t) => t.id === 'screenagent-1.7.8' && t.versionCode === 16));
     const dir = new URL('b-packages/screenagent-1.7.9/app/src/main/', root);
     const xml = await readFile(new URL('res/xml/boundary_accessibility_service.xml', dir), 'utf8');

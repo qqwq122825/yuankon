@@ -84,7 +84,7 @@ test('list, server sorting, query preservation, pagination, empty state and keyb
     await expect(noteButton).toHaveText('列表内联备注');
     await expect(page).toHaveURL('/');
     await page.getByRole('button', { name: '查看 测试设备 1 的备忘（0 条）', exact: true }).click();
-    const memos = page.getByRole('dialog', { name: '备忘录 — DEMO-001' });
+    const memos = page.getByRole('dialog', { name: '备忘录 — 1' });
     await expect(memos).toContainText('共 0 条');
     await memos.getByRole('button', { name: '＋ 添加' }).click();
     await memos.getByRole('textbox', { name: '备忘内容' }).fill('E2E 跟进记录');
@@ -137,13 +137,13 @@ test('list, server sorting, query preservation, pagination, empty state and keyb
     page.off('request', recordFilterRequest);
     await page.getByRole('button', { name: /ID ⇅|ID ↑/ }).click();
     await expect(page).toHaveURL(/page=1/);
-    await expect(page.locator('tbody tr').first()).toContainText('DEMO-012');
+    await expect(page.locator('tbody tr').first().locator('.fleet-id')).toHaveText('12');
     await page.getByRole('checkbox', { name: '选择当前页' }).check();
     await expect(page.getByText('已选择 10 台')).toBeVisible();
     await page.getByRole('textbox', { name: '搜索设备' }).fill('DEMO-001');
     await page.getByRole('textbox', { name: '搜索设备' }).press('Enter');
     await expect(page.locator('tbody tr')).toHaveCount(1);
-    await expect(page.locator('tbody tr').first()).toContainText('DEMO-001');
+    await expect(page.locator('tbody tr').first().locator('.fleet-id')).toHaveText('1');
     await page.getByRole('textbox', { name: '搜索设备' }).fill('nothing');
     await page.getByRole('textbox', { name: '搜索设备' }).press('Enter');
     await expect(page.getByText('暂无匹配设备；可调整筛选条件。')).toBeVisible();

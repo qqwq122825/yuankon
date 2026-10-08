@@ -11,7 +11,7 @@ const props = defineProps({
     tapPending: Boolean,
     latestFrame: Object,
 });
-const emit = defineEmits(['count', 'action', 'text-input', 'tap', 'diagnostic']);
+const emit = defineEmits(['count', 'action', 'text-input', 'tap', 'drag', 'diagnostic']);
 const frame = ref(null),
     error = ref(''),
     stageAspect = ref(null),
@@ -21,7 +21,7 @@ let timer,
     loading = false,
     queued = false,
     controller,
-    pressedFrameId,
+    pointerStart,
     loadGeneration = 0,
     imageController,
     downloading = false,
@@ -159,25 +159,61 @@ async function load() {
         if (queued && !stopped) queueMicrotask(load);
     }
 }
-function tap(event) {
-    if (
-        event.button !== 0 ||
-        pressedFrameId !== frame.value?.frameId ||
-        props.controlsDisabled ||
-        props.tapPending ||
-        !imageLoaded.value ||
-        !frame.value ||
-        Date.now() >= frame.value.expiresAt
-    )
-        return;
-    const point = screenshotPoint(
+function canGesture() {
+    return (
+        !props.controlsDisabled &&
+        !props.tapPending &&
+        imageLoaded.value &&
+        frame.value &&
+        Date.now() < frame.value.expiresAt
+    );
+}
+function eventPoint(event) {
+    if (!frame.value) return null;
+    return screenshotPoint(
         event.clientX,
         event.clientY,
         event.currentTarget.getBoundingClientRect(),
         frame.value.width,
         frame.value.height,
     );
-    if (point) emit('tap', { ...point, frameId: frame.value.frameId });
+}
+function beginGesture(event) {
+    if (event.button !== 0 || !canGesture()) return;
+    const point = eventPoint(event);
+    if (!point) return;
+    pointerStart = {
+        point,
+        clientX: event.clientX,
+        clientY: event.clientY,
+        frameId: frame.value.frameId,
+        startedAt: Date.now(),
+    };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+}
+function finishGesture(event) {
+    if (!pointerStart || !canGesture() || pointerStart.frameId !== frame.value?.frameId) {
+        pointerStart = null;
+        return;
+    }
+    const start = pointerStart;
+    pointerStart = null;
+    const point = eventPoint(event);
+    if (!point) return;
+    const distance = Math.hypot(event.clientX - start.clientX, event.clientY - start.clientY);
+    if (distance >= 8) {
+        emit('drag', {
+            frameId: start.frameId,
+            x1: start.point.x,
+            y1: start.point.y,
+            x2: point.x,
+            y2: point.y,
+            durationMs: Math.min(2500, Math.max(300, Date.now() - start.startedAt)),
+        });
+    } else emit('tap', { ...point, frameId: start.frameId });
+}
+function cancelGesture() {
+    pointerStart = null;
 }
 onMounted(() => {
     if (!frame.value) load();
@@ -215,12 +251,14 @@ onUnmounted(() => {
                 class="live-screenshot-image"
                 :src="frame.imageUrl"
                 :data-frame-id="frame.frameId"
-                @pointerdown="pressedFrameId = frame.frameId"
+                @pointerdown="beginGesture"
+                @pointerup="finishGesture"
+                @pointercancel="cancelGesture"
                 :class="{ 'tap-enabled': imageLoaded && !controlsDisabled && !tapPending }"
                 :title="'设备截图：单击发送到手机，需手机点击运行操作'"
                 draggable="false"
                 @load="imageLoaded = $event.currentTarget.dataset.frameId === frame?.frameId"
-                @click.stop="tap"
+                @click.stop.prevent
                 alt="设备实时上报的最新截图"
                 @error="error = '图片显示失败，等待下一帧'"
             />

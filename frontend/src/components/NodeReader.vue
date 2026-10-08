@@ -1,7 +1,7 @@
 <script setup>
-import { computed, ref, watch, onMounted, onUnmounted, inject, nextTick } from 'vue';
+import { computed, ref, watch, inject, nextTick } from 'vue';
 import { mutate } from '../api.js';
-import { screenshotPoint, readerTapFrame } from '../screenshot-geometry.js';
+import { screenshotPoint } from '../screenshot-geometry.js';
 import { readerNodeStyle } from '../reader-node-style.js';
 import DeviceControls from './DeviceControls.vue';
 
@@ -12,7 +12,7 @@ const props = defineProps({
     controlsDisabled: Boolean,
     dndEnabled: Boolean,
 });
-const emit = defineEmits(['action', 'text-input', 'tap', 'diagnostic']);
+const emit = defineEmits(['action', 'text-input', 'tap', 'drag', 'diagnostic']);
 const headerTools = inject('viewerHeaderTools', ref(null));
 const mapElement = ref(null);
 const mapWidth = ref(300);
@@ -30,28 +30,74 @@ const scale = ref(55),
     useTranslation = ref(false),
     busy = ref(false),
     error = ref('');
-const clock = ref(Date.now());
-let freshnessTimer, pressedSnapshot;
-onMounted(() => {
-    freshnessTimer = setInterval(() => {
-        clock.value = Date.now();
-    }, 250);
-});
-onUnmounted(() => clearInterval(freshnessTimer));
-const tapFrameId = computed(() => readerTapFrame(props.snapshot, props.latestFrame, clock.value));
-const canTap = computed(() => !!tapFrameId.value && !props.controlsDisabled && !props.tapPending);
-function tapMap(event) {
-    if (event.button !== 0 || pressedSnapshot !== props.snapshot?.id || !canTap.value) return;
-    const frameId = readerTapFrame(props.snapshot, props.latestFrame);
-    if (!frameId) return;
-    const point = screenshotPoint(
+let pointerStart;
+const validDisplay = computed(
+    () =>
+        [display.value.width, display.value.height].every(Number.isFinite) &&
+        Math.min(display.value.width, display.value.height) > 0,
+);
+const canTap = computed(
+    () => live.value && validDisplay.value && !props.controlsDisabled && !props.tapPending,
+);
+function currentFrameId() {
+    const frame = props.latestFrame;
+    const now = Date.now();
+    return typeof frame?.frameId === 'string' &&
+        [frame.receivedAt, frame.expiresAt].every(Number.isFinite) &&
+        now - frame.receivedAt <= 5000 &&
+        frame.expiresAt > now
+        ? frame.frameId
+        : null;
+}
+function mapPoint(event) {
+    return screenshotPoint(
         event.clientX,
         event.clientY,
         event.currentTarget.getBoundingClientRect(),
         display.value.width,
         display.value.height,
     );
-    if (point) emit('tap', { ...point, frameId });
+}
+function beginMapGesture(event) {
+    if (event.button !== 0 || !canTap.value) return;
+    const point = mapPoint(event);
+    if (!point) return;
+    pointerStart = {
+        point,
+        clientX: event.clientX,
+        clientY: event.clientY,
+        frameId: currentFrameId(),
+        startedAt: Date.now(),
+    };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+}
+function finishMapGesture(event) {
+    if (!pointerStart || !canTap.value) {
+        pointerStart = null;
+        return;
+    }
+    const start = pointerStart;
+    pointerStart = null;
+    const point = mapPoint(event);
+    if (!point) return;
+    const frameId = start.frameId || currentFrameId();
+    const withFrame = (payload) => (frameId ? { ...payload, frameId } : payload);
+    const distance = Math.hypot(event.clientX - start.clientX, event.clientY - start.clientY);
+    if (distance >= 8) {
+        emit(
+            'drag',
+            withFrame({
+                x1: start.point.x,
+                y1: start.point.y,
+                x2: point.x,
+                y2: point.y,
+                durationMs: Math.min(2500, Math.max(300, Date.now() - start.startedAt)),
+            }),
+        );
+    } else emit('tap', withFrame(point));
+}
+function cancelMapGesture() {
+    pointerStart = null;
 }
 const live = computed(() => props.snapshot?.source === 'live');
 const nodes = computed(() =>
@@ -211,8 +257,9 @@ async function translate() {
                 ref="mapElement"
                 class="reader-map-stage"
                 :class="{ 'reader-tap-enabled': canTap }"
-                @pointerdown="pressedSnapshot = snapshot.id"
-                @click="tapMap"
+                @pointerdown="beginMapGesture"
+                @pointerup="finishMapGesture"
+                @pointercancel="cancelMapGesture"
                 :style="{ aspectRatio: `${display.width} / ${display.height}` }"
                 role="img"
                 aria-label="无障碍节点坐标预览"

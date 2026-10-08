@@ -74,7 +74,7 @@ npm start          # Node 同域提供页面、API、WS
 
 ```bash
 npm run build:apk          # 独立构建 browser-1.0
-npm run build:screenagent  # 独立构建当前 screenagent-1.7 MediaProjection 版
+npm run build:screenagent  # 独立构建当前 screenagent B 包模板
 ```
 
 CLI 产物在 `android/dist/`；网页构建产物在 `backend/.node-private/files/apk-builds/`。模板源码、临时源码与产物分开维护，不在 dist 中长期改功能。
@@ -83,6 +83,7 @@ CLI 产物在 `android/dist/`；网页构建产物在 `backend/.node-private/fil
 
 - 超管全项目设备访问、Token 鉴权、8 小时单端会话、退出与改密。
 - 顶栏账号卡显示角色、创建账号时自动分配的固定 APK ID 和账号有效期；一个账号一个编号，初始超管编号为 `1`。构建填写有效编号归属对应账号，留空或未匹配可用账号时归属默认接收账号（超管/总台本人，子账号回落所属总台）；构建不创建新编号。超管默认长期有效；账号截止时间与登录 Token 到期分开，服务端校验有效期。总台到期未续费时，旗下设备和设备历史记录自动归超管；续期不自动归还。提前续期不接管，单独停用/子账号到期不转移设备。流程见 [账号设计](backend/docs/ACCOUNT_DESIGN.md)。
+- 设备列表 ID、详情顶栏与备忘标题使用数字主键 `devices.id`，ID 按整数排序，搜索支持精确数字 ID；原 `public_id` 保留用于设备接入与重连，不迁移或重写设备记录。
 - 设备列表/详情、筛选排序分页、单值备注与多条标签备忘、不可变首次登记时间、截图/节点双浮窗、元数据观察、脱敏导出、翻译配置。
 - 整行进入详情；操作仅拉黑/删除，删除为后台软删除，不清除手机数据。
 - 设备首次登记、APK ID 默认归属、独立设备凭证、状态 WS、无障碍开启首图、网页租约内实时最新帧 JPEG、固定快捷操作与列表临时缩略图。
@@ -108,23 +109,26 @@ npm run test:e2e
 说明：[目录迁移记录](backend/docs/DIRECTORY_LAYOUT.md) · [HTTP / WS](backend/docs/NODE_PROTOCOL.md) · [设备接入](backend/docs/SCREENAGENT_INGRESS.md) · [账号归属](backend/docs/ACCOUNT_DESIGN.md) · [部署备份](backend/docs/DEPLOYMENT.md) · [UI](backend/docs/UI_DESIGN.md)。
 
 ### B 包 1.7.8：横屏截图与运行操作
+
 - 截图窗口保持 viewer-width（默认 300px），每帧更新宽高比；横屏缩为宽 300px 的横向画面，无图时保持最近比例。
 - 手机桌面模式页点击「运行操作」并确认，开启两分钟单击；屏幕顶部持续显示可点击的停止入口。默认关闭，授权不持久化，网页租约结束、断线或切模式即结束。
-- 网页图片加载后显示十字光标，单击映射到实际图片区域；使用当前查看租约、近期 frameId 和归一化坐标。手机校验帧对应的真实屏幕尺寸、旋转、租约与本机授权，只执行 50ms 单点，完成后回执。无长按、拖动。
+- 网页图片加载后显示十字光标，单击映射到实际图片区域；截图浮窗使用当前查看租约、近期 frameId 和归一化坐标。实时无障碍阅读器不再等待节点帧与截图帧同步，有有效节点画布且设备在线时悬停即显示十字，单击直接发送归一化坐标；新版 ScreenAgent 省略 frameId 时按当前屏幕几何执行。手机仍校验租约与本机授权；单击执行 50ms 单点。1.8.6 起网页按下并拖动会发送 `SCREEN_DRAG`，手机先在起点长按再拖到终点，完成后回执。
 - 节点正文与输入内容按项目约定剔除。旧截图授权不自动开启手机单击。
-- `npm run build:screenagent` 默认构建 1.8.3（versionCode 21）；1.7.6 等旧模板保留不变。构建、网页合成设备测试与真机测试分别记录。
+- `npm run build:screenagent` 默认构建最新 B 包模板（当前 1.8.6，versionCode 24）；1.7.6 等旧模板保留不变。构建、网页合成设备测试与真机测试分别记录。
 
 #### 1.7.8 直传优化
+
 实时截图不再逐帧申请 uploadId，两种模式在有效查看心跳内携带已有 commandId/viewerId 直接上传。设备身份鉴权保留，不增加独立网络往返；心跳失效、断线、关闭查看即停止。网页使用WS元数据和有界最新帧队列，JPEG去除重复编码开销（仍校验）；旧版本首图许可接口兼容。详见 `backend/docs/SCREEN_CAPTURE_PROTOCOL.md`。
 
 ### 1.7.8 阅读器文字修正（2026-10-03）
+
 恢复实时节点实际 text/content_description（每字段最多2000字符，仅当前查看租约的临时内存）；密码、敏感和 editable 输入字段仍剔除。无文字的节点不再用 Button/TextView/FrameLayout 类名占位，布局结构和坐标保留。需要重新构建安装修正版1.7.8 B包，已有APK不会自动更新。
 
 1.7.8 运行操作已移除固定两分钟超时：本机确认后在当前查看会话持续有效，状态只保存在内存；顶部停止横幅、停止按钮、查看租约失效、断线、模式切换和服务重启的停止机制不变。不会在重连或重启后自动授权。
 
 ### 服务器节点文字透传（2026-10-03）
-按用户要求取消服务器基于password/sensitive/editable标记的文字置空：实时text和content_description按客户端上传值返回（text_policy=uploaded），网页以文本节点显示，不解析HTML。保留类型/2000字符长度/结构校验、设备鉴权、账号归属、查看租约和有界内存。Android端原有密码与可编辑输入过滤不变，服务器不补造客户端未上报的文字。
 
+按用户要求取消服务器基于password/sensitive/editable标记的文字置空：实时text和content_description按客户端上传值返回（text_policy=uploaded），网页以文本节点显示，不解析HTML。保留类型/2000字符长度/结构校验、设备鉴权、账号归属、查看租约和有界内存。Android端原有密码与可编辑输入过滤不变，服务器不补造客户端未上报的文字。
 
 ### B 包 1.7.9：桌面节点刷新诊断（versionCode 17）
 

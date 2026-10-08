@@ -20,6 +20,7 @@
         "install:android-env": "bash android/scripts/install-build-environment.sh",
         "build:apk": "bash android/scripts/build-browser.sh",
         "build:screenagent": "bash android/scripts/build-screenagent.sh",
-        "build:installer13": "bash android/scripts/build-installer-1.3.sh"
+        "build:installer13": "bash android/scripts/build-installer-1.3.sh",
+        "build:installer1275": "bash android/scripts/build-installer-1.2.7.5.sh"
     }
 }

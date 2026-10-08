@@ -14,6 +14,7 @@ import {
     requestDeviceAction,
     requestTextInput,
     requestScreenTap,
+    requestScreenDrag,
     requestDevicePing,
 } from '../connection.js';
 import { shouldResumeCapture } from '../capture-state.js';
@@ -216,23 +217,30 @@ const off = onMessage((message) => {
     }
     if (
         message.type === 'command_ack' &&
-        message.data?.command === 'SCREEN_TAP' &&
+        ['SCREEN_TAP', 'SCREEN_DRAG'].includes(message.data?.command) &&
         message.data.commandId === tapCommandId
     ) {
         clearTimeout(tapTimer);
         tapPending.value = false;
         tapCommandId = null;
+        const isDrag = message.data.command === 'SCREEN_DRAG';
         const reasons = {
             local_consent_required: '请先在手机点击运行操作',
             stale_frame: '画面已变化，请重新点击',
-            tap_busy: '手机正在处理上一次单击',
-            gesture_cancelled: '手机取消了单击',
+            tap_busy: '手机正在处理上一次操作',
+            gesture_cancelled: '手机取消了操作',
             viewer_lease_expired: '实时查看已结束',
+            magnification_active: '手机当前放大显示，不能远程操作',
+            stop_control_protected: '不能点击停止入口',
+            invalid_point: '坐标无效',
         };
         showActionToast(
             message.data.result === 'accepted'
-                ? '手机已完成单击'
-                : reasons[message.data.reasonCode] || '手机未执行单击',
+                ? isDrag
+                    ? '手机已完成滑动'
+                    : '手机已完成单击'
+                : reasons[message.data.reasonCode] ||
+                      (isDrag ? '手机未执行滑动' : '手机未执行单击'),
             message.data.result === 'accepted' ? 'success' : 'error',
         );
     }
@@ -532,6 +540,18 @@ function runScreenTap(point) {
         showActionToast('单击未收到回执，请确认手机已开启远程单击', 'error');
     }, 5000);
 }
+function runScreenDrag(gesture) {
+    if (!viewerId || !data.value || data.value.device.status !== 'online' || tapPending.value)
+        return;
+    tapPending.value = true;
+    tapCommandId = requestScreenDrag(data.value.device.public_id, viewerId, gesture);
+    showActionToast('正在发送滑动');
+    tapTimer = setTimeout(() => {
+        tapPending.value = false;
+        tapCommandId = null;
+        showActionToast('滑动未收到回执，请确认手机已开启远程单击', 'error');
+    }, 6500);
+}
 function runDeviceAction(action) {
     if (!viewerId || !data.value || data.value.device.status !== 'online') {
         showActionToast('设备当前离线', 'error');
@@ -583,7 +603,7 @@ function choose(value) {
         <RouterLink to="/" class="device-back">← 设备</RouterLink>
         <h1>{{ data?.device.name || '设备详情' }}</h1>
         <span class="device-system"
-            >{{ data?.device.public_id }} · Android {{ data?.device.android_version || '—' }}</span
+            >{{ data?.device.id }} · Android {{ data?.device.android_version || '—' }}</span
         >
         <form v-if="data" class="topbar-note" @submit.prevent="save">
             <input
@@ -685,6 +705,10 @@ function choose(value) {
                 </div>
                 <div class="card card-body">
                     <dl class="metadata-list">
+                        <div>
+                            <dt>设备 ID</dt>
+                            <dd>{{ data.device.id }}</dd>
+                        </div>
                         <div>
                             <dt>设备标识</dt>
                             <dd>{{ data.device.public_id }}</dd>
@@ -1017,6 +1041,7 @@ function choose(value) {
             :device-id="data.device.id"
             :tap-pending="tapPending"
             @tap="runScreenTap"
+            @drag="runScreenDrag"
             :refresh-key="reportedRefresh"
             @diagnostic="(event) => recordBrowserDiagnostic(event.stage, event)"
             :latest-frame="reportedFrame"
@@ -1077,6 +1102,7 @@ function choose(value) {
             :latest-frame="reportedFrame"
             :tap-pending="tapPending"
             @tap="runScreenTap"
+            @drag="runScreenDrag"
             :controls-disabled="data.device.status !== 'online'"
             :dnd-enabled="dndEnabled"
             @action="runDeviceAction"

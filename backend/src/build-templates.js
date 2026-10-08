@@ -22,7 +22,10 @@ export const templateSchema = z
             .regex(/^[a-zA-Z0-9_-][a-zA-Z0-9_.-]*(?:\/[a-zA-Z0-9_-][a-zA-Z0-9_.-]*)*$/),
         kind: z.enum(['browser', 'screenagent', 'installer']),
         visibleLauncher: z.boolean().optional().default(false),
-        payloadFormat: z.enum(['plain', 'lcg16', 'plainDat', 'none']).optional().default('plain'),
+        payloadFormat: z
+            .enum(['plain', 'lcg16', 'plainDat', 'aesgcm', 'none'])
+            .optional()
+            .default('plain'),
         description: text(300),
         capture: z
             .object({

@@ -64,3 +64,6 @@ npm run build:apk
 
 ### 服务器节点文字透传（2026-10-03）
 按用户要求取消服务器基于password/sensitive/editable标记的文字置空：实时text和content_description按客户端上传值返回（text_policy=uploaded），网页以文本节点显示，不解析HTML。保留类型/2000字符长度/结构校验、设备鉴权、账号归属、查看租约和有界内存。Android端原有密码与可编辑输入过滤不变，服务器不补造客户端未上报的文字。
+
+### 数字设备 ID 显示（2026-10-08）
+更新 Vue 与 Node 后执行 `npm run build` 并重启现有 Node 进程，使数字 ID 显示、整数排序与精确 ID 搜索同步生效。本次无需 SQLite 迁移、重新登记或重建 APK；保留设备主键、public_id、凭证和历史记录。

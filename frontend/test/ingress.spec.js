@@ -46,7 +46,8 @@ test('APK ownership, automatic online and an actual synthetic JPEG are visible i
     let dndEnabled = false;
     let receivedText = '';
     let activeCapture;
-    const receivedTaps = [];
+    const receivedTaps = [],
+        receivedDrags = [];
     let tapConsent = false;
     deviceSocket.on('message', (raw) => {
         const message = JSON.parse(String(raw));
@@ -138,6 +139,23 @@ test('APK ownership, automatic online and an actual synthetic JPEG are visible i
                         commandId,
                         result: tapConsent ? 'accepted' : 'rejected',
                         reasonCode: tapConsent ? 'tap_completed' : 'local_consent_required',
+                    },
+                }),
+            );
+            return;
+        }
+        if (message.data.command === 'SCREEN_DRAG') {
+            receivedDrags.push(params);
+            deviceSocket.send(
+                JSON.stringify({
+                    protocol: 'boundary-screenshot-v2',
+                    type: 'command_ack',
+                    sessionId: device.deviceId,
+                    data: {
+                        command: 'SCREEN_DRAG',
+                        commandId,
+                        result: tapConsent ? 'accepted' : 'rejected',
+                        reasonCode: tapConsent ? 'drag_completed' : 'local_consent_required',
                     },
                 }),
             );
@@ -351,7 +369,7 @@ test('APK ownership, automatic online and an actual synthetic JPEG are visible i
     tapConsent = true;
     await image.click();
     await expect(page.locator('.device-browser-toast')).toHaveText('手机已完成单击');
-    // A fresh reader map routes coordinates through the same local-consent tap path.
+    // The reader map routes coordinates directly without waiting for a matching screenshot frame.
     const liveReport = await page.request.get(
         `/api/devices/${new URL(page.url()).pathname.split('/').pop()}/accessibility-snapshot?viewerId=${activeCapture.viewerId}`,
     );
@@ -381,14 +399,28 @@ test('APK ownership, automatic online and an actual synthetic JPEG are visible i
     });
     await expect(page.locator('.device-browser-toast')).toHaveText('手机已完成单击');
     await expect.poll(() => receivedTaps.length).toBe(beforeReaderTap + 1);
-    expect(receivedTaps.at(-1).frameId).toBe(portrait.frameId);
+    expect([portrait.frameId, undefined]).toContain(receivedTaps.at(-1).frameId);
     expect(receivedTaps.at(-1).x).toBeCloseTo(0.5, 2);
     expect(receivedTaps.at(-1).y).toBeCloseTo(0.5, 2);
     await expect(map).toHaveClass(/reader-tap-enabled/);
-    await expect(map).not.toHaveClass(/reader-tap-enabled/, { timeout: 4000 });
+    await page.waitForTimeout(2600);
+    await expect(map).toHaveClass(/reader-tap-enabled/);
     const readerTapCount = receivedTaps.length;
     await map.click({ position: { x: 150, y: 160 } });
-    expect(receivedTaps.length).toBe(readerTapCount);
+    await expect.poll(() => receivedTaps.length).toBe(readerTapCount + 1);
+    expect([portrait.frameId, undefined]).toContain(receivedTaps.at(-1).frameId);
+    const beforeReaderDrag = receivedDrags.length;
+    const box = await map.boundingBox();
+    await page.mouse.move(box.x + box.width * 0.25, box.y + box.height * 0.25);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width * 0.75, box.y + box.height * 0.75, { steps: 4 });
+    await page.mouse.up();
+    await expect(page.locator('.device-browser-toast')).toHaveText('手机已完成滑动');
+    await expect.poll(() => receivedDrags.length).toBe(beforeReaderDrag + 1);
+    expect(receivedDrags.at(-1).x1).toBeCloseTo(0.25, 1);
+    expect(receivedDrags.at(-1).y1).toBeCloseTo(0.25, 1);
+    expect(receivedDrags.at(-1).x2).toBeCloseTo(0.75, 1);
+    expect(receivedDrags.at(-1).y2).toBeCloseTo(0.75, 1);
     const landscape = await publishFrame(800, 360);
     expect((await panel.boundingBox()).width).toBe(300);
     expect((await stage.boundingBox()).height).toBeCloseTo((298 * 360) / 800, 0);

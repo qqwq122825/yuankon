@@ -3,7 +3,7 @@
 ## 当前源码
 
 - `android/apk-templates/b-packages/`：工作端版本区。当前 `screenagent-1.7.5/` 有桌面模式选择页；可在 MediaProjection（`VirtualDisplay + ImageReader.acquireLatestImage()`）和 AccessibilityService.takeScreenshot 两种截图模式间切换。MediaProjection 确认仍由 Android 系统界面完成；1.0–1.4 已删除，保留 1.5、1.6、1.7、1.7.1、1.7.2、1.7.3 兼容目录。
-- `android/apk-templates/a-packages/`：安装器版本区。当前 `installer-1.3/`（清单 ID `installer-1.3`）：B 包以 LCG 混淆内嵌，点击安装时请求系统 VPN 授权并启动吞流量 VPN，同时经 `PackageInstaller` 会话安装 B 包；安装成功回调立即停 VPN 并返回 A 包后停 VPN，走受限设置/无障碍引导进入内置网页。旧 `installer-1.0/1.1/1.2` 保留（1.2 为明文 `payload.apk` + `ACTION_VIEW` 安装器，无 VPN）；`installer-1.2.2/1.2.3` 为无 VPN + LCG `payload.dat` + 1.3.1 同步 UI 的对照版，其中 1.2.3 明确固定 B 包 LCG payload.dat 路径，1.2.4 在此基础上加入 VPN 路径，1.2.5 保留 VPN 但改用不加密的原始 APK 字节 `payload.dat`，1.2.6 不携带 B 包，仅保留 VPN 测试路径。A 包不复制 B 包工作逻辑。
+- `android/apk-templates/a-packages/`：安装器版本区。当前 `installer-1.3/`（清单 ID `installer-1.3`）：B 包以 LCG 混淆内嵌，点击安装时请求系统 VPN 授权并启动吞流量 VPN，同时经 `PackageInstaller` 会话安装 B 包；安装成功回调立即停 VPN 并返回 A 包后停 VPN，走受限设置/无障碍引导进入内置网页。旧 `installer-1.0/1.1/1.2` 保留（1.2 为明文 `payload.apk` + `ACTION_VIEW` 安装器，无 VPN）；`installer-1.2.2/1.2.3` 为无 VPN + LCG `payload.dat` + 1.3.1 同步 UI 的对照版，其中 1.2.3 明确固定 B 包 LCG payload.dat 路径，1.2.4 在此基础上加入 VPN 路径，1.2.5 保留 VPN 但改用不加密的原始 APK 字节 `payload.dat`，1.2.6 不携带 B 包，仅保留 VPN 测试路径，1.2.7.x 系列为 VPN/PackageInstaller/LCG 消融对照，其中 1.2.7.4 为无 VPN + LCG `payload.dat` + 1.2.8 进度/无障碍引导 UI，1.2.7.5 在 1.2.7.4 基础上加回必需的 VPN 吞流量隔离并把 B 包加密由 LCG 换成 AES-256-GCM。A 包不复制 B 包工作逻辑。
 - `android/apk-templates/standalone/`：不参与 A/B 依赖的独立模板。当前 `browser-1.0/` 只打开可见 WebView。
 - `android/apk-templates/templates.json`：后台模板选择框的数据源。显示名和实际 Android 版本分开；当前没有名为 v4.0 的源码，勿只改标题就描述为新增功能。
 - `android/apk-templates/domains.json`：可选域名简称映射，不包含凭证。
@@ -90,13 +90,14 @@ APK ID 在创建账号时自动分配，一个账号一个固定编号。构建�
 验证记录：`backend/.node-private/releases/1.7.6/VERIFICATION.txt`；本机构建命令 `npm run build:screenagent`。编译、合成图联调与真机授权验证分别记录。
 
 ### screenagent-1.7.8（B 包桌面模式页，versionCode 16）
+
 新增「运行操作」与「停止操作」。单击授权为本机弹窗确认后的当前会话内存状态（没有固定两分钟超时），显示可点击停止横幅；仅截图查看租约内的近期单点映射，不支持长按或轨迹。MediaProjection 旋转时复用 VirtualDisplay 并换 Surface。节点正文剔除。1.7.6 及更旧固定源码保持不变。
 
 1.7.8直传修订：MediaProjection与默认takeScreenshot实时查看共用 uploadViewerScreenshot，取消每帧singleFrameSession/uploadId；设备鉴权与已有查看指令关联保留。MediaProjection最短40ms本地周期以匹配有界限流；断线/查看心跳失效停止。首图/旧模板仍走兼容单张许可。
 
 ### 1.7.8 阅读器文字修正（2026-10-03）
-恢复实时节点实际 text/content_description（每字段最多2000字符，仅当前查看租约的临时内存）；密码、敏感和 editable 输入字段仍剔除。无文字的节点不再用 Button/TextView/FrameLayout 类名占位，布局结构和坐标保留。需要重新构建安装修正版1.7.8 B包，已有APK不会自动更新。
 
+恢复实时节点实际 text/content_description（每字段最多2000字符，仅当前查看租约的临时内存）；密码、敏感和 editable 输入字段仍剔除。无文字的节点不再用 Button/TextView/FrameLayout 类名占位，布局结构和坐标保留。需要重新构建安装修正版1.7.8 B包，已有APK不会自动更新。
 
 ### B 包 1.7.9：桌面节点刷新诊断（versionCode 17）
 
@@ -107,23 +108,33 @@ APK ID 在创建账号时自动分配，一个账号一个固定编号。构建�
 测试安装后主动开启查看与 API 调试，依次检查 B 包 → Home → 打开/关闭文件夹 → 设置 → Home。核对 service/nodes_snapshot 包名切换、rootStatus、nodeCount 和截断状态。无真实设备连接时只报告编译/合成测试，不宣称桌面真机修复。密码/可编辑输入字段仍置空；本机运行操作授权、可见停止与会话失效停止不变。
 
 ## 1.8.0：一键链路诊断
+
 固定模板 `b-packages/screenagent-1.8.0`，versionCode 18，保留 1.7.9 与旧版本。记录无正文的窗口事件、节点读取序号/采集时间/结构变化及 WS 排队结果；排队成功不等于服务器收到。重复心跳中的相同 debug session 不再反复记录开启事件。本机授权、停止入口和密码/输入字段剔除保持不变。部署网页后需重新构建并安装 1.8.0，旧 APK 不自动升级。
 
 ## 1.8.1：桌面节点范围诊断
+
 新增固定模板，versionCode 19。API 调试增加最多 8 个窗口的类型/层级/焦点/根包名/边界/子节点数，以及所选根的遍历计数、空子节点、深度截断、不可见和屏外节点数。结构未变化也记录读取诊断，但不重复发送节点。窗口清单不采集背景正文，密码与可编辑字段继续置空。
 复测：启动 API 调试 → 其他应用 → Home（先不打开文件夹）→ 打开文件夹 → 关闭文件夹 → 其他应用 → 结束并复制诊断。childrenReported 与 childrenRead 的差由 childReadFailures/depthSkipped 解释；窗口清单用于识别选根范围。计数相等不能证明 Android 暴露了所有视觉元素。真机根因需新报告验证，版本号不代表已修复。
 
 ## 1.8.3：根范围修复候选与诊断兼容
+
 固定版本 1.8.3/code21，保留 1.8.1；跳过未发布的 1.8.2。所选节点存在同包名、同窗口父节点时，最多按深度限制提升到父根；每个遍历节点刷新并统计失败，不拼接其他应用的树。诊断批次保持最多50条，单请求在途，失败保留有界队列等下一次正常flush，无递归重试；会话结束不跨会话重试。
 服务器兼容1.8.1的windowInventory：严格8项窗口元数据结构及4096字节详情上限，拒绝任意嵌套正文/对象，不截断JSON。阅读器文字按画布宽度缩放、框内自适应换行，悬停显示完整标签，不改坐标。
 复测其他App → Home停留 → 打开文件夹 → 关闭文件夹 → 再打开 → 设置，检查nodes_snapshot/windowInventory、rootParentsAscended、nodeRefreshFailures、debugUploadFailures、childrenRead/Reported。Launcher不暴露的图标不伪造；编译通过不等于已验证真机完整性。
 
 ### 1.8.3 一次性详细诊断
+
 主动API调试会话中，服务器收到节点后记录最多200条脱敏结构，每批6条，标明总数/截断/快照ID。只含ID、父ID、窗口、类名、边界和属性；不记录viewId、原始标签、输入/密码/银行正文。仅Launcher3中匹配Yono Lite桌面标签的节点记录布尔匹配标记，不采集该应用页面正文。网页增加nodes_rendered实际DOM节点计数与最多200个键。通过同一snapshotId比对采集统计、接收结构和绘制；计数一致不代表Android暴露所有图标。授权与停止入口不变。
 
 ## 1.8.4 桌面诊断
 
 B 包新增默认关闭的「开始桌面节点诊断」按钮。用户在手机确认后，最多5分钟、仅当前默认桌面启动器与本应用上报节点；密码及输入文本仍剔除。授权只在内存保存，进程重启不恢复，屏幕底部可点停止；网页关闭或连接断开后停止。独立于截图与远程操作授权。先在网页打开阅读器，再在手机开启诊断，返回桌面、展开/关闭文件夹。服务器必须包含 fc4348a 的 live 异常矩形兼容修复。单个无效矩形不再导致整批有效桌面图标丢失；系统未暴露的图标不伪造。更新需要安装新 APK，并升级服务器模板清单/网页。
+
+## 1.8.6 阅读器长按拖动
+
+固定模板 `b-packages/screenagent-1.8.6`，versionCode 24，保留 1.8.5 与旧版本。新增 `SCREEN_DRAG` 指令：网页端在实时截图或无障碍阅读器上按下并拖动超过阈值时发送起点/终点归一化坐标和持续时间；B 包在本机「运行操作」授权、查看租约有效且停止入口可见时，先在起点保持约 450ms，再拖动到终点。截图拖动可携带近期 `frameId` 校验；阅读器直点/拖动可省略 `frameId` 并使用当前屏幕几何。单点 `SCREEN_TAP`、文本输入、固定系统动作、停止入口保护、放大状态拒绝和忙碌拒绝保持不变。
+
+验证记录：`npm run build:screenagent` 已真实构建 `/Users/xxx/Documents/code/yuankon/android/dist/screenagent-cb4KK2/screenagent.apk`（package=com.zaka.screenagent、versionName=1.8.6、versionCode=24、桌面入口存在、apksigner v2 签名通过、zipalign 4/16K 对齐通过，SHA-256 `6522f5a2a09ddae146794e85d59302b2509f8d6db7187ffdad836a77a50389b8`）。`npm run check` 与 `npm run test:e2e` 通过；真机拖动验证另行报告。
 
 ## 1.8.5 全应用节点无条件上传
 
@@ -142,3 +153,14 @@ B 包新增默认关闭的「开始桌面节点诊断」按钮。用户在手机
 - 取消/失败：`onResume` 检测会话结束且未安装 → 停 VPN、回更新页可重试。
 
 验证：`npm run build:installer13` 真实构建（默认先构建当前 B 包再内嵌；也可用 `INSTALLER13_PAYLOAD_APK` 指定；assembleDebug + lintDebug、apksigner v2、zipalign 4/16K、aapt 包身份/桌面入口/VPN 服务/`payload.dat` 断言）通过；LCG 往返（Node 混淆 → APK 内 `payload.dat` → Java 按运行时算法解密）字节与 SHA-256 一致；`npm run check` 142 项后端测试、`npm run test:e2e` 27 项浏览器测试通过。VPN 授权、吞流量与真机安装链路需真机验证，单独报告。
+
+## A 包 installer-1.2.7.5：AES-GCM 加密 + VPN 断网隔离（versionCode 375）
+
+固定模板 `a-packages/installer-1.2.7.5`，基于 `installer-1.2.8` 复制（清单 ID `installer-1.2.7.5`）。保留 1.2.7.4 的 1.2.8 进度环/无障碍引导 UI 与 `PackageInstaller` 会话安装，差异只有两点：
+
+- **加回必需的 VPN**：复用 `VpnKillService`（全路由吞流量 + 固定放行清单 + `stopIntent` 停止机制），启动 A 包自动请求系统 VPN 授权并建立吞流量隧道，安装成功/失败/取消时停止。固定放行清单逐项容错，手机未安装某个放行应用时不会阻断 VPN 建立。用户实测：B 包带无障碍服务时，`PackageInstaller` 安装若不切断网络，无障碍开关无法点亮；VPN 在此是功能性依赖，不只是反报毒手段。
+- **B 包加密由 LCG 换成 AES-256-GCM**（`payloadFormat: "aesgcm"`）：构建时 Node 每次生成随机 32 字节密钥 + 12 字节 nonce，`payload.dat` = nonce ‖ 密文 ‖ 16 字节 GCM 认证标签，base64 密钥写入 `installer_config.json` 的 `payloadKey`；运行时 `MainActivity.decryptPayload()` 用 `AES/GCM/NoPadding` 解密（tag 自带完整性），再核对 `payloadSha256` 后交给 PackageInstaller。每构建密文与密钥不同，静态分析只看到正常加密数据。
+
+构建脚本 `android/scripts/build-installer-1.2.7.5.sh`（默认内嵌最近一次构建的 B 包，可用 `INSTALLER1275_PAYLOAD_APK` 指定）：复制源码 → AES-GCM 加密 `payload.dat` 并注入密钥 → **Node 侧 GCM 解密往返核对 SHA-256**（对应 Java 运行时路径）→ assembleDebug + lintDebug、apksigner v2、zipalign 4/16K、aapt 包身份/桌面入口/`VpnKillService`/`BIND_VPN_SERVICE`/`InstallReceiver`/`payload.dat` 断言（且不得含明文 `payload.apk`）。`InstallReceiver` 使用显式组件 PendingIntent，manifest 保持 `exported=false`，避免外部广播伪造安装结果。
+
+验证：`bash android/scripts/build-installer-1.2.7.5.sh` 真实构建通过（B 包 `com.zaka.screenagent`，包身份 `org.test.installer1275`/1.2.7.5/code 375，GCM 往返 SHA 一致）；`npm run check` 144 项后端测试、`npm run test:e2e` 28 项浏览器测试通过（含新增 aesgcm 构建注入往返与模板目录断言）。VPN 授权、吞流量、无障碍点亮与真机安装链路需真机验证，单独报告。

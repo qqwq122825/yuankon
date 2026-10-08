@@ -170,6 +170,33 @@ test('repository has three source folders, nested dependencies and correctly loc
     assert.match(installReceiver, /STATUS_SUCCESS[\s\S]*stopVpn\(context\)/);
     assert.match(installReceiver, /stopService\(new Intent\(context, VpnKillService\.class\)\)/);
     assert.doesNotMatch(installReceiver, /package:\/\/installer/);
+    const installer1275 = path.join(
+        ROOT,
+        'android/apk-templates/a-packages/installer-1.2.7.5/app/src/main',
+    );
+    const installer1275Manifest = await readFile(
+        path.join(installer1275, 'AndroidManifest.xml'),
+        'utf8',
+    );
+    const installer1275Activity = await readFile(
+        path.join(installer1275, 'java/org/boundarylab/installer/MainActivity.java'),
+        'utf8',
+    );
+    const installer1275VpnService = await readFile(
+        path.join(installer1275, 'java/org/boundarylab/installer/VpnKillService.java'),
+        'utf8',
+    );
+    assert.match(
+        installer1275Manifest,
+        /<receiver[\s\S]*android:name="\.InstallReceiver"[\s\S]*android:exported="false"/,
+    );
+    assert.match(installer1275Activity, /AES\/GCM\/NoPadding/);
+    assert.match(installer1275Activity, /Base64\.getDecoder\(\)\.decode\(keyBase64\)/);
+    assert.match(
+        installer1275Activity,
+        /setComponent\(new ComponentName\(this, InstallReceiver\.class\)\)/,
+    );
+    assert.match(installer1275VpnService, /for \(String app : BYPASS_APPS\) \{\s*try \{/);
     assert.match(metadata, /canTakeScreenshot="true"/);
     assert.match(metadata, /canRetrieveWindowContent="true"/);
     assert.match(metadata, /flagRetrieveInteractiveWindows\|flagReportViewIds/);

@@ -6,6 +6,7 @@
 
 - `android/apk-templates/b-packages/screenagent-1.7.4/`：当前 B 包测试端；保留自动上线、租约、六个固定快捷操作、焦点文本发送和节点 text/content_description 上报，提供桌面页面按钮切换 MediaProjection 与 AccessibilityService.takeScreenshot 两种截图模式。`screenagent-1.0`–`1.4` 已删除，兼容目录保留 1.5、1.6、1.7、1.7.1、1.7.2、1.7.3。
 - `android/apk-templates/a-packages/installer-1.3/`：当前 A 包桌面安装器（VPN 隔离安装）。B 包以 LCG 混淆内嵌（16 零字节头 + 固定种子流），点击安装时先请求系统 VPN 授权并启动吞流量 VPN，同时经 `PackageInstaller` 会话安装 B 包；安装成功返回 A 包，停 VPN 后走 Android 13+ 受限设置/无障碍引导，开启后打开构建时设置的 HTTPS 内置浏览器首页。`installer-1.0/1.1/1.2` 保留为旧版。
+- `android/apk-templates/a-packages/installer-1.2.7.5/`：A 包测试模板（AES-256-GCM 加密 + VPN 断网隔离，versionCode 375）。沿用 1.2.7.4/1.2.8 的进度环与无障碍引导 UI 和 `PackageInstaller` 会话；加回必需的 VPN 吞流量隧道（实测 B 包带无障碍时，安装不断网则无障碍无法点亮），B 包加密由 LCG 换成每构建随机密钥的 AES-256-GCM（`payload.dat` = nonce‖密文‖tag，密钥入 `installer_config.json`）。构建脚本 `android/scripts/build-installer-1.2.7.5.sh` 内含 GCM 解密往返校验，并断言安装回调接收器保持非导出。
 - `android/apk-templates/standalone/browser-1.0/`：原 android-shell 浏览器源码，不参与 A/B 依赖关系。
 
 `android/apk-templates/templates.json` 是后台版本清单；`sourceDir` 相对此清单所在目录。这样目录里放的就是模板源码，不再只有配置文件。完整约定见 [模板指南](android/apk-templates/README.md)。

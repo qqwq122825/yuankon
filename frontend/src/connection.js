@@ -71,6 +71,14 @@ export const requestScreenTap = (id, viewerId, point, commandId = crypto.randomU
     });
     return commandId;
 };
+export const requestScreenDrag = (id, viewerId, gesture, commandId = crypto.randomUUID()) => {
+    send({
+        type: 'command',
+        sessionId: id,
+        data: { command: 'SCREEN_DRAG', commandId, params: { viewerId, ...gesture } },
+    });
+    return commandId;
+};
 function schedule() {
     if (stopped) return;
     connection.status = '重连中';

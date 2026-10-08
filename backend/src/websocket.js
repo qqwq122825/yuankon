@@ -238,6 +238,7 @@ export function attachWebSockets(
                     'DEVICE_ACTION',
                     'TEXT_INPUT',
                     'SCREEN_TAP',
+                    'SCREEN_DRAG',
                     'capture_viewer_lease',
                     'accessibility_snapshot',
                 ],
@@ -396,19 +397,21 @@ export function attachWebSockets(
                 )
                     throw fail(410, '截图查看租约已结束');
                 if (!connections.has(device.public_id)) throw fail(409, '设备当前离线');
-                try {
-                    ingress.validateTap(device, viewer.viewerId, params.frameId);
-                } catch {
-                    return send(ws, {
-                        type: 'command_ack',
-                        sessionId: device.public_id,
-                        data: {
-                            command: 'SCREEN_TAP',
-                            commandId: message.data.commandId,
-                            result: 'rejected',
-                            reasonCode: 'stale_frame',
-                        },
-                    });
+                if (params.frameId) {
+                    try {
+                        ingress.validateTap(device, viewer.viewerId, params.frameId);
+                    } catch {
+                        return send(ws, {
+                            type: 'command_ack',
+                            sessionId: device.public_id,
+                            data: {
+                                command: 'SCREEN_TAP',
+                                commandId: message.data.commandId,
+                                result: 'rejected',
+                                reasonCode: 'stale_frame',
+                            },
+                        });
+                    }
                 }
                 if (
                     !sendDeviceCommand(
@@ -424,6 +427,50 @@ export function attachWebSockets(
                     sessionId: device.public_id,
                     data: {
                         command: 'SCREEN_TAP',
+                        commandId: message.data.commandId,
+                        viewerId: viewer.viewerId,
+                    },
+                });
+            } else if (message.type === 'command' && message.data.command === 'SCREEN_DRAG') {
+                const viewer = ws.viewers.get(device.public_id);
+                const params = message.data.params;
+                if (
+                    !viewer ||
+                    viewer.viewerId !== params.viewerId ||
+                    viewer.expiresAt <= Date.now()
+                )
+                    throw fail(410, '截图查看租约已结束');
+                if (!connections.has(device.public_id)) throw fail(409, '设备当前离线');
+                if (params.frameId) {
+                    try {
+                        ingress.validateTap(device, viewer.viewerId, params.frameId);
+                    } catch {
+                        return send(ws, {
+                            type: 'command_ack',
+                            sessionId: device.public_id,
+                            data: {
+                                command: 'SCREEN_DRAG',
+                                commandId: message.data.commandId,
+                                result: 'rejected',
+                                reasonCode: 'stale_frame',
+                            },
+                        });
+                    }
+                }
+                if (
+                    !sendDeviceCommand(
+                        device.public_id,
+                        'SCREEN_DRAG',
+                        message.data.commandId,
+                        params,
+                    )
+                )
+                    throw fail(409, '设备当前离线');
+                send(ws, {
+                    type: 'command_dispatched',
+                    sessionId: device.public_id,
+                    data: {
+                        command: 'SCREEN_DRAG',
                         commandId: message.data.commandId,
                         viewerId: viewer.viewerId,
                     },
@@ -651,7 +698,11 @@ export function attachWebSockets(
                                     type: z.literal('command_ack'),
                                     data: z
                                         .object({
-                                            command: z.enum(['TEXT_INPUT', 'SCREEN_TAP']),
+                                            command: z.enum([
+                                                'TEXT_INPUT',
+                                                'SCREEN_TAP',
+                                                'SCREEN_DRAG',
+                                            ]),
                                             commandId: z.string().uuid(),
                                             result: z.enum(['accepted', 'rejected']),
                                             reasonCode,

@@ -93,7 +93,8 @@ class ScreenTapController(private val service: AccessibilityService, private val
 
     fun tap(params: JSONObject, leaseValid: Boolean, complete: (Boolean, String) -> Unit) {
         val viewerId = params.optString("viewerId")
-        val frame = frames[params.optString("frameId")]
+        val frameId = params.optString("frameId")
+        val frame = if (frameId.isBlank()) null else frames[frameId]
         val x = params.optDouble("x", Double.NaN)
         val y = params.optDouble("y", Double.NaN)
         val now = SystemClock.elapsedRealtime()
@@ -105,12 +106,12 @@ class ScreenTapController(private val service: AccessibilityService, private val
             service.magnificationController.scale != 1f -> { complete(false, "magnification_active"); return }
             busy -> { complete(false, "tap_busy"); return }
             !x.isFinite() || !y.isFinite() || x !in 0.0..1.0 || y !in 0.0..1.0 -> { complete(false, "invalid_point"); return }
-            frame == null || frame.viewerId != viewerId || now - frame.at > 5000 || frame.geometry != geometry() -> {
+            frameId.isNotBlank() && (frame == null || frame.viewerId != viewerId || now - frame.at > 5000 || frame.geometry != geometry()) -> {
                 complete(false, "stale_frame"); return
             }
         }
         consentViewer = viewerId
-        val display = frame!!.geometry
+        val display = frame?.geometry ?: geometry()
         val px = (x * display.width).coerceIn(0.0, (display.width - 1).toDouble()).toFloat()
         val py = (y * display.height).coerceIn(0.0, (display.height - 1).toDouble()).toFloat()
         val location = IntArray(2)

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
-import { screenshotPoint, readerTapFrame } from '../../frontend/src/screenshot-geometry.js';
+import { screenshotPoint } from '../../frontend/src/screenshot-geometry.js';
 import { panelSchema, normalizeLiveSnapshot } from '../src/protocol.js';
 import { DeviceIngress } from '../src/device-ingress.js';
 
@@ -37,6 +37,34 @@ test('single-tap command validates point, identity and rejects general gestures'
         },
     };
     assert.equal(panelSchema.parse(command).data.command, 'SCREEN_TAP');
+    assert.equal(
+        panelSchema.parse({
+            ...command,
+            data: {
+                ...command.data,
+                params: { viewerId: command.data.params.viewerId, x: 0.25, y: 0.75 },
+            },
+        }).data.command,
+        'SCREEN_TAP',
+    );
+    assert.equal(
+        panelSchema.parse({
+            ...command,
+            data: {
+                command: 'SCREEN_DRAG',
+                commandId: randomUUID(),
+                params: {
+                    viewerId: command.data.params.viewerId,
+                    x1: 0.1,
+                    y1: 0.2,
+                    x2: 0.8,
+                    y2: 0.9,
+                    durationMs: 700,
+                },
+            },
+        }).data.command,
+        'SCREEN_DRAG',
+    );
     for (const point of [
         { x: -0.01 },
         { x: 1.01 },
@@ -121,6 +149,37 @@ test('1.7.8 requires local in-memory consent with visible stop and one-point com
     assert.equal((projection.match(/createVirtualDisplay\(/g) || []).length, 1);
 });
 
+test('1.8.6 adds locally authorized long-press drag without replacing tap', async () => {
+    const source = new URL(
+        '../../android/apk-templates/b-packages/screenagent-1.8.6/app/src/main/',
+        import.meta.url,
+    );
+    const protocol = await readFile(
+        new URL('java/com/zaka/screenagent/net/Protocol.kt', source),
+        'utf8',
+    );
+    const socket = await readFile(
+        new URL('java/com/zaka/screenagent/net/AgentSocket.kt', source),
+        'utf8',
+    );
+    const service = await readFile(
+        new URL('java/com/zaka/screenagent/accessibility/BoundaryAccessibilityService.kt', source),
+        'utf8',
+    );
+    const controller = await readFile(
+        new URL('java/com/zaka/screenagent/accessibility/ScreenTapController.kt', source),
+        'utf8',
+    );
+    assert.match(protocol, /CMD_SCREEN_DRAG = "SCREEN_DRAG"/);
+    assert.match(socket, /fun dragResult/);
+    assert.match(service, /CMD_SCREEN_DRAG -> screenTaps\.drag/);
+    assert.match(controller, /fun drag\(params: JSONObject/);
+    assert.match(controller, /continueStroke/);
+    assert.match(controller, /drag_completed/);
+    assert.match(controller, /frameId\.isNotBlank\(\)/);
+    assert.match(controller, /frame\?\.geometry \?: geometry\(\)/);
+});
+
 test('1.7.8 live loop uploads directly without screenshot-session while thumbnails retain compatibility', async () => {
     const source = new URL(
         '../../android/apk-templates/b-packages/screenagent-1.7.8/app/src/main/java/com/zaka/screenagent/',
@@ -189,45 +248,9 @@ test('live server preserves uploaded text regardless of node flags and validates
     assert.throws(() => normalizeLiveSnapshot(fixture));
 });
 
-test('reader coordinates require fresh matching geometry and same-time node/frame evidence', () => {
-    const now = Date.now();
-    const snapshot = {
-        id: 'node-fixture',
-        source: 'live',
-        received_at: new Date(now).toISOString(),
-        captured_at: new Date(now - 200).toISOString(),
-        payload: {
-            display: { width: 900, height: 1600 },
-            windows: [{ active: true, root_status: 'available' }],
-        },
-    };
-    const frame = {
-        frameId: 'frame-fixture',
-        width: 450,
-        height: 800,
-        receivedAt: now,
-        capturedAt: now - 100,
-        expiresAt: now + 5000,
-    };
-    assert.equal(readerTapFrame(snapshot, frame, now), frame.frameId);
+test('reader coordinates map directly without screenshot-frame synchronization', () => {
     assert.deepEqual(
         screenshotPoint(150, 300, { left: 0, top: 0, width: 300, height: 600 }, 900, 1600),
         { x: 0.5, y: 0.5 },
     );
-    assert.equal(readerTapFrame(snapshot, frame, now + 2501), null);
-    for (const changes of [
-        { width: 800, height: 450 },
-        { capturedAt: now - 2000 },
-        { receivedAt: now - 3000 },
-        { expiresAt: now },
-        { width: 0 },
-    ]) {
-        assert.equal(readerTapFrame(snapshot, { ...frame, ...changes }, now), null);
-    }
-    assert.equal(readerTapFrame({ ...snapshot, source: 'sample' }, frame, now), null);
-    assert.equal(
-        readerTapFrame({ ...snapshot, payload: { ...snapshot.payload, windows: [] } }, frame, now),
-        null,
-    );
-    assert.equal(readerTapFrame(snapshot, null, now), null);
 });

@@ -655,6 +655,32 @@ test('accessibility first thumbnail and leased panel screenshot use the same bou
         );
         assert.equal((await panelNext('command_ack')).data.result, result);
     }
+    const directTapParams = { viewerId, x: 0.5, y: 0.5 };
+    panel.send(
+        JSON.stringify({
+            type: 'command',
+            sessionId: d.deviceId,
+            data: { command: 'SCREEN_TAP', commandId: tapCommandId, params: directTapParams },
+        }),
+    );
+    const directTap = await deviceNext('command');
+    assert.equal(directTap.data.command, 'SCREEN_TAP');
+    assert.deepEqual(directTap.data.params, directTapParams);
+    assert.equal((await panelNext('command_dispatched')).data.command, 'SCREEN_TAP');
+
+    const dragParams = { viewerId, x1: 0.1, y1: 0.2, x2: 0.8, y2: 0.9, durationMs: 700 };
+    panel.send(
+        JSON.stringify({
+            type: 'command',
+            sessionId: d.deviceId,
+            data: { command: 'SCREEN_DRAG', commandId: tapCommandId, params: dragParams },
+        }),
+    );
+    const drag = await deviceNext('command');
+    assert.equal(drag.data.command, 'SCREEN_DRAG');
+    assert.deepEqual(drag.data.params, dragParams);
+    assert.equal((await panelNext('command_dispatched')).data.command, 'SCREEN_DRAG');
+
     panel.send(
         JSON.stringify({
             type: 'command',

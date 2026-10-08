@@ -1,4 +1,11 @@
-import { listSchema, SORT_COLUMNS, normalizeSnapshot, labelsFor, fail } from './protocol.js';
+import {
+    listSchema,
+    idSchema,
+    SORT_COLUMNS,
+    normalizeSnapshot,
+    labelsFor,
+    fail,
+} from './protocol.js';
 export class Store {
     constructor(db, projectId) {
         this.db = db;
@@ -77,6 +84,8 @@ export class Store {
         if (filter.q.trim())
             base.where((q) => {
                 const term = `%${filter.q.trim()}%`;
+                const numericId = idSchema.safeParse(filter.q.trim());
+                if (numericId.success) q.orWhere('devices.id', numericId.data);
                 for (const c of [
                     'devices.name',
                     'devices.public_id',

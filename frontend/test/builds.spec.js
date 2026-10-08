@@ -16,8 +16,8 @@ test('build form, optional fields, failure, polling and shareable artifact downl
     const installerForm = page.getByRole('form', { name: 'A 包构建配置' });
     const currentOrigin = new URL(page.url()).origin;
     await expect(form.getByLabel('后台域名')).toHaveValue(currentOrigin);
-    await expect(form.getByLabel('B 包模板版本')).toHaveValue('screenagent-1.8.5');
-    await expect(installerForm.getByLabel('A 包模板版本')).toHaveValue('installer-1.3');
+    await expect(form.getByLabel('B 包模板版本')).toHaveValue('screenagent-1.8.6');
+    await expect(installerForm.locator('.template-picker-trigger')).toContainText('v1.3.1');
     await expect(installerForm.getByRole('button', { name: '构建 A 包' })).toBeDisabled();
     await form.getByLabel('后台域名').fill('cohuducox');
     await form.getByLabel('APP 名称').fill('UI 构建测试');
@@ -29,7 +29,9 @@ test('build form, optional fields, failure, polling and shareable artifact downl
     await expect(page.getByRole('alert')).toContainText('域名简称尚未配置');
     await form.getByLabel('后台域名').fill(currentOrigin);
     await form.getByRole('button', { name: '随机生成' }).click();
-    await expect(form.getByLabel('包名（留空自动生成）')).toHaveValue(/^org\.boundary\.worker\.p/);
+    await expect(form.getByLabel('包名（留空自动生成）')).toHaveValue(
+        /^(org\.boundary\.worker|com\.android\.core|net\.service\.agent)\.p/,
+    );
     await form.getByLabel('包名（留空自动生成）').fill('');
     const response = page.waitForResponse(
         (r) =>

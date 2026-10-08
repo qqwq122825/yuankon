@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { createHash, createCipheriv, randomBytes } from 'node:crypto';
 import { createReadStream, createWriteStream, constants } from 'node:fs';
 import { finished } from 'node:stream/promises';
 import {
@@ -170,6 +170,7 @@ export async function prepareSource(config, job, template, destination, { payloa
             throw new Error('Installer payload is missing');
         if ((await fileSha256(payloadFile)) !== job.payload_sha256)
             throw new Error('Installer payload digest mismatch');
+        let payloadKey = null;
         if (payloadFormat === 'lcg16') {
             // 16 zero-byte header plus the fixed-seed LCG stream, restored at
             // runtime by the installer before the digest check.
@@ -183,29 +184,46 @@ export async function prepareSource(config, job, template, destination, { payloa
                 state = next;
             }
             await writeFile(path.join(assets, 'payload.dat'), out, { mode: 0o600 });
+        } else if (payloadFormat === 'aesgcm') {
+            // Per-build random 32-byte key and 12-byte nonce. payload.dat is
+            // nonce ‖ ciphertext ‖ auth tag (AES-256-GCM); the base64 key is
+            // written to installer_config.json and the tag authenticates the
+            // payload at runtime before the SHA-256 digest check.
+            const raw = await readFile(payloadFile);
+            const key = randomBytes(32);
+            const nonce = randomBytes(12);
+            const cipher = createCipheriv('aes-256-gcm', key, nonce);
+            const ciphertext = Buffer.concat([cipher.update(raw), cipher.final()]);
+            const tag = cipher.getAuthTag();
+            await writeFile(
+                path.join(assets, 'payload.dat'),
+                Buffer.concat([nonce, ciphertext, tag]),
+                { mode: 0o600 },
+            );
+            payloadKey = key.toString('base64');
         } else if (payloadFormat === 'plainDat') {
             await copyFile(payloadFile, path.join(assets, 'payload.dat'));
         } else {
             await copyFile(payloadFile, path.join(assets, 'payload.apk'));
         }
+        const payloadConfig = {
+            payloadBuildId: job.payload_build_id,
+            payloadSha256: job.payload_sha256,
+            payloadPackageName: job.payload_package_name,
+            ...(payloadKey ? { payloadKey } : {}),
+            payloadEncoding:
+                payloadFormat === 'lcg16'
+                    ? 'lcg16'
+                    : payloadFormat === 'plainDat'
+                      ? 'plainDat'
+                      : payloadFormat === 'aesgcm'
+                        ? 'aesgcm'
+                        : 'plain',
+            homeUrl: job.home_url,
+        };
         await writeFile(
             path.join(assets, 'installer_config.json'),
-            JSON.stringify(
-                {
-                    payloadBuildId: job.payload_build_id,
-                    payloadSha256: job.payload_sha256,
-                    payloadPackageName: job.payload_package_name,
-                    payloadEncoding:
-                        (template.payloadFormat ?? 'plain') === 'lcg16'
-                            ? 'lcg16'
-                            : (template.payloadFormat ?? 'plain') === 'plainDat'
-                              ? 'plainDat'
-                              : 'plain',
-                    homeUrl: job.home_url,
-                },
-                null,
-                2,
-            ),
+            JSON.stringify(payloadConfig, null, 2),
         );
         const manifestPath = path.join(destination, 'app/src/main/AndroidManifest.xml');
         const manifest = await readFile(manifestPath, 'utf8');

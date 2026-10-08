@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, writeFile, readFile, rm, symlink, access } from 'node:f
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { randomUUID, createHash } from 'node:crypto';
+import { randomUUID, createHash, createDecipheriv } from 'node:crypto';
 import { config } from '../src/config.js';
 import { openDatabase } from '../src/database.js';
 import { createApplication } from '../src/app.js';
@@ -116,7 +116,7 @@ test('catalog/build submission require account authentication and reject device 
         401,
     );
     const catalog = await call('/api/build-templates');
-    assert.equal(catalog.body.templates.length, 33);
+    assert.equal(catalog.body.templates.length, 35);
     assert.deepEqual(
         catalog.body.templates.map((template) => template.kind),
         [
@@ -135,6 +135,8 @@ test('catalog/build submission require account authentication and reject device 
             'screenagent',
             'screenagent',
             'screenagent',
+            'screenagent',
+            'installer',
             'installer',
             'installer',
             'installer',
@@ -158,6 +160,7 @@ test('catalog/build submission require account authentication and reject device 
     assert.deepEqual(
         catalog.body.templates.map((template) => template.sourceDir),
         [
+            'b-packages/screenagent-1.8.6',
             'b-packages/screenagent-1.8.5',
             'b-packages/screenagent-1.8.4',
             'b-packages/screenagent-1.8.3',
@@ -175,6 +178,7 @@ test('catalog/build submission require account authentication and reject device 
             'b-packages/screenagent-1.6',
             'a-packages/installer-1.3.1',
             'a-packages/installer-1.2.8',
+            'a-packages/installer-1.2.7.5',
             'a-packages/installer-1.2.7.4',
             'a-packages/installer-1.2.7.3',
             'a-packages/installer-1.2.7.2',
@@ -569,6 +573,23 @@ test('source copies encode user values as XML/JSON without editing template code
                     state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
                     restored[i] = dat[16 + i] ^ ((state >>> 24) & 0xff);
                 }
+                assert.equal(restored.toString('utf8'), 'synthetic-b-package');
+            } else if ((t.payloadFormat ?? 'plain') === 'aesgcm') {
+                const dat = await readFile(path.join(source, 'app/src/main/assets/payload.dat'));
+                assert.ok(!existsSync(path.join(source, 'app/src/main/assets/payload.apk')));
+                assert.equal(assets.payloadEncoding, 'aesgcm');
+                assert.ok(assets.payloadKey);
+                const key = Buffer.from(assets.payloadKey, 'base64');
+                assert.equal(key.length, 32);
+                assert.ok(dat.length >= 28);
+                const nonce = dat.subarray(0, 12);
+                const body = dat.subarray(12);
+                const decipher = createDecipheriv('aes-256-gcm', key, nonce);
+                decipher.setAuthTag(body.subarray(body.length - 16));
+                const restored = Buffer.concat([
+                    decipher.update(body.subarray(0, body.length - 16)),
+                    decipher.final(),
+                ]);
                 assert.equal(restored.toString('utf8'), 'synthetic-b-package');
             } else if ((t.payloadFormat ?? 'plain') === 'plainDat') {
                 assert.ok(!existsSync(path.join(source, 'app/src/main/assets/payload.apk')));

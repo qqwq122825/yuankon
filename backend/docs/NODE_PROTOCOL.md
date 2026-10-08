@@ -10,6 +10,8 @@
 
 ## HTTP
 
+设备列表返回的 `id` 为整数主键，`public_id` 为原字符串设备标识。面板 ID 列使用 `id`；`sort=id` 按整数主键排序，数字 `q` 额外精确匹配主键（仍保留文本字段模糊搜索）。`/api/devices/:id` 继续使用数字主键；设备上报 `deviceId` 与 WS `sessionId` 继续使用 `public_id`，无协议字段重命名或数据迁移。
+
 新增的 APK 归属、自动上线、实时最新帧专用 HTTP 接口详见 [ScreenAgent 接入](SCREENAGENT_INGRESS.md) 与已实现的 [boundary-screenshot-v2](SCREENSHOT_COMMAND_PROTOCOL.md)。当前 B 包在无障碍服务连接时调用 `/api/client/online`，服务器按 APK ID 幂等归属并静默返回内部设备 Token；旧 `/api/client/register` 和登记码仅兼容旧包。`/api/sync/status`、`/api/device/screenshot-session`、`/api/device/screenshot` 使用设备 Bearer Token，最后一个端点为受限 multipart，其余写入仍是 JSON。所有写入继续要求 `X-Boundary-Request: 1`。
 
 | 方法           | 路由                                        | 行为                                                                                                              |

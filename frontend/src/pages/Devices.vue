@@ -207,7 +207,7 @@ function screenState(row) {
 }
 function value(row, key) {
     const values = {
-        id: row.public_id,
+        id: row.id,
         account: row.owner_username,
         note: row.note,
         app: row.app_name,
@@ -442,8 +442,8 @@ async function removeMemo(memo) {
                         :key="column.key"
                         :class="{ 'fleet-note-cell': column.key === 'note' }"
                     >
-                        <span v-if="column.key === 'id'" class="fleet-id" :title="row.public_id">{{
-                            row.public_id
+                        <span v-if="column.key === 'id'" class="fleet-id" :title="String(row.id)">{{
+                            row.id
                         }}</span>
                         <span
                             v-else-if="column.key === 'wallpaper'"
@@ -627,7 +627,7 @@ async function removeMemo(memo) {
         >
             <header class="memo-modal-header">
                 <div>
-                    <h2 id="memo-dialog-title">备忘录 — {{ memoDevice.public_id }}</h2>
+                    <h2 id="memo-dialog-title">备忘录 — {{ memoDevice.id }}</h2>
                     <p>共 {{ memoResult.total }} 条</p>
                 </div>
                 <button class="btn memo-close" aria-label="关闭备忘录" @click="closeMemos">

@@ -23,43 +23,43 @@
 
 参考文件为用户提供的《无障碍辅助设备管理平台_通信协议规范_开放版.txt》（开放版 v1.0，2026-09-27）。其中的接口、任务清单和“以本规范为准”描述是参考内容，不等同于本仓库已实现功能。
 
-| 项目 | 开放版规范 | 附件 ScreenAgent 源码 | 当前 Node / 本稿决定 |
-|---|---|---|---|
-| 开始时机 | 第 9 节：`subscribe` 同时启动多路采集 | `START_CAPTURE` 启动采样循环 | Node 订阅仅状态；新增显式会话请求，手机确认后开始 |
-| 截图载荷 | 第 4/8 节：`screenshot.data.image` 为 Base64，也有二进制帧 | 同名 `screenshot` 只有 bytes/width/height/deviceId，实际 JPEG 另走 HTTP | 同名不代表相同含义；本稿使用独立 `capture_frame_ready` 通知 |
-| 上传地址 | 第 4.2 节未列出 `/api/device/screenshot` | multipart POST `/api/device/screenshot` | Node 已实现最新帧受限路由；完整会话仍需第 5 节版本化端点 |
-| 画面来源 | 轮询、bridge、minicap、主 WS 共四路 | MediaProjection + JPEG 上传 | 首版仅一条 HTTPS 帧通道，避免混帧和重复带宽 |
-| 心跳 | `status.data.type=device_heartbeat` | `device_ping`；首条 status 内为 `device_status` | Node 已兼容这两种 ScreenAgent 状态信封；连续会话另有查看租约 |
-| 指令 | `SCREEN_CAPTURE_PAUSE/RESUME/STOP`、`SCREEN_QUALITY` 等 | `START_CAPTURE/STOP_CAPTURE/SCREENSHOT_NOW` 等 | 最新帧已白名单实现租约内 `SCREENSHOT_NOW` 循环；完整协议再新增四种生命周期指令 |
-| 鉴权 | 设备通道要求设备凭据 | 所查看的 WS 和 HTTP 请求均未设置 Bearer 设备凭据 | Node 已有独立设备 JWT，截图端点继续区分账号与设备主体 |
-| 成功回执 | 第 11 节要求已下发/已执行/失败 | 收到指令立即回 `success:true`，随后才执行；图片上传完成前已发元信息 | 收到、手机就绪、帧校验通过、网页显示分别计状态 |
-| 分发范围 | 第 4.1 节写所有管理端，第 8 节写仅订阅者，存在歧义 | 没有实现本后台的查看租约 | 本稿只通知持有该截图会话的有效查看页，普通设备订阅不足以取得图片 |
+| 项目     | 开放版规范                                                 | 附件 ScreenAgent 源码                                                   | 当前 Node / 本稿决定                                                           |
+| -------- | ---------------------------------------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| 开始时机 | 第 9 节：`subscribe` 同时启动多路采集                      | `START_CAPTURE` 启动采样循环                                            | Node 订阅仅状态；新增显式会话请求，手机确认后开始                              |
+| 截图载荷 | 第 4/8 节：`screenshot.data.image` 为 Base64，也有二进制帧 | 同名 `screenshot` 只有 bytes/width/height/deviceId，实际 JPEG 另走 HTTP | 同名不代表相同含义；本稿使用独立 `capture_frame_ready` 通知                    |
+| 上传地址 | 第 4.2 节未列出 `/api/device/screenshot`                   | multipart POST `/api/device/screenshot`                                 | Node 已实现最新帧受限路由；完整会话仍需第 5 节版本化端点                       |
+| 画面来源 | 轮询、bridge、minicap、主 WS 共四路                        | MediaProjection + JPEG 上传                                             | 首版仅一条 HTTPS 帧通道，避免混帧和重复带宽                                    |
+| 心跳     | `status.data.type=device_heartbeat`                        | `device_ping`；首条 status 内为 `device_status`                         | Node 已兼容这两种 ScreenAgent 状态信封；连续会话另有查看租约                   |
+| 指令     | `SCREEN_CAPTURE_PAUSE/RESUME/STOP`、`SCREEN_QUALITY` 等    | `START_CAPTURE/STOP_CAPTURE/SCREENSHOT_NOW` 等                          | 最新帧已白名单实现租约内 `SCREENSHOT_NOW` 循环；完整协议再新增四种生命周期指令 |
+| 鉴权     | 设备通道要求设备凭据                                       | 所查看的 WS 和 HTTP 请求均未设置 Bearer 设备凭据                        | Node 已有独立设备 JWT，截图端点继续区分账号与设备主体                          |
+| 成功回执 | 第 11 节要求已下发/已执行/失败                             | 收到指令立即回 `success:true`，随后才执行；图片上传完成前已发元信息     | 收到、手机就绪、帧校验通过、网页显示分别计状态                                 |
+| 分发范围 | 第 4.1 节写所有管理端，第 8 节写仅订阅者，存在歧义         | 没有实现本后台的查看租约                                                | 本稿只通知持有该截图会话的有效查看页，普通设备订阅不足以取得图片               |
 
 **地址已经按包职责拆开：** B 包的 `HttpUploader.kt` 只从 `serverUrl` 推导 API origin，`agent_config.json` 不再包含 `homeUrl/webUrl`；A 包的 `installer_config.json` 单独保存 HTTPS 首页。主页不会参与 B 包登记、心跳或截图上传地址计算：
 
-| 字段 | 含义 |
-|---|---|
-| `homeUrl` | A 包桌面入口使用的 HTTPS 首页，不写入 B 包 |
+| 字段        | 含义                                                                      |
+| ----------- | ------------------------------------------------------------------------- |
+| `homeUrl`   | A 包桌面入口使用的 HTTPS 首页，不写入 B 包                                |
 | `serverUrl` | B 包工作台后端 origin；HTTP API 与 WSS 设备地址均从这里推导，不从主页推导 |
-| `apkId` | APK 业务归属提示，不是凭证，也不直接决定上传者的项目或账户 |
+| `apkId`     | APK 业务归属提示，不是凭证，也不直接决定上传者的项目或账户                |
 
 设备 Token 不经跳转转发到其他 origin；设备 API 禁止跨域重定向跟随。构建机器人仅生产/交付 APK，不中转实时截图。总台专属域名、设备登记及 APK ID 分配按 [账号方案](ACCOUNT_DESIGN.md) 单独落实。
 
 ## 3. 版本和标识
 
-| 名称 | 例子 / 约定 |
-|---|---|
-| `templateVersion` | `1.0`、`1.1`，后台选择的固定源码模板版本 |
-| `appVersion` | APK 展示版本，与协议独立 |
-| `protocol` | 固定 `boundary-screen-v1`；后续不兼容变化升为 v2，不猜测旧载荷 |
-| `deviceId` | 已登记公开设备 ID，由设备 JWT 主体确定 |
-| 信封 `sessionId` | 沿用现有含义：**设备 ID**，不是截图会话 ID |
-| `captureSessionId` | Node 创建的 UUID，每次重新开始都不同 |
-| `viewerId` | 查看页实例 UUID，绑定当前账号登录会话和面板连接；自身不是鉴权凭据 |
-| `requestId` / `commandId` | 创建请求幂等键 / 服务端指令 UUID，分别关联 HTTP 重试与设备回执 |
-| `generation` | 会话内采集代次，从 1 开始；暂停、恢复时递增，作废在途旧帧 |
-| `seq` | 本会话采样序号，从 1 递增；丢帧可以跳号，恢复时也不回退 |
-| `frameId` | 服务端生成的不可复用帧 UUID，不用客户端文件名寻址 |
+| 名称                      | 例子 / 约定                                                       |
+| ------------------------- | ----------------------------------------------------------------- |
+| `templateVersion`         | `1.0`、`1.1`，后台选择的固定源码模板版本                          |
+| `appVersion`              | APK 展示版本，与协议独立                                          |
+| `protocol`                | 固定 `boundary-screen-v1`；后续不兼容变化升为 v2，不猜测旧载荷    |
+| `deviceId`                | 已登记公开设备 ID，由设备 JWT 主体确定                            |
+| 信封 `sessionId`          | 沿用现有含义：**设备 ID**，不是截图会话 ID                        |
+| `captureSessionId`        | Node 创建的 UUID，每次重新开始都不同                              |
+| `viewerId`                | 查看页实例 UUID，绑定当前账号登录会话和面板连接；自身不是鉴权凭据 |
+| `requestId` / `commandId` | 创建请求幂等键 / 服务端指令 UUID，分别关联 HTTP 重试与设备回执    |
+| `generation`              | 会话内采集代次，从 1 开始；暂停、恢复时递增，作废在途旧帧         |
+| `seq`                     | 本会话采样序号，从 1 递增；丢帧可以跳号，恢复时也不回退           |
+| `frameId`                 | 服务端生成的不可复用帧 UUID，不用客户端文件名寻址                 |
 
 新设备在现有状态心跳之外，通过独立 `capture_capabilities` 消息声明协议、`methods:["mediaprojection"]`、`formats:["image/jpeg"]` 及采样上限。未声明支持的模板不显示为可开始；当前 android-shell 就属于尚未接入。能力声明只是设备报告，不等于已得到本次系统确认。
 
@@ -98,25 +98,31 @@ Vue 查看页                     Node                         手机 APK
 
 账号写接口复用现有账号认证、JSON 和 `X-Boundary-Request: 1`；设备接口使用独立 DEVICE_JWT，不接受账号 Token，不套用“所有写入必须 JSON”的浏览器中间件。设备身份、项目归属由服务端确定，路径 ID 不是访问凭证。
 
-| 主体 / 方法 | 路由 | 用途 |
-|---|---|---|
-| 账号 POST | `/api/v1/capture-sessions` | 创建，返回 202 与会话状态；不表示已截图 |
-| 账号 GET | `/api/v1/capture-sessions/:id` | 读取状态、代次及可用的最新帧元信息，供 WS 重连补齐 |
-| 账号 POST | `/api/v1/capture-sessions/:id/renew` | `{viewerId}` 续查看租约，必须匹配账号会话和查看页 |
-| 账号 POST | `/api/v1/capture-sessions/:id/actions` | `{viewerId,requestId,action:"pause"|"resume"|"stop"}`；终态 stop 幂等 |
-| 设备 POST | `/api/v1/device/capture-sessions/:id/frames` | `multipart/form-data`，仅 `meta` 和 `file` 两部分 |
-| 账号 GET | `/api/v1/capture-sessions/:id/frames/:frameId?viewerId=...` | 当前会话的临时 JPEG；校验登录态、查看租约及查看页绑定 |
+| 主体 / 方法 | 路由                                                        | 用途                                                  |
+| ----------- | ----------------------------------------------------------- | ----------------------------------------------------- |
+| 账号 POST   | `/api/v1/capture-sessions`                                  | 创建，返回 202 与会话状态；不表示已截图               |
+| 账号 GET    | `/api/v1/capture-sessions/:id`                              | 读取状态、代次及可用的最新帧元信息，供 WS 重连补齐    |
+| 账号 POST   | `/api/v1/capture-sessions/:id/renew`                        | `{viewerId}` 续查看租约，必须匹配账号会话和查看页     |
+| 账号 POST   | `/api/v1/capture-sessions/:id/actions`                      | `{viewerId,requestId,action:"pause"                   | "resume" | "stop"}`；终态 stop 幂等 |
+| 设备 POST   | `/api/v1/device/capture-sessions/:id/frames`                | `multipart/form-data`，仅 `meta` 和 `file` 两部分     |
+| 账号 GET    | `/api/v1/capture-sessions/:id/frames/:frameId?viewerId=...` | 当前会话的临时 JPEG；校验登录态、查看租约及查看页绑定 |
 
 创建请求示例（所有值为合成示例）：
 
 ```json
 {
-  "protocol": "boundary-screen-v1",
-  "deviceId": "TEST_DEVICE_001",
-  "viewerId": "00000000-0000-4000-8000-000000000001",
-  "requestId": "00000000-0000-4000-8000-000000000002",
-  "capture": { "method": "mediaprojection", "format": "image/jpeg", "intervalMs": 1000, "maxLongEdge": 1280, "quality": 60 },
-  "maxDurationSeconds": 900
+    "protocol": "boundary-screen-v1",
+    "deviceId": "TEST_DEVICE_001",
+    "viewerId": "00000000-0000-4000-8000-000000000001",
+    "requestId": "00000000-0000-4000-8000-000000000002",
+    "capture": {
+        "method": "mediaprojection",
+        "format": "image/jpeg",
+        "intervalMs": 1000,
+        "maxLongEdge": 1280,
+        "quality": 60
+    },
+    "maxDurationSeconds": 900
 }
 ```
 
@@ -126,15 +132,15 @@ Node 返回 `{protocol,captureSessionId,deviceId,viewerId,state,generation,state
 
 ```json
 {
-  "protocol": "boundary-screen-v1",
-  "captureSessionId": "00000000-0000-4000-8000-000000000003",
-  "generation": 1,
-  "seq": 1,
-  "capturedAt": 1790553600123,
-  "width": 720,
-  "height": 1280,
-  "rotation": 0,
-  "mime": "image/jpeg"
+    "protocol": "boundary-screen-v1",
+    "captureSessionId": "00000000-0000-4000-8000-000000000003",
+    "generation": 1,
+    "seq": 1,
+    "capturedAt": 1790553600123,
+    "width": 720,
+    "height": 1280,
+    "rotation": 0,
+    "mime": "image/jpeg"
 }
 ```
 
@@ -156,33 +162,39 @@ Node 返回 `{protocol,captureSessionId,deviceId,viewerId,state,generation,state
 
 ```json
 {
-  "protocol": "boundary-screen-v1",
-  "type": "command",
-  "sessionId": "TEST_DEVICE_001",
-  "data": {
-    "command": "SCREEN_CAPTURE_START",
-    "commandId": "00000000-0000-4000-8000-000000000004",
-    "params": {
-      "captureSessionId": "00000000-0000-4000-8000-000000000003",
-      "generation": 1,
-      "capture": { "method": "mediaprojection", "format": "image/jpeg", "intervalMs": 1000, "maxLongEdge": 1280, "quality": 60 },
-      "maxDurationSeconds": 900
+    "protocol": "boundary-screen-v1",
+    "type": "command",
+    "sessionId": "TEST_DEVICE_001",
+    "data": {
+        "command": "SCREEN_CAPTURE_START",
+        "commandId": "00000000-0000-4000-8000-000000000004",
+        "params": {
+            "captureSessionId": "00000000-0000-4000-8000-000000000003",
+            "generation": 1,
+            "capture": {
+                "method": "mediaprojection",
+                "format": "image/jpeg",
+                "intervalMs": 1000,
+                "maxLongEdge": 1280,
+                "quality": 60
+            },
+            "maxDurationSeconds": 900
+        }
     }
-  }
 }
 ```
 
-| 消息 / 方向 | data 内容与语义 |
-|---|---|
-| `capture_capabilities` 设备→服务端 | `protocols,methods,formats,maxLongEdge,minIntervalMs`；连接后报告，不替代状态心跳 |
-| `capture_viewer_bind` 查看页→服务端 | `viewerId`；创建会话前将查看页绑定到当前已认证面板 WS / 账号登录会话，服务端回复 `capture_viewer_bound`；HTTP 创建/续租检查该绑定 |
-| `command` 服务端→设备 | 仅 `SCREEN_CAPTURE_START/PAUSE/RESUME/STOP`；`commandId` 和会话/代次必填，START/RESUME 同时附有效配置 |
-| `command_ack` 设备→服务端 | `captureSessionId,generation,commandId,result:accepted|rejected,reasonCode`；accepted 仅确认接收，不是执行完成 |
-| `capture_ready` 设备→服务端 | `captureSessionId,generation,commandId,method,sharedRegion,maxDurationSeconds`；手机已确认且资源就绪，随后仍须获得采集租约 |
-| `capture_state_report` 设备→服务端 | `captureSessionId,generation,state:paused|stopped|failed|resume_requested,reasonCode`；手机本地暂停/停止先执行后报告，断网也执行 |
-| `capture_state` 服务端→查看页/设备 | `captureSessionId,generation,stateRevision,state,reasonCode,latestFrame?`；服务端验证后决定权威状态，不原样转发客户端报告 |
-| `capture_lease_request/grant` 设备↔服务端 | 见第 7 节，不作为设备上线心跳 |
-| `capture_frame_ready` 服务端→查看页 | 下例；只在图片已校验并存入临时缓存后通知 |
+| 消息 / 方向                               | data 内容与语义                                                                                                                   |
+| ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `capture_capabilities` 设备→服务端        | `protocols,methods,formats,maxLongEdge,minIntervalMs`；连接后报告，不替代状态心跳                                                 |
+| `capture_viewer_bind` 查看页→服务端       | `viewerId`；创建会话前将查看页绑定到当前已认证面板 WS / 账号登录会话，服务端回复 `capture_viewer_bound`；HTTP 创建/续租检查该绑定 |
+| `command` 服务端→设备                     | 仅 `SCREEN_CAPTURE_START/PAUSE/RESUME/STOP`；`commandId` 和会话/代次必填，START/RESUME 同时附有效配置                             |
+| `command_ack` 设备→服务端                 | `captureSessionId,generation,commandId,result:accepted                                                                            | rejected,reasonCode`；accepted 仅确认接收，不是执行完成 |
+| `capture_ready` 设备→服务端               | `captureSessionId,generation,commandId,method,sharedRegion,maxDurationSeconds`；手机已确认且资源就绪，随后仍须获得采集租约        |
+| `capture_state_report` 设备→服务端        | `captureSessionId,generation,state:paused                                                                                         | stopped                                                 | failed | resume_requested,reasonCode`；手机本地暂停/停止先执行后报告，断网也执行 |
+| `capture_state` 服务端→查看页/设备        | `captureSessionId,generation,stateRevision,state,reasonCode,latestFrame?`；服务端验证后决定权威状态，不原样转发客户端报告         |
+| `capture_lease_request/grant` 设备↔服务端 | 见第 7 节，不作为设备上线心跳                                                                                                     |
+| `capture_frame_ready` 服务端→查看页       | 下例；只在图片已校验并存入临时缓存后通知                                                                                          |
 
 手机发出 `resume_requested` 或网页请求恢复时，Node 验证仍为 paused 且查看租约有效，分配新代次并发 RESUME；收到匹配的 `capture_ready` 后才进入 starting 并允许申请采集租约。恢复等待期间保持 paused，旧代次帧作废；用户未继续确认则 60 秒后结束请求。`sharedRegion` 取 `single_app|display|system_selected`，仅说明用户共享范围，不上传应用正文或窗口内容描述。
 
@@ -192,18 +204,18 @@ Node 返回 `{protocol,captureSessionId,deviceId,viewerId,state,generation,state
 
 ```json
 {
-  "protocol": "boundary-screen-v1",
-  "type": "capture_frame_ready",
-  "sessionId": "TEST_DEVICE_001",
-  "data": {
-    "captureSessionId": "00000000-0000-4000-8000-000000000003",
-    "generation": 1,
-    "seq": 1,
-    "frameId": "00000000-0000-4000-8000-000000000005",
-    "width": 720,
-    "height": 1280,
-    "receivedAt": 1790553600250
-  }
+    "protocol": "boundary-screen-v1",
+    "type": "capture_frame_ready",
+    "sessionId": "TEST_DEVICE_001",
+    "data": {
+        "captureSessionId": "00000000-0000-4000-8000-000000000003",
+        "generation": 1,
+        "seq": 1,
+        "frameId": "00000000-0000-4000-8000-000000000005",
+        "width": 720,
+        "height": 1280,
+        "receivedAt": 1790553600250
+    }
 }
 ```
 
@@ -258,6 +270,7 @@ Vue 由会话 ID 和帧 ID 构造同源受控 GET 路径，不接受设备提供
 - 参考规范：第 3、4、5.2、8、9、10、11 节；只取截图会话所需部分，不接入其他内容上报、任意透传或设备操作。
 
 ## 1.7.8 横屏与单击
+
 查看器固定宽度，按最新有效帧 width/height 更新 aspect-ratio；object-fit:contain 的黑边不映射。图片未加载、过期、离线、等待上一条回执，或按下/松开期间换帧时不发送。
 
 `SCREEN_TAP` 的 params 严格为 `{viewerId, frameId, x, y}`，x/y 为 0..1 的数值；禁止附带文本、时长、路径或脚本。服务端校验当前 socket 查看租约、设备在线、同设备/账号/查看者、五秒内帧和最新尺寸，保存每设备最多 32 条短期帧元数据。手机保存成功上传帧到捕获时真实 display 的宽高/rotation 关联，旋转后旧帧拒绝；缩放辅助功能开启时也拒绝。MediaProjection 使用全屏共享配置；截图尺寸与真实显示比例不符则不建立操作映射，不猜测单应用共享偏移。
@@ -271,6 +284,7 @@ Android 14+ 使用 onCapturedContentResize 调整已有 VirtualDisplay 和 Image
 「运行操作」在 1.7.8 也统一门控既有 DEVICE_ACTION 与 TEXT_INPUT；截图/状态查看独立，不开启操作也可查看。相同本机会话授权仅绑定一个查看者，其他查看者命令不会覆盖/续期授权。
 
 ## 1.7.8 直传修订（2026-10-03）
+
 两种实时截图模式共用直接帧接口：POST `/api/device/screenshot`，头 `X-Capture-Mode: viewer-stream`，multipart 为 deviceId/apkId/ts/commandId/viewerId/file。没有 X-Capture-Upload，也不调用 screenshot-session。commandId/viewerId 是已有 WS 指令的关联字段，不是新的许可请求。设备 Bearer 身份、账号归属、撤销与鉴权保留；服务器在 JPEG 解码前和发布前均检查当前查看心跳/指令、设备心跳。查看租约15秒、设备心跳90秒失效就拒收；客户端 WS 断线立即取消正在进行的上报，查看心跳失效也停止。
 
 默认无桌面 API 截图与手动授权的 MediaProjection 仍受同一有效查看租约约束；这项直传优化不替代屏幕共享授权，不改变「运行操作」默认关闭和本机停止机制。历史模板首图/手动单张接口保持一次性 uploadId 兼容。
@@ -282,23 +296,22 @@ Android 14+ 使用 onCapturedContentResize 调整已有 VirtualDisplay 和 Image
 MediaProjection成功帧采用最短40ms本地周期（上限约25帧/秒，包含捕获与上传耗时），避免低延迟环境超过服务器30帧/秒限流后出现周期性500ms重试；慢网络不额外等待。takeScreenshot保留系统API节流，不宣称突破系统截图频率限制。
 
 ### 1.7.8 阅读器文字修正（2026-10-03）
+
 恢复实时节点实际 text/content_description（每字段最多2000字符，仅当前查看租约的临时内存）；密码、敏感和 editable 输入字段仍剔除。无文字的节点不再用 Button/TextView/FrameLayout 类名占位，布局结构和坐标保留。需要重新构建安装修正版1.7.8 B包，已有APK不会自动更新。
 
 ### 服务器节点文字透传（2026-10-03）
-按用户要求取消服务器基于password/sensitive/editable标记的文字置空：实时text和content_description按客户端上传值返回（text_policy=uploaded），网页以文本节点显示，不解析HTML。保留类型/2000字符长度/结构校验、设备鉴权、账号归属、查看租约和有界内存。Android端原有密码与可编辑输入过滤不变，服务器不补造客户端未上报的文字。
 
+按用户要求取消服务器基于password/sensitive/editable标记的文字置空：实时text和content_description按客户端上传值返回（text_policy=uploaded），网页以文本节点显示，不解析HTML。保留类型/2000字符长度/结构校验、设备鉴权、账号归属、查看租约和有界内存。Android端原有密码与可编辑输入过滤不变，服务器不补造客户端未上报的文字。
 
 ### 1.7.8 阅读器坐标单击与窗口补采
 
 实时阅读器按整张节点画布归一化坐标复用 SCREEN_TAP；实时节点选择/键盘 Enter 仅保留高亮，不展示原始节点 JSON 面板；历史阅读器保留属性查看。
-仅节点和截图服务端接收时间均不超过 2500ms、设备采集时间差不超过 1500ms、方向比例一致且当前根节点可用时显示十字准星并发出单击。
-过期、历史、无根节点、转屏或点击期间节点快照改变均不发控制；服务器和手机仍验证帧、查看会话、可见本机授权和停止机制。
-该版本需要有效的截图流提供帧标识，不把历史节点 ID 当作手机当前节点 ID。
+2026-10-08 起，阅读器单击不再要求节点帧与截图帧同步：有实时节点显示且设备在线时即显示十字准星，单击直接发送归一化坐标。协议允许 `SCREEN_TAP` 省略 `frameId`；新 ScreenAgent 模板在省略时使用当前屏幕几何执行单点，仍保留本机运行操作授权、可见停止入口、放大状态拒绝、忙碌拒绝和停止入口保护。截图浮窗的图片单击继续携带 `frameId` 并使用图片区域坐标。
+历史快照、离线设备、控制禁用或点击等待期间不发控制；服务器和手机仍验证查看会话、可见本机授权和停止机制。携带 `frameId` 的截图单击继续验证帧；阅读器直点不把历史节点 ID 当作手机当前节点 ID。
 节点画布使用手机真实显示尺寸（包含系统栏），与手势通道的物理坐标系一致。
 Android 每 1000ms 补采当前应用窗口并刷新根节点，优先 focused/active application window，不选无障碍覆盖层。
 补采仅在查看租约有效时运行；正文密码/输入字段剔除规则不变。
-此为坐标映射而非 performAction 节点点击，长按/滑动未实现；真实启动器窗口更新与点击仍需真机验证。
-
+此为坐标映射而非 performAction 节点点击。2026-10-08 新增 `SCREEN_DRAG`：网页按下并移动超过阈值后发送起点/终点归一化坐标与持续时间，1.8.6 B 包在起点保持约 450ms 后拖到终点；真实启动器窗口更新、点击与拖动仍需真机验证。
 
 ### B 包 1.7.9：桌面节点刷新诊断（versionCode 17）
 
