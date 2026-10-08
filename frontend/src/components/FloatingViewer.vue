@@ -16,10 +16,16 @@ const emit = defineEmits(['close', 'activate']);
 const width = ref(300),
     left = ref(0),
     top = ref(76),
+    visualScale = ref(1),
     panel = ref(null);
 const headerTools = ref(null);
 provide('viewerHeaderTools', headerTools);
+const REFERENCE_DPR = 1.6;
 let drag, returnFocus;
+function syncVisualScale() {
+    const dpr = window.devicePixelRatio || 1;
+    visualScale.value = props.live ? Math.min(1, REFERENCE_DPR / dpr) : 1;
+}
 function reset() {
     left.value =
         Math.max(108, (Math.max(1280, window.innerWidth) - 648) / 2) + (props.side || 0) * 324;
@@ -55,13 +61,16 @@ function escape(event) {
 watch(() => props.resetKey, reset);
 onMounted(() => {
     returnFocus = document.activeElement;
+    syncVisualScale();
     reset();
     panel.value?.focus();
     window.addEventListener('resize', reset);
+    window.addEventListener('resize', syncVisualScale);
     window.addEventListener('keydown', escape);
 });
 onUnmounted(() => {
     window.removeEventListener('resize', reset);
+    window.removeEventListener('resize', syncVisualScale);
     window.removeEventListener('keydown', escape);
 });
 </script>
@@ -78,6 +87,8 @@ onUnmounted(() => {
             left: `${left}px`,
             top: `${top}px`,
             zIndex: active ? 91 : 90,
+            transform: visualScale === 1 ? undefined : `scale(${visualScale})`,
+            transformOrigin: visualScale === 1 ? undefined : 'top left',
         }"
         @pointerdown="emit('activate')"
     >
