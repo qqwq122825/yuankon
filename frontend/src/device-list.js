@@ -19,6 +19,7 @@ export function localDevicePage(result, query) {
         ? String(query.installedDate)
         : '';
     const data = result.data.filter((row) => {
+        if (query.blacklisted === '1' && row.is_blacklisted !== true) return false;
         if (date && installationDate(row.installed_at) !== date) return false;
         const online = row.status === 'online' && !row.is_blacklisted;
         if (query.status === 'online' && !online) return false;

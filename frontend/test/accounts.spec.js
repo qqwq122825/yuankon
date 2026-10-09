@@ -30,11 +30,103 @@ async function apiCreate(page, username, studio = true, parentId = null) {
     expect(res.status()).toBe(201);
     return (await res.json()).account;
 }
+async function expectReadonlyInjection(page, role) {
+    const execution = [];
+    const observe = (request) => {
+        const path = new URL(request.url()).pathname;
+        if (
+            ['POST', 'PATCH', 'PUT', 'DELETE'].includes(request.method()) ||
+            /^\/api\/(?:injection|settings\/injection)(?:\/|$)/.test(path)
+        )
+            execution.push({ method: request.method(), path });
+    };
+    page.on('request', observe);
+    await page.goto('/injection');
+    await expect(page).toHaveURL('/injection');
+    await expect(page.getByRole('heading', { name: '注入管理', exact: true })).toBeVisible();
+    await expect(page.locator('.injection-settings-page')).toContainText('只读模式');
+    await expect(page.getByRole('button', { name: '新增模板', exact: true })).toHaveCount(0);
+    const entry = page.getByRole('button', { name: '印度 APP 注入配置', exact: true });
+    await entry.click();
+    const dialog = page.getByRole('dialog', { name: '印度 APP 注入配置', exact: true });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole('switch')).toHaveCount(12);
+    for (const control of await dialog.getByRole('switch').all()) {
+        await expect(control).toBeDisabled();
+        await expect(control).toBeChecked();
+    }
+    await expect(dialog.getByRole('button', { name: /^编辑 / })).toHaveCount(0);
+    await page.screenshot({ path: `test-results/injection-actual-${role}-readonly.png` });
+    await page.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0);
+    await expect(entry).toBeFocused();
+    const document = await page.reload();
+    expect(document.status()).toBe(200);
+    await expect(page).toHaveURL('/injection');
+    await expect(page.locator('.injection-settings-page')).toContainText('只读模式');
+    await expect(page.getByRole('button', { name: '新增模板', exact: true })).toHaveCount(0);
+    expect(execution).toEqual([]);
+    page.off('request', observe);
+}
+async function expectOwnPush(page, role, account) {
+    const execution = [];
+    const observe = (request) => {
+        const path = new URL(request.url()).pathname;
+        if (
+            ['POST', 'PATCH', 'PUT', 'DELETE'].includes(request.method()) ||
+            /^\/api\/(?:push|telegram|settings\/push)(?:\/|$)/.test(path) ||
+            new URL(request.url()).origin !== new URL(page.url()).origin
+        )
+            execution.push({ method: request.method(), path });
+    };
+    page.on('request', observe);
+    await page.goto('/push');
+    await expect(page).toHaveURL('/push');
+    await expect(page.getByRole('heading', { name: '推送面板', exact: true })).toBeVisible();
+    await expect(page.locator('.push-settings-page')).toContainText(account);
+    await expect(page.getByTestId('push-binding-status')).toHaveText('Telegram 未绑定');
+    const binding = page.getByRole('button', { name: '绑定 Telegram', exact: true });
+    await binding.focus();
+    await page.keyboard.press('Enter');
+    const dialog = page.getByTestId('push-binding-dialog');
+    await expect(dialog).toBeVisible();
+    await dialog.locator('#push-telegram-username').fill('ui_private_fixture');
+    await dialog.getByRole('button', { name: '预览绑定流程', exact: true }).click();
+    await expect(page.getByTestId('push-binding-status')).toHaveText('Telegram 未绑定');
+    await page.keyboard.press('Escape');
+    await expect(dialog).not.toBeVisible();
+    await expect(binding).toBeFocused();
+    await expect(page.getByRole('button', { name: '配置总台机器人', exact: true })).toHaveCount(0);
+    const childBot = page.getByRole('button', { name: '配置子台机器人', exact: true });
+    if (role === 'studio') {
+        await expect(childBot).toBeVisible();
+        await childBot.click();
+        const botDialog = page.getByTestId('push-bot-dialog');
+        await expect(botDialog).toBeVisible();
+        await botDialog.locator('#push-bot-account').fill('ui_child_fixture');
+        await botDialog.locator('#push-bot-name').fill('合成子台机器人');
+        await botDialog.locator('#push-bot-username').fill('ui_child_fixture_bot');
+        await botDialog.getByRole('button', { name: '预览机器人配置', exact: true }).click();
+        await page.keyboard.press('Escape');
+        await expect(botDialog).not.toBeVisible();
+        await expect(childBot).toBeFocused();
+    } else {
+        await expect(childBot).toHaveCount(0);
+        await expect(page.getByTestId('push-bot-dialog')).not.toBeVisible();
+    }
+    await page.screenshot({ path: `test-results/push-actual-${role}.png`, fullPage: true });
+    const document = await page.reload();
+    expect(document.status()).toBe(200);
+    await expect(page).toHaveURL('/push');
+    await expect(page.getByTestId('push-binding-status')).toHaveText('Telegram 未绑定');
+    expect(execution).toEqual([]);
+    page.off('request', observe);
+}
 test('admin creates studio and member via left navigation, real list refresh, keyboard modal and narrow desktop layout', async ({
     page,
 }) => {
     await login(page);
-    await page.getByRole('link', { name: '账号', exact: true }).click();
+    await page.getByRole('link', { name: '用户', exact: true }).click();
     await expect(page).toHaveURL('/accounts');
     await expect(page.getByRole('heading', { name: '总台账号管理' })).toBeVisible();
     await expect(
@@ -52,7 +144,27 @@ test('admin creates studio and member via left navigation, real list refresh, ke
     await page.getByLabel('确认密码').fill(password);
     await page.getByLabel('到期日（北京时间）').fill('2027-10-31');
     await page.getByLabel('备注', { exact: true }).fill('界面测试');
+    await expect(page.locator('.account-bot-preview')).toContainText('总台专属机器人');
+    const botPreview = page.getByRole('checkbox', { name: '预留专属机器人配置', exact: true });
+    await expect(botPreview).not.toBeChecked();
+    await botPreview.check();
+    await page.getByLabel('机器人名称（草稿）', { exact: true }).fill('合成总台机器人');
+    await page.getByLabel('机器人用户名（草稿）', { exact: true }).fill('ui_studio_fixture_bot');
+    const createdStudio = page.waitForRequest(
+        (request) =>
+            new URL(request.url()).pathname === '/api/accounts/studios' &&
+            request.method() === 'POST',
+    );
     await page.getByRole('button', { name: '保存', exact: true }).click();
+    expect(Object.keys((await createdStudio).postDataJSON()).sort()).toEqual([
+        'confirmPassword',
+        'name',
+        'note',
+        'password',
+        'requestId',
+        'username',
+        'validUntil',
+    ]);
     await expect(page.getByRole('status')).toContainText(`已创建 ${username} · APK ID`);
     const row = page.getByRole('row').filter({ hasText: username });
     await expect(row).toContainText('界面合成总台');
@@ -60,14 +172,37 @@ test('admin creates studio and member via left navigation, real list refresh, ke
     await expect(page.getByRole('heading', { name: '子账号管理' })).toBeVisible();
     const newMember = page.getByRole('button', { name: '创建子账号', exact: true });
     await newMember.click();
+    await expect(page.locator('.account-bot-preview')).toContainText('子台专属机器人');
+    await botPreview.check();
+    await page.getByLabel('机器人名称（草稿）', { exact: true }).fill('取消的子台草稿');
     await page.getByLabel('账号', { exact: true }).press('Escape');
     await expect(newMember).toBeFocused();
     await newMember.click();
+    await expect(botPreview).not.toBeChecked();
+    await expect(page.getByLabel('机器人名称（草稿）', { exact: true })).toHaveCount(0);
+    await botPreview.check();
+    await expect(page.getByLabel('机器人名称（草稿）', { exact: true })).toHaveValue('');
+    await expect(page.getByLabel('机器人用户名（草稿）', { exact: true })).toHaveValue('');
+    await page.getByLabel('机器人名称（草稿）', { exact: true }).fill('合成子台机器人');
+    await page.getByLabel('机器人用户名（草稿）', { exact: true }).fill('ui_member_fixture_bot');
     await page.getByLabel('账号', { exact: true }).fill(`${username}_m`);
     await page.getByLabel('初始 / 新密码').fill(password);
     await page.getByLabel('确认密码').fill(password);
     await expect(page.getByRole('checkbox', { name: '继承总台有效期' })).toBeChecked();
+    const createdMember = page.waitForRequest(
+        (request) =>
+            /\/api\/accounts\/studios\/\d+\/members$/.test(new URL(request.url()).pathname) &&
+            request.method() === 'POST',
+    );
     await page.getByRole('button', { name: '保存', exact: true }).click();
+    expect(Object.keys((await createdMember).postDataJSON()).sort()).toEqual([
+        'confirmPassword',
+        'note',
+        'password',
+        'requestId',
+        'username',
+        'validUntil',
+    ]);
     await expect(page.getByRole('row').filter({ hasText: `${username}_m` })).toContainText(
         '继承总台',
     );
@@ -82,8 +217,11 @@ test('admin creates studio and member via left navigation, real list refresh, ke
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeGreaterThan(800);
     await expect(page.locator('.console-rail')).toBeVisible();
     await page.screenshot({ path: 'test-results/accounts-narrow.png', fullPage: true });
+    console.log(
+        'ACCOUNT_BOT_DRAFT PASS: studio/member create form previews; cancel/reopen empty draft; real account POST whitelist unchanged; bot fields absent',
+    );
 });
-test('actual studio/member login shows role menus and inherited validity and blocks management/log deep links', async ({
+test('actual studio/member login shows role menus, readonly injection and own push UI while preserving inherited validity and management/log guards', async ({
     page,
 }) => {
     await login(page);
@@ -94,10 +232,17 @@ test('actual studio/member login shows role menus and inherited validity and blo
     await login(page, username, password);
     await expect(page.getByRole('navigation', { name: '主导航' }).getByRole('link')).toHaveText([
         '设备',
-        '账号',
+        '用户',
+        'AI',
+        '注入',
         '构建',
+        '推送',
+        '拉黑',
+        '性能',
         '翻译',
     ]);
+    await expectReadonlyInjection(page, 'studio');
+    await expectOwnPush(page, 'studio', username);
     await page.goto('/accounts');
     await expect(page.getByRole('heading', { name: '子账号管理' })).toBeVisible();
     await expect(page.getByRole('row').filter({ hasText: member.username })).toBeVisible();
@@ -109,17 +254,32 @@ test('actual studio/member login shows role menus and inherited validity and blo
     await login(page, member.username, password);
     await expect(page.getByRole('navigation', { name: '主导航' }).getByRole('link')).toHaveText([
         '设备',
+        '注入',
         '构建',
+        '推送',
     ]);
+    await expectReadonlyInjection(page, 'member');
+    await expectOwnPush(page, 'member', member.username);
     await expect(page.locator('.console-account')).toContainText('子账号');
     await expect(page.locator('.console-account')).not.toContainText('长期有效');
-    for (const path of ['/accounts', '/settings/translation', '/logs', '/protocol']) {
+    for (const path of [
+        '/accounts',
+        '/settings/translation',
+        '/logs',
+        '/protocol',
+        '/ai',
+        '/blacklist',
+        '/performance',
+    ]) {
         await page.goto(path);
         await expect(page).toHaveURL('/');
     }
     await page.goto('/settings/account');
     await expect(page.getByRole('heading', { name: `${member.username} · 子账号` })).toBeVisible();
     await expect(page.getByText('账号有效期（继承总台）')).toBeVisible();
+    console.log(
+        'PUSH_ACTUAL_ROLES PASS: real studio/member sessions; studio child bot preview; member own binding only; direct+reload allowed; inherited validity/management/log guards preserved; mutations/module APIs/external requests=0',
+    );
 });
 test('account duplicate/business errors leave form usable and reset password/validity changes are real', async ({
     page,

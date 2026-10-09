@@ -17,8 +17,13 @@ test('list, server sorting, query preservation, pagination, empty state and keyb
     await expect(page.getByText('WS · 已连接')).toBeVisible();
     await expect(page.getByRole('navigation', { name: '主导航' }).getByRole('link')).toHaveText([
         '设备',
-        '账号',
+        '用户',
+        'AI',
+        '注入',
         '构建',
+        '推送',
+        '拉黑',
+        '性能',
         '翻译',
         '日志',
     ]);
@@ -155,7 +160,7 @@ test('detail saves notes, keeps screenshots at 300px, resizes reader, drags and 
     const errors = [];
     page.on('pageerror', (e) => errors.push(e.message));
     await page.goto('/devices/1');
-    await expect(page.getByRole('button', { name: /^BOUNDARY\s*开始$/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: /^满天星\s*开始$/ })).toBeVisible();
     await expect(page.getByText('只读查看', { exact: true })).toHaveCount(0);
     await page.getByRole('textbox', { name: '设备备注' }).fill('Vue 自动化备注');
     await page.getByRole('button', { name: '保存备注' }).click();

@@ -89,6 +89,14 @@ select:focus-visible,
     padding: 25px 30px;
     max-width: 1450px;
 }
+.settings-page.settings-page--centered {
+    max-width: 810px;
+    margin-inline: auto;
+}
+.settings-page--centered > .settings-card {
+    max-width: none;
+    width: 100%;
+}
 .page-title-row {
     display: flex;
     align-items: center;

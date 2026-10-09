@@ -5,19 +5,32 @@ import { connection, startConnection, stopConnection, onMessage } from './connec
 import { fleetStats as stats, refreshFleetStats, clearFleetStats } from './fleet-stats.js';
 import FleetStats from './components/FleetStats.vue';
 import AccountBadge from './components/AccountBadge.vue';
-import { session } from './session.js';
+import { session, logout } from './session.js';
 const route = useRoute(),
     router = useRouter(),
     q = ref(''),
-    dark = ref(localStorage.getItem('boundary-theme') === 'dark');
+    dark = ref(localStorage.getItem('boundary-theme') === 'dark'),
+    logoutBusy = ref(false),
+    logoutError = ref('');
 const detail = computed(() => route.path.startsWith('/devices/'));
 const nav = computed(() => [
     ['/', 'device-mobile', '设备'],
     ...(['superadmin', 'studio_admin'].includes(session.user?.role)
-        ? [['/accounts', 'shield-check', '账号']]
+        ? [
+              ['/accounts', 'users', '用户'],
+              ['/ai', 'sun', 'AI'],
+          ]
         : []),
-    ['/builds', 'package', '构建'],
-    ...(session.user?.role !== 'member' ? [['/settings/translation', 'adjustments', '翻译']] : []),
+    ['/injection', 'injection', '注入'],
+    ['/builds', 'list-check', '构建'],
+    ['/push', 'bell', '推送'],
+    ...(['superadmin', 'studio_admin'].includes(session.user?.role)
+        ? [
+              ['/blacklist', 'ban', '拉黑'],
+              ['/performance', 'gauge', '性能'],
+              ['/settings/translation', 'language', '翻译'],
+          ]
+        : []),
     ...(session.user?.role === 'superadmin' ? [['/logs', 'activity', '日志']] : []),
 ]);
 watch(
@@ -58,6 +71,7 @@ const off = onMessage((message) => {
 watch(
     () => session.user,
     (user) => {
+        logoutError.value = '';
         if (user) {
             loadStats();
             startConnection();
@@ -75,10 +89,24 @@ onUnmounted(() => {
     clearTimeout(statsTimer);
 });
 function search() {
+    const path = ['/', '/blacklist'].includes(route.path) ? route.path : '/';
     router.push({
-        path: '/',
-        query: { ...(route.path === '/' ? route.query : {}), q: q.value, page: 1 },
+        path,
+        query: { ...(route.path === path ? route.query : {}), q: q.value, page: 1 },
     });
+}
+async function exit() {
+    if (logoutBusy.value) return;
+    logoutError.value = '';
+    logoutBusy.value = true;
+    try {
+        await logout();
+        await router.replace('/login');
+    } catch (error) {
+        logoutError.value = error.message;
+    } finally {
+        logoutBusy.value = false;
+    }
 }
 </script>
 <template>
@@ -86,7 +114,7 @@ function search() {
     ><template v-if="!detail && session.user"
         ><header class="console-topbar">
             <RouterLink to="/" class="console-brand"
-                ><img src="/favicon.svg" width="24" height="24" alt="" /><strong>边界研究</strong
+                ><img src="/favicon.svg" width="24" height="24" alt="" /><strong>满天星</strong
                 ><span class="version-label">V2</span></RouterLink
             >
             <div class="console-header-content">
@@ -104,17 +132,67 @@ function search() {
                 <FleetStats :stats="stats" />
             </div>
             <AccountBadge />
-            <button class="btn console-theme" @click="dark = !dark" aria-label="切换明暗主题">
-                {{ dark ? '浅色' : '深色' }}主题</button
-            ><RouterLink
+            <button
+                type="button"
+                class="btn console-theme console-icon-button"
+                @click="dark = !dark"
+                aria-label="切换明暗主题"
+                :aria-pressed="dark"
+                :title="dark ? '切换到浅色主题' : '切换到深色主题'"
+            >
+                <img
+                    :src="`/vendor/icons/${dark ? 'moon' : 'sun'}.svg`"
+                    width="16"
+                    height="16"
+                    alt=""
+                />
+                <span class="visually-hidden">{{ dark ? '浅色' : '深色' }}主题</span>
+            </button>
+            <RouterLink
                 v-if="session.user.role === 'superadmin'"
                 to="/protocol"
-                class="btn console-help"
-                :title="connection.error || '查看协议审计'"
-                >WS · {{ connection.status }}</RouterLink
+                class="btn console-help console-icon-button"
+                :aria-label="`WS · ${connection.status}`"
+                :title="connection.error || `WS · ${connection.status}；查看协议审计`"
             >
-            <span v-else class="console-help">WS · {{ connection.status }}</span>
+                <img src="/vendor/icons/activity.svg" width="16" height="16" alt="" />
+                <span class="visually-hidden">WS · {{ connection.status }}</span>
+            </RouterLink>
+            <span
+                v-else
+                class="btn console-help console-icon-button"
+                role="status"
+                :aria-label="`WS · ${connection.status}`"
+                :title="connection.error || `WS · ${connection.status}`"
+            >
+                <img src="/vendor/icons/activity.svg" width="16" height="16" alt="" />
+                <span class="visually-hidden">WS · {{ connection.status }}</span>
+            </span>
+            <button
+                type="button"
+                class="btn console-logout console-icon-button"
+                aria-label="退出当前账号"
+                title="退出当前账号"
+                :disabled="logoutBusy"
+                @click="exit"
+            >
+                <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                    focusable="false"
+                >
+                    <path d="M9 5H5v14h4M10 12h11m-4-4 4 4-4 4" />
+                </svg>
+            </button>
         </header>
+        <p v-if="logoutError" role="alert" class="console-header-error">{{ logoutError }}</p>
         <aside class="console-rail">
             <nav aria-label="主导航">
                 <RouterLink

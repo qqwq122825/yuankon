@@ -25,12 +25,12 @@ async function submit() {
 <template>
     <section class="login-screen">
         <header class="login-brand">
-            <img src="/favicon.svg" width="28" alt="" /><strong>边界研究</strong
+            <img src="/favicon.svg" width="28" alt="" /><strong>满天星</strong
             ><span class="status-chip">本机工作台</span>
         </header>
         <form class="card login-card" @submit.prevent="submit">
             <div class="card-body">
-                <small class="login-eyebrow">BOUNDARY LAB / ADMIN</small>
+                <small class="login-eyebrow">满天星 / ADMIN</small>
                 <h1>超管登录</h1>
                 <p class="text-muted">登录后管理所有设备。一个账号仅保留一处有效登录。</p>
                 <p v-if="session.message" role="status" class="login-message">

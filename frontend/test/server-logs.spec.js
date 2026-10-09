@@ -52,7 +52,7 @@ test('server logs deep link, filters, incremental refresh and JSONL export work 
 test('ordinary role has no log navigation and cannot open either log page by URL', async ({
     page,
 }) => {
-    // Frontend role fixture; ordinary-account login itself remains a separate future feature.
+    // Frontend role-display fixture; actual studio/member login is covered in accounts.spec.js.
     await page.route('**/api/auth/me', async (route) => {
         const response = await route.fetch();
         const json = await response.json();
@@ -62,18 +62,37 @@ test('ordinary role has no log navigation and cannot open either log page by URL
     await page.goto('/');
     await expect(page.getByRole('navigation', { name: '主导航' }).getByRole('link')).toHaveText([
         '设备',
+        '注入',
         '构建',
+        '推送',
     ]);
     await expect(page.getByRole('link', { name: '日志', exact: true })).toHaveCount(0);
     await expect(page.locator('a[href="/protocol"]')).toHaveCount(0);
     const logRequests = [];
     page.on('request', (request) => {
-        if (request.url().includes('/api/logs/')) logRequests.push(request.url());
+        const pathname = new URL(request.url()).pathname;
+        if (/^\/api\/(?:logs|ai|injection|push|performance)(?:\/|$)/.test(pathname))
+            logRequests.push(request.url());
     });
-    await page.goto('/logs');
-    await expect(page).toHaveURL('/');
-    await page.goto('/protocol');
-    await expect(page).toHaveURL('/');
+    await page.goto('/injection');
+    await expect(page).toHaveURL('/injection');
+    await expect(page.getByRole('heading', { name: '注入管理', exact: true })).toBeVisible();
+    await expect(page.locator('.injection-settings-page')).toContainText('只读模式');
+    const document = await page.reload();
+    expect(document.status()).toBe(200);
+    await expect(page).toHaveURL('/injection');
+    await expect(page.locator('.injection-settings-page')).toContainText('只读模式');
+    await page.goto('/push');
+    await expect(page).toHaveURL('/push');
+    await expect(page.getByRole('heading', { name: '推送面板', exact: true })).toBeVisible();
+    const pushDocument = await page.reload();
+    expect(pushDocument.status()).toBe(200);
+    await expect(page).toHaveURL('/push');
+    await expect(page.getByRole('heading', { name: '推送面板', exact: true })).toBeVisible();
+    for (const path of ['/logs', '/protocol', '/ai', '/blacklist', '/performance']) {
+        await page.goto(path);
+        await expect(page).toHaveURL('/');
+    }
     expect(logRequests).toEqual([]);
 });
 

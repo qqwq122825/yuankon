@@ -85,12 +85,12 @@ onBeforeUnmount(() => {
 <template>
     <section class="login-screen">
         <header class="login-brand">
-            <img src="/favicon.svg" width="28" alt="" /><strong>边界研究</strong
+            <img src="/favicon.svg" width="28" alt="" /><strong>满天星</strong
             ><span class="status-chip">{{ session.installed ? '构建环境' : '首次安装' }}</span>
         </header>
         <form class="card login-card install-card" aria-label="初始化安装" @submit.prevent="submit">
             <div class="card-body">
-                <small class="login-eyebrow">BOUNDARY LAB / INSTALL</small>
+                <small class="login-eyebrow">满天星 / INSTALL</small>
                 <h1>{{ session.installed ? '构建环境' : '初始化工作台' }}</h1>
                 <p v-if="!session.installed" class="text-muted">
                     先安装固定的 Android

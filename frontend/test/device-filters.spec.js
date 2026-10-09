@@ -56,7 +56,7 @@ test('responsive toolbar and cached online/date filtering send zero requests or 
     const filter = page.getByRole('button', { name: '在线', exact: true });
     await filter.click();
     await expect(page.locator('.fleet-device-row')).toHaveCount(2);
-    await expect(page.locator('.fleet-pagination')).toContainText('共 2 条');
+    await expect(page.locator('.fleet-pagination')).toContainText('共 2 台');
     await expect(page.locator('.fleet-device-row').first()).toHaveAttribute('data-device-id', '16');
     await page.getByRole('checkbox', { name: '选择当前页' }).check();
     await expect(page.getByText('已选择 2 台')).toBeVisible();

@@ -2,6 +2,11 @@ import { createApp } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import App from './App.vue';
 import Devices from './pages/Devices.vue';
+import Blacklist from './pages/Blacklist.vue';
+import ModuleStatus from './pages/ModuleStatus.vue';
+import AISettings from './pages/AISettings.vue';
+import InjectionSettings from './pages/InjectionSettings.vue';
+import PushSettings from './pages/PushSettings.vue';
 import DeviceDetail from './pages/DeviceDetail.vue';
 import Builds from './pages/Builds.vue';
 import Translation from './pages/Translation.vue';
@@ -28,6 +33,23 @@ const router = createRouter({
             meta: { superadmin: true },
         },
         { path: '/', component: Devices },
+        { path: '/blacklist', component: Blacklist, meta: { manager: true, blacklisted: true } },
+        { path: '/ai', component: AISettings, meta: { manager: true, workspaceModule: 'ai' } },
+        {
+            path: '/injection',
+            component: InjectionSettings,
+            meta: { workspaceModule: 'injection' },
+        },
+        {
+            path: '/push',
+            component: PushSettings,
+            meta: { workspaceModule: 'push' },
+        },
+        {
+            path: '/performance',
+            component: ModuleStatus,
+            meta: { manager: true, workspaceModule: 'performance' },
+        },
         { path: '/devices/:id', component: DeviceDetail },
         { path: '/builds', component: Builds },
         { path: '/settings/translation', component: Translation, meta: { manager: true } },

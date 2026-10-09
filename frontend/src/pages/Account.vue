@@ -47,7 +47,7 @@ async function exit() {
 }
 </script>
 <template>
-    <div class="settings-page">
+    <div class="settings-page settings-page--centered">
         <div class="page-title-row">
             <div>
                 <small>WORKSPACE / ACCOUNT</small>

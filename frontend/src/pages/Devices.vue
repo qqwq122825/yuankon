@@ -5,7 +5,12 @@ import { api, mutate, formatDate } from '../api.js';
 import { connection } from '../connection.js';
 import { setFleetStats } from '../fleet-stats.js';
 import SortHeading from '../components/SortHeading.vue';
-import { DEVICE_CACHE_BATCH, deviceListQuery, localDevicePage } from '../device-list.js';
+import {
+    DEVICE_CACHE_BATCH,
+    DEVICE_PAGE_SIZE,
+    deviceListQuery,
+    localDevicePage,
+} from '../device-list.js';
 
 const route = useRoute(),
     router = useRouter(),
@@ -25,7 +30,30 @@ const route = useRoute(),
     memoError = ref(''),
     memoEditor = ref(false),
     memoForm = ref({ id: null, body: '', label: 'none' });
-const view = computed(() => localDevicePage(result.value, route.query));
+const blacklistMode = computed(() => route.meta.blacklisted === true);
+const view = computed(() =>
+    localDevicePage(result.value, {
+        ...route.query,
+        ...(blacklistMode.value ? { blacklisted: '1' } : {}),
+    }),
+);
+const pageCount = computed(() =>
+    Math.max(1, Math.ceil((view.value?.total ?? 0) / (view.value?.perPage ?? DEVICE_PAGE_SIZE))),
+);
+const pageItems = computed(() => {
+    const total = pageCount.value;
+    if (total <= 7) return Array.from({ length: total }, (_, index) => index + 1);
+    const current = view.value?.page ?? 1;
+    const start = Math.max(2, Math.min(current - 2, total - 5));
+    const end = Math.min(total - 1, start + 4);
+    return [
+        1,
+        ...(start > 2 ? ['gap-left'] : []),
+        ...Array.from({ length: end - start + 1 }, (_, index) => start + index),
+        ...(end < total - 1 ? ['gap-right'] : []),
+        total,
+    ];
+});
 let controller, timer;
 
 const quickFilters = [
@@ -106,7 +134,7 @@ watch(
         if (!page) return;
         selected.value = selected.value.filter((id) => page.data.some((row) => row.id === id));
         if (route.query.page && String(route.query.page) !== String(page.page))
-            router.replace({ path: '/', query: { ...route.query, page: page.page } });
+            router.replace({ path: route.path, query: { ...route.query, page: page.page } });
     },
 );
 watch(
@@ -122,7 +150,7 @@ onUnmounted(() => {
 });
 
 function query(changes) {
-    router.push({ path: '/', query: { ...route.query, ...changes } });
+    router.push({ path: route.path, query: { ...route.query, ...changes } });
 }
 function filterActive(filter) {
     return String(route.query[filter.key] || '') === filter.value;
@@ -131,7 +159,15 @@ function toggleFilter(filter) {
     query({ [filter.key]: filterActive(filter) ? '' : filter.value, page: 1 });
 }
 function clearFilters() {
-    query({ q: '', source: '', a11y: '', status: '', installedDate: '', page: 1 });
+    query({
+        q: '',
+        source: '',
+        a11y: '',
+        status: '',
+        installedDate: '',
+        blacklisted: undefined,
+        page: 1,
+    });
 }
 function sort(field) {
     query({
@@ -344,273 +380,317 @@ async function removeMemo(memo) {
 </script>
 
 <template>
-    <h1 class="visually-hidden">设备工作台</h1>
-    <div class="fleet-toolbar">
-        <div class="fleet-toolbar-primary">
-            <div class="fleet-count">
-                <strong>{{ view?.total ?? '—' }}</strong
-                ><span>当前设备</span>
+    <section class="fleet-list-page">
+        <h1 class="visually-hidden">{{ blacklistMode ? '拉黑设备' : '设备工作台' }}</h1>
+        <div class="fleet-toolbar">
+            <div class="fleet-toolbar-primary">
+                <div class="fleet-count">
+                    <strong>{{ view?.total ?? '—' }}</strong
+                    ><span>{{ blacklistMode ? '拉黑设备' : '当前设备' }}</span>
+                </div>
+                <button class="btn btn-primary" @click="load" :disabled="loading">
+                    <img src="/vendor/icons/refresh.svg" width="14" alt="" />刷新状态
+                </button>
+                <button class="btn filter-reset" @click="clearFilters">清除筛选</button>
             </div>
-            <button class="btn btn-primary" @click="load" :disabled="loading">
-                <img src="/vendor/icons/refresh.svg" width="14" alt="" />刷新状态
-            </button>
-            <button class="btn filter-reset" @click="clearFilters">清除筛选</button>
-        </div>
-        <span class="toolbar-hint"><i aria-hidden="true"></i>刷新后更新列表</span>
-        <div class="fleet-filter-strip" role="group" aria-label="设备筛选">
-            <button
-                v-for="filter in quickFilters"
-                :key="`${filter.key}:${filter.value}`"
-                type="button"
-                class="fleet-filter-chip"
-                :class="[`tone-${filter.tone}`, { active: filterActive(filter) }]"
-                :aria-pressed="filterActive(filter)"
-                @click="toggleFilter(filter)"
-            >
-                <span class="filter-dot" aria-hidden="true"></span>{{ filter.label }}
-            </button>
-        </div>
-        <label class="fleet-date-filter" :class="{ 'has-value': route.query.installedDate }">
-            <img src="/vendor/icons/calendar.svg" width="14" height="14" alt="" />
-            <input
-                type="date"
-                aria-label="按安装日期筛选"
-                :value="route.query.installedDate || ''"
-                @change="query({ installedDate: $event.target.value, page: 1 })"
-            />
-        </label>
-    </div>
-
-    <div v-if="error" role="alert" class="alert alert-danger m-3">
-        {{ error }} <button class="btn" @click="load">重试</button>
-    </div>
-    <p v-if="notice" role="status" class="m-3">{{ notice }}</p>
-
-    <div class="fleet-table-wrap" :aria-busy="loading">
-        <table class="table table-vcenter fleet-table fleet-table-reference">
-            <thead>
-                <tr>
-                    <th class="select-cell">
-                        <input
-                            type="checkbox"
-                            aria-label="选择当前页"
-                            :checked="!!view?.data.length && selected.length === view?.data.length"
-                            @change="
-                                selected = $event.target.checked ? view.data.map((d) => d.id) : []
-                            "
-                        />
-                    </th>
-                    <template v-for="column in columns" :key="column.key">
-                        <SortHeading
-                            v-if="column.sort"
-                            :field="column.sort"
-                            :label="column.label"
-                            :sort="view?.filters.sort"
-                            :direction="view?.filters.direction"
-                            @sort="sort"
-                        />
-                        <th v-else>{{ column.label }}</th>
-                    </template>
-                    <th>操作</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr
-                    v-for="row in view?.data"
-                    :key="row.id"
-                    class="fleet-device-row"
-                    :class="{
-                        'is-selected': selected.includes(row.id),
-                        'is-blacklisted': row.is_blacklisted,
-                    }"
-                    :data-device-id="row.id"
-                    tabindex="0"
-                    :aria-label="`${row.name}，按回车进入设备详情`"
-                    @click="openRow($event, row)"
-                    @keydown="rowKey($event, row)"
+            <span class="toolbar-hint"><i aria-hidden="true"></i>刷新后更新列表</span>
+            <div class="fleet-filter-strip" role="group" aria-label="设备筛选">
+                <button
+                    v-for="filter in quickFilters"
+                    :key="`${filter.key}:${filter.value}`"
+                    type="button"
+                    class="fleet-filter-chip"
+                    :class="[`tone-${filter.tone}`, { active: filterActive(filter) }]"
+                    :aria-pressed="filterActive(filter)"
+                    @click="toggleFilter(filter)"
                 >
-                    <td @click.stop>
-                        <input
-                            v-model="selected"
-                            type="checkbox"
-                            :value="row.id"
-                            :aria-label="`选择 ${row.name}`"
-                        />
-                    </td>
-                    <td
-                        v-for="column in columns"
-                        :key="column.key"
-                        :class="{ 'fleet-note-cell': column.key === 'note' }"
-                    >
-                        <span v-if="column.key === 'id'" class="fleet-id" :title="String(row.id)">{{
-                            row.id
-                        }}</span>
-                        <span
-                            v-else-if="column.key === 'wallpaper'"
-                            class="phone-preview"
-                            :class="{ 'has-thumbnail': row.thumbnail }"
-                            ><img
-                                v-if="row.thumbnail"
-                                :src="row.thumbnail.imageUrl"
-                                :alt="`${row.name} 临时首图缩略图`"
-                                @error="row.thumbnail = null"
-                            /><template v-else
-                                ><img
-                                    class="phone-placeholder-icon"
-                                    src="/vendor/icons/device-mobile.svg"
-                                    alt=""
-                                /><span>{{
-                                    row.source === 'sample' ? '示例' : '暂无'
-                                }}</span></template
-                            ></span
-                        >
-                        <input
-                            v-else-if="column.key === 'note' && noteEditingId === row.id"
-                            v-model="noteDraft"
-                            type="text"
-                            class="fleet-note-input"
-                            maxlength="200"
-                            :data-note-editor="row.id"
-                            :aria-label="`编辑 ${row.name} 的备注`"
-                            :disabled="noteBusyId === row.id"
-                            @click.stop
-                            @keydown.enter.prevent="$event.currentTarget.blur()"
-                            @keydown.esc.prevent="cancelNoteEdit()"
-                            @blur="saveNote(row)"
-                        />
-                        <button
-                            v-else-if="column.key === 'note'"
-                            type="button"
-                            class="fleet-note-button"
-                            :class="{ empty: !row.note }"
-                            :title="row.note ? `点击编辑备注：${row.note}` : '点击编辑备注'"
-                            :aria-label="`编辑 ${row.name} 的备注`"
-                            @click.stop="startNoteEdit(row)"
-                        >
-                            {{ row.note || '点击备注' }}
-                        </button>
-                        <button
-                            v-else-if="column.key === 'memo'"
-                            type="button"
-                            class="memo-count-button"
-                            :class="{ empty: !Number(row.memo_count) }"
-                            :aria-label="`查看 ${row.name} 的备忘（${row.memo_count || 0} 条）`"
-                            @click.stop="openMemos(row)"
-                        >
-                            <span aria-hidden="true">{{
-                                Number(row.memo_count) ? '📝' : '＋'
-                            }}</span
-                            >{{ Number(row.memo_count) || '' }}
-                        </button>
-                        <span
-                            v-else-if="column.key === 'online'"
-                            class="status-chip"
-                            :class="row.is_blacklisted ? 'blacklisted' : row.status"
-                            >{{
-                                row.is_blacklisted
-                                    ? '已拉黑'
-                                    : row.status === 'online'
-                                      ? '在线'
-                                      : row.source === 'sample'
-                                        ? '示例'
-                                        : '离线'
-                            }}</span
-                        >
-                        <span
-                            v-else-if="column.key === 'screen'"
-                            class="fleet-screen-state"
-                            :class="{
-                                active: row.isScreenOn,
-                                locked: row.isLocked,
-                            }"
-                            >{{ screenState(row) }}</span
-                        >
-                        <span
-                            v-else-if="column.key === 'a11y'"
-                            class="fleet-a11y-state"
-                            :class="{ active: row.accessibility_enabled }"
-                            >{{
-                                row.accessibility_enabled === null
-                                    ? '—'
-                                    : row.accessibility_enabled
-                                      ? '已开启'
-                                      : '未开启'
-                            }}</span
-                        >
-                        <span
-                            v-else-if="column.pending"
-                            class="pending-cell"
-                            :aria-label="`${column.label}暂未接入`"
-                        ></span>
-                        <span
-                            v-else
-                            :class="{
-                                'battery-value': column.key === 'battery' && row.battery !== null,
-                                low: column.key === 'battery' && row.battery < 20,
-                                'value-muted': [
-                                    'region',
-                                    'network',
-                                    'password',
-                                    'injection',
-                                    'ai',
-                                    'latency',
-                                ].includes(column.key),
-                            }"
-                            :title="String(value(row, column.key))"
-                            >{{ value(row, column.key) }}</span
-                        >
-                    </td>
-                    <td @click.stop>
-                        <div class="fleet-row-actions">
-                            <button
-                                class="btn row-blacklist"
-                                :disabled="busyId !== null"
-                                @click="manage(row)"
-                            >
-                                {{ row.is_blacklisted ? '取消拉黑' : '拉黑' }}
-                            </button>
-                            <button
-                                class="btn row-delete"
-                                :disabled="busyId !== null"
-                                @click="manage(row, true)"
-                            >
-                                删除
-                            </button>
-                        </div>
-                    </td>
-                </tr>
-                <tr v-if="!view?.data.length">
-                    <td :colspan="columns.length + 2" class="empty-state">
-                        {{ loading ? '正在加载设备…' : '暂无匹配设备；可调整筛选条件。' }}
-                    </td>
-                </tr>
-            </tbody>
-        </table>
-    </div>
-
-    <footer class="fleet-pagination">
-        <span
-            >共 {{ view?.total ?? 0 }} 条 · 第 {{ view?.page ?? 1 }} 页 ·
-            {{ loading ? '读取中' : '本地数据' }}</span
-        >
-        <span class="selection-count" v-if="selected.length">已选择 {{ selected.length }} 台</span>
-        <span class="fleet-sample-label">示例不代表真机在线</span>
-        <div class="page-actions">
-            <button
-                class="btn btn-sm"
-                :disabled="!view || view.page <= 1"
-                @click="query({ page: view.page - 1 })"
-            >
-                上一页</button
-            ><button
-                class="btn btn-sm"
-                :disabled="!view || view.page * view.perPage >= view.total"
-                @click="query({ page: view.page + 1 })"
-            >
-                下一页
-            </button>
+                    <span class="filter-dot" aria-hidden="true"></span>{{ filter.label }}
+                </button>
+            </div>
+            <label class="fleet-date-filter" :class="{ 'has-value': route.query.installedDate }">
+                <img src="/vendor/icons/calendar.svg" width="14" height="14" alt="" />
+                <input
+                    type="date"
+                    aria-label="按安装日期筛选"
+                    :value="route.query.installedDate || ''"
+                    @change="query({ installedDate: $event.target.value, page: 1 })"
+                />
+            </label>
         </div>
-    </footer>
+
+        <div v-if="error" role="alert" class="alert alert-danger m-3">
+            {{ error }} <button class="btn" @click="load">重试</button>
+        </div>
+        <p v-if="notice" role="status" class="m-3">{{ notice }}</p>
+
+        <div class="fleet-table-wrap" :aria-busy="loading">
+            <table class="table table-vcenter fleet-table fleet-table-reference">
+                <thead>
+                    <tr>
+                        <th class="select-cell">
+                            <input
+                                type="checkbox"
+                                aria-label="选择当前页"
+                                :checked="
+                                    !!view?.data.length && selected.length === view?.data.length
+                                "
+                                @change="
+                                    selected = $event.target.checked
+                                        ? view.data.map((d) => d.id)
+                                        : []
+                                "
+                            />
+                        </th>
+                        <template v-for="column in columns" :key="column.key">
+                            <SortHeading
+                                v-if="column.sort"
+                                :field="column.sort"
+                                :label="column.label"
+                                :sort="view?.filters.sort"
+                                :direction="view?.filters.direction"
+                                @sort="sort"
+                            />
+                            <th v-else>{{ column.label }}</th>
+                        </template>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr
+                        v-for="row in view?.data"
+                        :key="row.id"
+                        class="fleet-device-row"
+                        :class="{
+                            'is-selected': selected.includes(row.id),
+                            'is-blacklisted': row.is_blacklisted,
+                        }"
+                        :data-device-id="row.id"
+                        tabindex="0"
+                        :aria-label="`${row.name}，按回车进入设备详情`"
+                        @click="openRow($event, row)"
+                        @keydown="rowKey($event, row)"
+                    >
+                        <td @click.stop>
+                            <input
+                                v-model="selected"
+                                type="checkbox"
+                                :value="row.id"
+                                :aria-label="`选择 ${row.name}`"
+                            />
+                        </td>
+                        <td
+                            v-for="column in columns"
+                            :key="column.key"
+                            :class="{ 'fleet-note-cell': column.key === 'note' }"
+                        >
+                            <span
+                                v-if="column.key === 'id'"
+                                class="fleet-id"
+                                :title="String(row.id)"
+                                >{{ row.id }}</span
+                            >
+                            <span
+                                v-else-if="column.key === 'wallpaper'"
+                                class="phone-preview"
+                                :class="{ 'has-thumbnail': row.thumbnail }"
+                                ><img
+                                    v-if="row.thumbnail"
+                                    :src="row.thumbnail.imageUrl"
+                                    :alt="`${row.name} 临时首图缩略图`"
+                                    @error="row.thumbnail = null"
+                                /><template v-else
+                                    ><img
+                                        class="phone-placeholder-icon"
+                                        src="/vendor/icons/device-mobile.svg"
+                                        alt=""
+                                    /><span>{{
+                                        row.source === 'sample' ? '示例' : '暂无'
+                                    }}</span></template
+                                ></span
+                            >
+                            <input
+                                v-else-if="column.key === 'note' && noteEditingId === row.id"
+                                v-model="noteDraft"
+                                type="text"
+                                class="fleet-note-input"
+                                maxlength="200"
+                                :data-note-editor="row.id"
+                                :aria-label="`编辑 ${row.name} 的备注`"
+                                :disabled="noteBusyId === row.id"
+                                @click.stop
+                                @keydown.enter.prevent="$event.currentTarget.blur()"
+                                @keydown.esc.prevent="cancelNoteEdit()"
+                                @blur="saveNote(row)"
+                            />
+                            <button
+                                v-else-if="column.key === 'note'"
+                                type="button"
+                                class="fleet-note-button"
+                                :class="{ empty: !row.note }"
+                                :title="row.note ? `点击编辑备注：${row.note}` : '点击编辑备注'"
+                                :aria-label="`编辑 ${row.name} 的备注`"
+                                @click.stop="startNoteEdit(row)"
+                            >
+                                {{ row.note || '点击备注' }}
+                            </button>
+                            <button
+                                v-else-if="column.key === 'memo'"
+                                type="button"
+                                class="memo-count-button"
+                                :class="{ empty: !Number(row.memo_count) }"
+                                :aria-label="`查看 ${row.name} 的备忘（${row.memo_count || 0} 条）`"
+                                @click.stop="openMemos(row)"
+                            >
+                                <span aria-hidden="true">{{
+                                    Number(row.memo_count) ? '📝' : '＋'
+                                }}</span
+                                >{{ Number(row.memo_count) || '' }}
+                            </button>
+                            <span
+                                v-else-if="column.key === 'online'"
+                                class="status-chip"
+                                :class="row.is_blacklisted ? 'blacklisted' : row.status"
+                                >{{
+                                    row.is_blacklisted
+                                        ? '已拉黑'
+                                        : row.status === 'online'
+                                          ? '在线'
+                                          : row.source === 'sample'
+                                            ? '示例'
+                                            : '离线'
+                                }}</span
+                            >
+                            <span
+                                v-else-if="column.key === 'screen'"
+                                class="fleet-screen-state"
+                                :class="{
+                                    active: row.isScreenOn,
+                                    locked: row.isLocked,
+                                }"
+                                >{{ screenState(row) }}</span
+                            >
+                            <span
+                                v-else-if="column.key === 'a11y'"
+                                class="fleet-a11y-state"
+                                :class="{ active: row.accessibility_enabled }"
+                                >{{
+                                    row.accessibility_enabled === null
+                                        ? '—'
+                                        : row.accessibility_enabled
+                                          ? '已开启'
+                                          : '未开启'
+                                }}</span
+                            >
+                            <span
+                                v-else-if="column.pending"
+                                class="pending-cell"
+                                :aria-label="`${column.label}暂未接入`"
+                            ></span>
+                            <span
+                                v-else
+                                :class="{
+                                    'battery-value':
+                                        column.key === 'battery' && row.battery !== null,
+                                    low: column.key === 'battery' && row.battery < 20,
+                                    'value-muted': [
+                                        'region',
+                                        'network',
+                                        'password',
+                                        'injection',
+                                        'ai',
+                                        'latency',
+                                    ].includes(column.key),
+                                }"
+                                :title="String(value(row, column.key))"
+                                >{{ value(row, column.key) }}</span
+                            >
+                        </td>
+                        <td @click.stop>
+                            <div class="fleet-row-actions">
+                                <button
+                                    class="btn row-blacklist"
+                                    :disabled="busyId !== null"
+                                    @click="manage(row)"
+                                >
+                                    {{ row.is_blacklisted ? '取消拉黑' : '拉黑' }}
+                                </button>
+                                <button
+                                    class="btn row-delete"
+                                    :disabled="busyId !== null"
+                                    @click="manage(row, true)"
+                                >
+                                    删除
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr v-if="!view?.data.length">
+                        <td :colspan="columns.length + 2" class="empty-state">
+                            {{
+                                loading
+                                    ? '正在加载设备…'
+                                    : blacklistMode
+                                      ? '暂无拉黑设备；可在设备列表中管理。'
+                                      : '暂无匹配设备；可调整筛选条件。'
+                            }}
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <footer class="fleet-pagination" :aria-busy="loading">
+            <span class="selection-count" v-if="selected.length"
+                >已选择 {{ selected.length }} 台</span
+            >
+            <div class="fleet-pagination-center">
+                <span class="fleet-pagination-summary">共 {{ view?.total ?? 0 }} 台</span>
+                <nav class="fleet-page-actions" aria-label="设备分页">
+                    <button
+                        v-if="pageCount > 1"
+                        type="button"
+                        class="fleet-page-button fleet-page-direction"
+                        aria-label="上一页"
+                        :disabled="loading || !view || view.page <= 1"
+                        @click="query({ page: view.page - 1 })"
+                    >
+                        ‹
+                    </button>
+                    <template v-for="item in pageItems" :key="item">
+                        <span
+                            v-if="typeof item !== 'number'"
+                            class="fleet-page-gap"
+                            aria-hidden="true"
+                            >…</span
+                        >
+                        <button
+                            v-else
+                            type="button"
+                            class="fleet-page-button"
+                            :class="{ active: item === (view?.page ?? 1) }"
+                            :aria-label="`第 ${item} 页`"
+                            :aria-current="item === (view?.page ?? 1) ? 'page' : undefined"
+                            :disabled="loading || !view"
+                            @click="item !== view?.page && query({ page: item })"
+                        >
+                            {{ item }}
+                        </button>
+                    </template>
+                    <button
+                        v-if="pageCount > 1"
+                        type="button"
+                        class="fleet-page-button fleet-page-direction"
+                        aria-label="下一页"
+                        :disabled="loading || !view || view.page >= pageCount"
+                        @click="query({ page: view.page + 1 })"
+                    >
+                        ›
+                    </button>
+                </nav>
+            </div>
+            <span class="visually-hidden">{{ loading ? '读取中' : '本地数据' }}</span>
+        </footer>
+    </section>
 
     <div
         v-if="memoDevice"

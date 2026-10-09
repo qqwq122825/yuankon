@@ -11,7 +11,7 @@ instance.server.on('error', async (error) => {
 });
 instance.server.listen(settings.port, settings.host, () =>
     console.log(
-        `Boundary Lab Vue + Node: ${settings.origin} (${settings.host}:${settings.port}, ${settings.trustProxy ? 'trusted proxy' : 'local only'})`,
+        `满天星 Vue + Node: ${settings.origin} (${settings.host}:${settings.port}, ${settings.trustProxy ? 'trusted proxy' : 'local only'})`,
     ),
 );
 let stopping = false;

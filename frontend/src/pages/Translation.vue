@@ -40,7 +40,7 @@ async function action(type) {
 onMounted(() => action('load'));
 </script>
 <template>
-    <div class="settings-page">
+    <div class="settings-page settings-page--centered">
         <div class="page-title-row">
             <div>
                 <small>WORKSPACE / TRANSLATION</small>

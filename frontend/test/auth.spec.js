@@ -1,11 +1,19 @@
 import { test, expect } from '@playwright/test';
 
+const applicationTitle = '设备工作台 · 满天星';
+
 async function signIn(page, password = 'mtx123') {
     await page.goto('/login');
+    await expect(page.locator('.login-brand strong')).toHaveText('满天星');
+    await expect(page.locator('.login-eyebrow')).toHaveText('满天星 / ADMIN');
+    await expect(page).toHaveTitle(applicationTitle);
+    await expect(page.locator('link[rel="icon"]')).toHaveAttribute('href', '/favicon.svg');
     await page.getByRole('textbox', { name: '账号', exact: true }).fill('mtx');
     await page.getByLabel('密码', { exact: true }).fill(password);
     await page.getByRole('button', { name: '登录', exact: true }).click();
     await expect(page).toHaveURL('/');
+    await expect(page.locator('.console-brand strong')).toHaveText('满天星');
+    await expect(page).toHaveTitle(applicationTitle);
     await expect(page.getByText('WS · 已连接')).toBeVisible();
 }
 
@@ -51,6 +59,9 @@ test('first-run web installer creates the superadmin then locks the install rout
     });
     await page.goto('/');
     await expect(page).toHaveURL('/install');
+    await expect(page.locator('.login-brand strong')).toHaveText('满天星');
+    await expect(page.locator('.login-eyebrow')).toHaveText('满天星 / INSTALL');
+    await expect(page).toHaveTitle(applicationTitle);
     await expect(page.getByRole('heading', { name: '初始化工作台' })).toBeVisible();
     const accountInput = page.getByRole('textbox', { name: '超管账号', exact: true });
     await expect(accountInput).toBeDisabled();
@@ -68,6 +79,9 @@ test('first-run web installer creates the superadmin then locks the install rout
     await page.getByRole('button', { name: '完成安装' }).click();
     await expect(page).toHaveURL('/login');
     await expect(page.getByText('初始化完成，请使用刚设置的超管账号登录。')).toBeVisible();
+    await expect(page.locator('.login-brand strong')).toHaveText('满天星');
+    await expect(page.locator('.login-eyebrow')).toHaveText('满天星 / ADMIN');
+    await expect(page).toHaveTitle(applicationTitle);
     await page.goto('/install');
     await expect(page).toHaveURL('/login');
     await context.close();
@@ -79,6 +93,32 @@ test('deep links require login; errors, cookie restoration and logout work', asy
     await page.goto('/devices/1');
     await expect(page).toHaveURL('/login');
     await expect(page.getByRole('navigation', { name: '主导航' })).toHaveCount(0);
+    await expect(page.locator('.login-brand strong')).toHaveText('满天星');
+    await expect(page).toHaveTitle(applicationTitle);
+    const favicon = await page.request.get('/favicon.svg');
+    expect(favicon.status()).toBe(200);
+    expect(favicon.headers()['content-type']).toContain('image/svg+xml');
+    const faviconMetadata = await page.evaluate(
+        (source) => {
+            const svg = new DOMParser().parseFromString(source, 'image/svg+xml');
+            const star = svg.querySelector('path#star');
+            return {
+                viewBox: svg.documentElement.getAttribute('viewBox'),
+                background: svg.querySelector('rect')?.getAttribute('fill'),
+                starFill: star?.getAttribute('fill'),
+                starPath: star?.getAttribute('d'),
+                textElements: svg.querySelectorAll('text').length,
+            };
+        },
+        await favicon.text(),
+    );
+    expect(faviconMetadata).toMatchObject({
+        viewBox: '0 0 40 40',
+        background: '#5262ef',
+        starFill: 'white',
+        textElements: 0,
+    });
+    expect(faviconMetadata.starPath?.trim()).toBeTruthy();
     await page.getByRole('textbox', { name: '账号', exact: true }).fill('mtx');
     await page.getByLabel('密码', { exact: true }).fill('wrong-password');
     await page.getByRole('button', { name: '登录', exact: true }).click();
@@ -87,6 +127,9 @@ test('deep links require login; errors, cookie restoration and logout work', asy
     await signIn(page);
     await page.goto('/install');
     await expect(page.getByRole('heading', { name: '构建环境', exact: true })).toBeVisible();
+    await expect(page.locator('.login-brand strong')).toHaveText('满天星');
+    await expect(page.locator('.login-eyebrow')).toHaveText('满天星 / INSTALL');
+    await expect(page).toHaveTitle(applicationTitle);
     await expect(page.getByRole('heading', { name: '创建超管账号' })).toHaveCount(0);
     await expect(page.getByRole('link', { name: '返回构建页面' })).toBeVisible();
     await page.goto('/');

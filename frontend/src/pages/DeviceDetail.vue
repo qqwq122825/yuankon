@@ -671,7 +671,7 @@ function choose(value) {
                     :disabled="data.device.source !== 'api' && !data.snapshot"
                     @click="openPrimary"
                 >
-                    <span>BOUNDARY</span><strong>开始</strong>
+                    <span>满天星</span><strong>开始</strong>
                 </button>
             </div>
             <section class="card research-summary">

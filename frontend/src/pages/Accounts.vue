@@ -22,6 +22,8 @@ const dialog = ref(null),
     target = ref(null);
 const form = ref({}),
     requestId = ref('');
+const emptyBotDraft = () => ({ enabled: false, name: '', username: '' });
+const botDraft = ref(emptyBotDraft());
 const dateValue = (value) =>
     value
         ? new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shanghai' }).format(
@@ -67,6 +69,7 @@ async function open(action, row, event) {
     target.value = row;
     opener.value = event.currentTarget;
     error.value = '';
+    botDraft.value = emptyBotDraft();
     form.value = {
         username: '',
         password: '',
@@ -84,6 +87,7 @@ async function open(action, row, event) {
 function close() {
     dialog.value.close();
     form.value = {};
+    botDraft.value = emptyBotDraft();
     target.value = null;
     opener.value?.focus();
 }
@@ -401,6 +405,56 @@ async function status(row) {
                         class="form-control mb-3"
                         maxlength="200"
                 /></template>
+                <section
+                    v-if="mode === 'create'"
+                    class="account-bot-preview"
+                    aria-labelledby="account-bot-title"
+                >
+                    <h3 id="account-bot-title">
+                        {{ members ? '子台专属机器人' : '总台专属机器人' }} <span>UI 预留</span>
+                    </h3>
+                    <p>
+                        {{
+                            members
+                                ? '总台为每个子台配置专属机器人，子台首次使用时绑定自己的 Telegram。'
+                                : '总台机器人由超管配置；总台再管理各子台的机器人。'
+                        }}
+                    </p>
+                    <label class="form-check">
+                        <input
+                            v-model="botDraft.enabled"
+                            class="form-check-input"
+                            type="checkbox"
+                        />
+                        <span>预留专属机器人配置</span>
+                    </label>
+                    <template v-if="botDraft.enabled">
+                        <label class="form-label mt-3" for="account-bot-name"
+                            >机器人名称（草稿）</label
+                        >
+                        <input
+                            id="account-bot-name"
+                            v-model="botDraft.name"
+                            class="form-control"
+                            maxlength="80"
+                            autocomplete="off"
+                        />
+                        <label class="form-label mt-3" for="account-bot-username"
+                            >机器人用户名（草稿）</label
+                        >
+                        <input
+                            id="account-bot-username"
+                            v-model="botDraft.username"
+                            class="form-control"
+                            maxlength="64"
+                            placeholder="example_bot"
+                            autocomplete="off"
+                        />
+                    </template>
+                    <p class="text-muted">
+                        草稿仅在本次弹窗展示，不随账号保存提交。机器人创建与绑定流程待后续确定。
+                    </p>
+                </section>
                 <p class="text-muted">编号自动分配。停用、改密或调整期限会撤销原登录会话。</p>
                 <div class="page-actions">
                     <button class="btn btn-primary" :disabled="busy">
@@ -433,5 +487,26 @@ async function status(row) {
 }
 .account-dialog::backdrop {
     background: rgba(0, 0, 0, 0.4);
+}
+.account-bot-preview {
+    margin-block: 16px;
+    padding: 16px;
+    border: 1px solid var(--tblr-border-color);
+    border-radius: 12px;
+    background: var(--tblr-bg-surface-secondary);
+}
+.account-bot-preview h3 {
+    font-size: 14px;
+    margin-bottom: 8px;
+}
+.account-bot-preview h3 span {
+    margin-left: 6px;
+    font-size: 11px;
+    color: #6569ed;
+}
+.account-bot-preview p {
+    font-size: 12px;
+    line-height: 1.6;
+    margin-block: 8px;
 }
 </style>
