@@ -1,6 +1,7 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { session } from '../session.js';
+import InjectionGlobalDemoList from '../components/InjectionGlobalDemoList.vue';
 
 const regions = [
     ['in', '🇮🇳', '印度'],
@@ -293,6 +294,8 @@ onBeforeUnmount(() => {
                 </article>
             </div>
         </section>
+
+        <InjectionGlobalDemoList />
 
         <section class="card card-body injection-section" aria-labelledby="injection-apps-title">
             <div class="injection-section-heading">

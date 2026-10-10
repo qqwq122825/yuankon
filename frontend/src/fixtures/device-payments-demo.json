@@ -1,0 +1,256 @@
+{
+    "protocol": "mtx-payments-demo/v1",
+    "datasetId": "DEMO-DEVICE-01",
+    "schemaVersion": 1,
+    "source": "synthetic-ui-fixture",
+    "fixtureOnly": true,
+    "description": "支付密码页面固定虚构样例，仅用于本地布局与筛选测试，不来自设备记录。",
+    "applications": [
+        {
+            "id": "DEMO-PAY-APP-01",
+            "name": "样例系统设置",
+            "packageName": "dev.mtx.demo.system.settings",
+            "ageLabel": "40分钟前 · 样例",
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-PAY-APP-02",
+            "name": "样例支付 A",
+            "packageName": "dev.mtx.demo.pay.a",
+            "ageLabel": "4小时前 · 样例",
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-PAY-APP-03",
+            "name": "样例钱包 B",
+            "packageName": "dev.mtx.demo.wallet.b",
+            "ageLabel": "5小时前 · 样例",
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-PAY-APP-04",
+            "name": "样例系统桌面",
+            "packageName": "dev.mtx.demo.system.launcher",
+            "ageLabel": "6小时前 · 样例",
+            "synthetic": true
+        }
+    ],
+    "records": [
+        {
+            "id": "DEMO-PAY-RECORD-01",
+            "appId": "DEMO-PAY-APP-01",
+            "value": "DEMO-PIN-A01",
+            "kind": "APP密码",
+            "occurredAt": "2026-10-10T21:54:44+08:00",
+            "success": true,
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-PAY-RECORD-02",
+            "appId": "DEMO-PAY-APP-01",
+            "value": "DEMO-PIN-A02",
+            "kind": "APP密码",
+            "occurredAt": "2026-10-10T21:51:40+08:00",
+            "success": true,
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-PAY-RECORD-03",
+            "appId": "DEMO-PAY-APP-01",
+            "value": "DEMO-PIN-A03",
+            "kind": "APP密码",
+            "occurredAt": "2026-10-10T21:48:36+08:00",
+            "success": true,
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-PAY-RECORD-04",
+            "appId": "DEMO-PAY-APP-01",
+            "value": "DEMO-PIN-A01",
+            "kind": "APP密码",
+            "occurredAt": "2026-10-10T21:45:32+08:00",
+            "success": true,
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-PAY-RECORD-05",
+            "appId": "DEMO-PAY-APP-01",
+            "value": "DEMO-PIN-A02",
+            "kind": "APP密码",
+            "occurredAt": "2026-10-10T21:42:28+08:00",
+            "success": true,
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-PAY-RECORD-06",
+            "appId": "DEMO-PAY-APP-01",
+            "value": "DEMO-PIN-A03",
+            "kind": "APP密码",
+            "occurredAt": "2026-10-10T21:39:24+08:00",
+            "success": true,
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-PAY-RECORD-07",
+            "appId": "DEMO-PAY-APP-01",
+            "value": "DEMO-PIN-A01",
+            "kind": "APP密码",
+            "occurredAt": "2026-10-10T21:36:20+08:00",
+            "success": true,
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-PAY-RECORD-08",
+            "appId": "DEMO-PAY-APP-01",
+            "value": "DEMO-PIN-A02",
+            "kind": "APP密码",
+            "occurredAt": "2026-10-10T21:33:16+08:00",
+            "success": true,
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-PAY-RECORD-09",
+            "appId": "DEMO-PAY-APP-01",
+            "value": "DEMO-PIN-A03",
+            "kind": "APP密码",
+            "occurredAt": "2026-10-10T21:30:12+08:00",
+            "success": true,
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-PAY-RECORD-10",
+            "appId": "DEMO-PAY-APP-01",
+            "value": "DEMO-PIN-A01",
+            "kind": "APP密码",
+            "occurredAt": "2026-10-10T21:27:08+08:00",
+            "success": true,
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-PAY-RECORD-11",
+            "appId": "DEMO-PAY-APP-01",
+            "value": "DEMO-PIN-A02",
+            "kind": "APP密码",
+            "occurredAt": "2026-10-10T21:24:04+08:00",
+            "success": true,
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-PAY-RECORD-12",
+            "appId": "DEMO-PAY-APP-01",
+            "value": "DEMO-PIN-A03",
+            "kind": "APP密码",
+            "occurredAt": "2026-10-10T21:21:00+08:00",
+            "success": true,
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-PAY-RECORD-13",
+            "appId": "DEMO-PAY-APP-02",
+            "value": "DEMO-PIN-B01",
+            "kind": "APP密码",
+            "occurredAt": "2026-10-10T17:54:44+08:00",
+            "success": true,
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-PAY-RECORD-14",
+            "appId": "DEMO-PAY-APP-02",
+            "value": "DEMO-PIN-B02",
+            "kind": "APP密码",
+            "occurredAt": "2026-10-10T17:51:40+08:00",
+            "success": true,
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-PAY-RECORD-15",
+            "appId": "DEMO-PAY-APP-02",
+            "value": "DEMO-PIN-B03",
+            "kind": "APP密码",
+            "occurredAt": "2026-10-10T17:48:36+08:00",
+            "success": true,
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-PAY-RECORD-16",
+            "appId": "DEMO-PAY-APP-02",
+            "value": "DEMO-PIN-B01",
+            "kind": "APP密码",
+            "occurredAt": "2026-10-10T17:45:32+08:00",
+            "success": true,
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-PAY-RECORD-17",
+            "appId": "DEMO-PAY-APP-02",
+            "value": "DEMO-PIN-B02",
+            "kind": "APP密码",
+            "occurredAt": "2026-10-10T17:42:28+08:00",
+            "success": true,
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-PAY-RECORD-18",
+            "appId": "DEMO-PAY-APP-03",
+            "value": "DEMO-PIN-C01",
+            "kind": "APP密码",
+            "occurredAt": "2026-10-10T16:54:44+08:00",
+            "success": true,
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-PAY-RECORD-19",
+            "appId": "DEMO-PAY-APP-03",
+            "value": "DEMO-PIN-C02",
+            "kind": "APP密码",
+            "occurredAt": "2026-10-10T16:51:40+08:00",
+            "success": true,
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-PAY-RECORD-20",
+            "appId": "DEMO-PAY-APP-03",
+            "value": "DEMO-PIN-C03",
+            "kind": "APP密码",
+            "occurredAt": "2026-10-10T16:48:36+08:00",
+            "success": true,
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-PAY-RECORD-21",
+            "appId": "DEMO-PAY-APP-03",
+            "value": "DEMO-PIN-C01",
+            "kind": "APP密码",
+            "occurredAt": "2026-10-10T16:45:32+08:00",
+            "success": false,
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-PAY-RECORD-22",
+            "appId": "DEMO-PAY-APP-04",
+            "value": "DEMO-PIN-D01",
+            "kind": "APP密码",
+            "occurredAt": "2026-10-10T15:54:44+08:00",
+            "success": true,
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-PAY-RECORD-23",
+            "appId": "DEMO-PAY-APP-04",
+            "value": "DEMO-PIN-D02",
+            "kind": "APP密码",
+            "occurredAt": "2026-10-10T15:51:40+08:00",
+            "success": true,
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-PAY-RECORD-24",
+            "appId": "DEMO-PAY-APP-04",
+            "value": "DEMO-PIN-D03",
+            "kind": "APP密码",
+            "occurredAt": "2026-10-10T15:48:36+08:00",
+            "success": true,
+            "synthetic": true
+        }
+    ]
+}

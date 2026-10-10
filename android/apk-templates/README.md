@@ -1,5 +1,9 @@
 # APK 模板清单与新增版本
 
+## Android 协议入口
+
+工作端开发先读 [Android 客户端协议对接总览](../../backend/docs/ANDROID_CLIENT_PROTOCOL.md)。现有设备 WS、截图 HTTP 与应用列表等合成展示 JSON 属于不同合同；该总览列出当前接通状态、版本与字段差异，展示字段详见 [UI_DEMO_PROTOCOL.md](../../backend/docs/UI_DEMO_PROTOCOL.md)。本文各历史模板章节描述对应版本，不代表手机安装了最新版本。
+
 ## 当前源码
 
 - `android/apk-templates/b-packages/`：工作端版本区。当前 `screenagent-1.7.5/` 有桌面模式选择页；可在 MediaProjection（`VirtualDisplay + ImageReader.acquireLatestImage()`）和 AccessibilityService.takeScreenshot 两种截图模式间切换。MediaProjection 确认仍由 Android 系统界面完成；1.0–1.4 已删除，保留 1.5、1.6、1.7、1.7.1、1.7.2、1.7.3 兼容目录。
@@ -153,6 +157,15 @@ B 包新增默认关闭的「开始桌面节点诊断」按钮。用户在手机
 - 取消/失败：`onResume` 检测会话结束且未安装 → 停 VPN、回更新页可重试。
 
 验证：`npm run build:installer13` 真实构建（默认先构建当前 B 包再内嵌；也可用 `INSTALLER13_PAYLOAD_APK` 指定；assembleDebug + lintDebug、apksigner v2、zipalign 4/16K、aapt 包身份/桌面入口/VPN 服务/`payload.dat` 断言）通过；LCG 往返（Node 混淆 → APK 内 `payload.dat` → Java 按运行时算法解密）字节与 SHA-256 一致；`npm run check` 142 项后端测试、`npm run test:e2e` 27 项浏览器测试通过。VPN 授权、吞流量与真机安装链路需真机验证，单独报告。
+
+## A 包 installer-1.2.7.7：1.2.7.6 + InstallReceiver exported=true 对照（versionCode 377）
+
+固定模板 `a-packages/installer-1.2.7.7`，从 `installer-1.2.7.6` 复制。除版本号、包构建脚本和 InstallReceiver 导出标记外保持不变：
+
+- **保持 1.2.7.6 流程与 lcg16 payload**：继续使用 VPN 启停、`PackageInstaller` 会话、进度环、无障碍引导 UI，以及 `assets/payload.dat` = 16 个零字节头 + 固定 seed `276813` 的 LCG 流异或 B 包字节。
+- **InstallReceiver 改为 `exported=true`**：向 `installer-1.3.1` 的接收器导出行为靠拢，其余 VPN 停止、失败后实装检查和无明文 `payload.apk` 约束保留，用于单独对照 exported 标记影响。
+
+构建脚本 `android/scripts/build-installer-1.2.7.7.sh`（默认内嵌最近一次构建的 B 包，可用 `INSTALLER1277_PAYLOAD_APK` 指定）：复制源码 → 生成 lcg16 `payload.dat` → Node 侧 lcg16 还原往返核对 SHA-256 → assembleDebug + lintDebug、apksigner v2、zipalign 4/16K、aapt 包身份/桌面入口/`VpnKillService`/`BIND_VPN_SERVICE`/`InstallReceiver exported=true`/`payload.dat` 断言（且不得含明文 `payload.apk`）。
 
 ## A 包 installer-1.2.7.6：1.2.7.5 流程 + 1.3.1 LCG 对照（versionCode 376）
 

@@ -220,6 +220,29 @@ test('repository has three source folders, nested dependencies and correctly loc
         /setComponent\(new ComponentName\(this, InstallReceiver\.class\)\)/,
     );
     assert.doesNotMatch(installer1276Activity, /AES\/GCM\/NoPadding|payloadKey|Base64\.getDecoder/);
+    const installer1277 = path.join(
+        ROOT,
+        'android/apk-templates/a-packages/installer-1.2.7.7/app/src/main',
+    );
+    const installer1277Manifest = await readFile(
+        path.join(installer1277, 'AndroidManifest.xml'),
+        'utf8',
+    );
+    const installer1277Activity = await readFile(
+        path.join(installer1277, 'java/org/boundarylab/installer/MainActivity.java'),
+        'utf8',
+    );
+    assert.match(
+        installer1277Manifest,
+        /<receiver[\s\S]*android:name="\.InstallReceiver"[\s\S]*android:exported="true"/,
+    );
+    assert.match(installer1277Activity, /LCG_SEED = 276813L/);
+    assert.match(installer1277Activity, /payload\.dat/);
+    assert.match(
+        installer1277Activity,
+        /setComponent\(new ComponentName\(this, InstallReceiver\.class\)\)/,
+    );
+    assert.doesNotMatch(installer1277Activity, /AES\/GCM\/NoPadding|payloadKey|Base64\.getDecoder/);
     assert.match(metadata, /canTakeScreenshot="true"/);
     assert.match(metadata, /canRetrieveWindowContent="true"/);
     assert.match(metadata, /flagRetrieveInteractiveWindows\|flagReportViewIds/);

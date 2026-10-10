@@ -20,12 +20,12 @@ import java.util.concurrent.atomic.AtomicBoolean
 /**
  * 设备通道长连接。
  *
- * 连接地址： <serverUrl>/ws/device?sessionId=<deviceId>&apkId=<apkId>
+ * 连接地址：<serverUrl>/ws/device
  *   - serverUrl 取 agent_config.json 里的「域名」，ws:// 或 wss:// 都可以
- *   - sessionId 走现有服务端的 device WS 约定（服务端用 sessionId 当 deviceId）
- *   - apkId 是本模板新增的账户标识，服务端按它归属账户（见 server_patch）
+ *   - 请求头 Authorization: Bearer <deviceToken>；deviceToken 来自 /api/client/online
+ *   - 服务端按 deviceToken 识别设备归属；sessionId/apkId 仅在消息里做一致性校验
  *
- * 连上后立刻发 register（带 apkId），之后每 20 秒发一次 device_ping 保活。
+ * 连上后立刻发 register，之后每 20 秒发一次 device_ping 保活。
  * 收到 {type:"command", data:{command:"..."}} 交给 onCommand 回调。
  */
 class AgentSocket(

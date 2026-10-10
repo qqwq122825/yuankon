@@ -1,4 +1,12 @@
 import { test, expect } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
+
+const matchFixture = JSON.parse(
+    await readFile(
+        new URL('../src/fixtures/device-injection-match-demo.json', import.meta.url),
+        'utf8',
+    ),
+);
 
 const countries = [
     '印度',
@@ -90,7 +98,38 @@ async function geometry(locator) {
     return { ...box, right: box.x + box.width, bottom: box.y + box.height };
 }
 
+async function expectGlobalDemo(page) {
+    const section = page.getByTestId('injection-global-demo-list');
+    await expect(section).toBeVisible();
+    await expect(section).toHaveAccessibleName('全局注入列表（假数据）');
+    await expect(section).toHaveAttribute('data-protocol', 'mtx-injection-match-demo/v1');
+    await expect(section).toHaveAttribute('data-registry-id', 'DEMO-REGISTRY-01');
+    await expect(section).toHaveAttribute('data-fixture-only', 'true');
+    await expect(section).toContainText('只读假数据 · 非设备扫描结果');
+    await expect(section.locator('.injection-global-demo-count')).toHaveText(
+        '共 6 项 · 5 项样例启用',
+    );
+    await expect(section.locator('thead th')).toHaveText(['名称', '示例包名', '启用状态']);
+    const rows = section.locator('.injection-global-demo-row');
+    await expect(rows).toHaveCount(6);
+    expect(await rows.evaluateAll((items) => items.map((item) => item.dataset.templateId))).toEqual(
+        matchFixture.globalInjectionList.map((item) => item.id),
+    );
+    for (const item of matchFixture.globalInjectionList) {
+        const row = section.locator(`.injection-global-demo-row[data-template-id="${item.id}"]`);
+        await expect(row).toHaveAttribute('data-enabled', String(item.enabled));
+        await expect(row.locator('.injection-global-demo-name')).toContainText(item.name);
+        await expect(row.locator('.injection-global-demo-package')).toHaveText(item.packageName);
+        await expect(row.locator('.injection-global-demo-status')).toHaveText(
+            item.enabled ? '样例启用' : '样例停用',
+        );
+    }
+    await expect(section.locator('button, input, select, textarea, a[href]')).toHaveCount(0);
+    return section;
+}
+
 async function expectDefaults(page) {
+    await expectGlobalDemo(page);
     await expect(page.locator('.injection-country-card')).toHaveCount(45);
     for (const name of countries) {
         await expect(countryButton(page, name)).toContainText(name);
@@ -467,5 +506,97 @@ test('injection preview keeps the wide desktop grid and fixed rail in light/dark
     }
     console.log(
         'INJECTION_GEOMETRY PASS: light/dark 1920/1440/1280/800; wide title/grid; 45 compact cards; 1280px minimum canvas; horizontal scroll; fixed 56/64px rail; modal size/keyboard/focus restoration; eight screenshots',
+    );
+});
+
+test('global injection demo registry is the same read-only six-item fixture used by the four matched device shortcuts', async ({
+    page,
+}) => {
+    await login(page);
+    const origin = new URL(page.url()).origin;
+    const requests = [];
+    const commands = [];
+    const errors = [];
+    const downloads = [];
+    page.on('request', (request) =>
+        requests.push({ method: request.method(), url: request.url() }),
+    );
+    page.on('websocket', (socket) =>
+        socket.on('framesent', ({ payload }) => {
+            try {
+                const message = JSON.parse(String(payload));
+                if (message.type === 'command') commands.push(message);
+            } catch {
+                /* Non-JSON heartbeat frames do not contain commands. */
+            }
+        }),
+    );
+    page.on('pageerror', (error) => errors.push(error.message));
+    page.on('download', (download) => downloads.push(download.suggestedFilename()));
+    await openInjection(page);
+    const storage = await storageSnapshot(page);
+    const section = await expectGlobalDemo(page);
+    const initialRows = await section.locator('.injection-global-demo-row').evaluateAll((rows) =>
+        rows.map((row) => ({
+            id: row.dataset.templateId,
+            enabled: row.dataset.enabled,
+            packageName: row.querySelector('.injection-global-demo-package').textContent.trim(),
+        })),
+    );
+    expect(initialRows.map((row) => row.enabled)).toEqual([
+        'true',
+        'true',
+        'true',
+        'true',
+        'true',
+        'false',
+    ]);
+    await page.goto('/devices/1');
+    await expect(page.locator('.device-workbench')).toBeVisible();
+    await page
+        .locator('.device-topbar')
+        .getByRole('checkbox', { name: '快捷预览', exact: true })
+        .check();
+    const quick = page.locator('.device-preview-panel[data-instance="quick"]');
+    await expect(quick).toHaveAttribute('aria-busy', 'false');
+    await expect(quick).toHaveAttribute('data-demo', 'true');
+    await expect(quick.locator('.template-demo-card')).toHaveCount(4);
+    const installed = new Set(matchFixture.installedApplications.map((item) => item.packageName));
+    const expected = initialRows.filter(
+        (row) => row.enabled === 'true' && installed.has(row.packageName),
+    );
+    expect(expected.map((row) => row.id)).toEqual([
+        'DEMO-TEMPLATE-A',
+        'DEMO-TEMPLATE-B',
+        'DEMO-TEMPLATE-C',
+        'DEMO-TEMPLATE-D',
+    ]);
+    expect(
+        await quick.locator('.template-demo-card').evaluateAll((cards) =>
+            cards.map((card) => ({
+                id: card.dataset.demoApp,
+                packageName: card.dataset.package,
+            })),
+        ),
+    ).toEqual(expected.map(({ id, packageName }) => ({ id, packageName })));
+    await expect(quick.locator('.template-demo-details')).toHaveCount(1);
+    await page.goto('/injection');
+    await expectGlobalDemo(page);
+    await page.getByRole('button', { name: '刷新', exact: true }).focus();
+    await page.keyboard.press('Enter');
+    await expectGlobalDemo(page);
+    expect(await storageSnapshot(page)).toEqual(storage);
+    for (const request of requests) {
+        expect(request.method).toBe('GET');
+        expect(new URL(request.url).origin).toBe(origin);
+        expect(new URL(request.url).pathname).not.toMatch(
+            /^\/api\/(?:injection|settings\/injection|templates)(?:\/|$)/,
+        );
+    }
+    expect(commands).toEqual([]);
+    expect(errors).toEqual([]);
+    expect(downloads).toEqual([]);
+    console.log(
+        'INJECTION_GLOBAL_MATCH PASS: six readonly registry rows/five enabled; same fixed package registry as exact four device intersection; disabledF/uninstalledE/unlistedG excluded; no controls or config API; refresh preserves registry/storage; only same-origin GET, no WScommands/external/downloads',
     );
 });

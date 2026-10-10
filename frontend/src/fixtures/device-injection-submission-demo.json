@@ -1,0 +1,31 @@
+{
+    "protocol": "mtx-injection-submission-demo/v1",
+    "datasetId": "DEMO-DEVICE-01",
+    "schemaVersion": 1,
+    "source": "synthetic-ui-fixture",
+    "fixtureOnly": true,
+    "description": "固定虚构表单：只叠加到已匹配的合成应用，密码和 PIN 均为预设样例，不接收设备数据。",
+    "records": [
+        {
+            "id": "DEMO-SUBMISSION-A",
+            "applicationId": "DEMO-TEMPLATE-A",
+            "packageName": "dev.mtx.demo.pay.a",
+            "status": "submitted",
+            "formType": "form",
+            "submittedAt": "2026-01-01T09:40:00Z",
+            "fields": [
+                {
+                    "kind": "password",
+                    "label": "密码",
+                    "sampleValue": "000000"
+                },
+                {
+                    "kind": "pin",
+                    "label": "PIN",
+                    "sampleValue": "000000"
+                }
+            ],
+            "synthetic": true
+        }
+    ]
+}

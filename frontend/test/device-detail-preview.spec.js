@@ -73,6 +73,21 @@ async function openTools(page) {
 }
 
 async function expectEmptyPreview(page, instance = 'general') {
+    if (instance === 'password') {
+        await expect(panel(page, instance)).toHaveAttribute('aria-busy', 'false');
+        await expect(panel(page, instance)).toHaveAttribute('data-demo', 'true');
+        await expect(panel(page, instance).locator('.lock-event-demo-record')).toHaveCount(16);
+        await expect(panel(page, instance)).toContainText('合成测试数据 · 非设备记录');
+        return;
+    }
+    if (instance === 'quick') {
+        await expect(panel(page, instance)).toHaveAttribute('aria-busy', 'false');
+        await expect(panel(page, instance)).toHaveAttribute('data-demo', 'true');
+        await expect(panel(page, instance).locator('.template-demo-card')).toHaveCount(4);
+        await expect(panel(page, instance)).toContainText('合成测试数据 · 非设备记录');
+        await expect(previewWindow(page, instance)).toHaveAccessibleName('注入应用快捷');
+        return;
+    }
     await expect(panel(page, instance)).toHaveAttribute('aria-busy', 'false');
     await expect(panel(page, instance)).toContainText('未接入');
     await expect(panel(page, instance).locator('.device-preview-count')).toHaveText(/共\s*0\s*项/);
@@ -467,8 +482,8 @@ test('independent password and shortcut preview windows preserve keyboard focus,
     const quick = bar.getByRole('checkbox', { name: '快捷预览', exact: true });
     const diagnostic = bar.getByRole('checkbox', { name: '诊断预览', exact: true });
     const fixed = [
-        { instance: 'password', section: 'password', title: '密码事件预览', checkbox: password },
-        { instance: 'quick', section: 'templates', title: '快捷预览', checkbox: quick },
+        { instance: 'password', section: 'password', title: '锁屏密码', checkbox: password },
+        { instance: 'quick', section: 'templates', title: '注入应用快捷', checkbox: quick },
     ];
     for (const window of fixed) {
         const returned = page.waitForResponse(
@@ -510,7 +525,7 @@ test('independent password and shortcut preview windows preserve keyboard focus,
     await quick.press('Space');
     await expectEmptyPreview(page, 'quick');
     await previewWindow(page, 'password')
-        .getByRole('button', { name: '关闭密码事件预览', exact: true })
+        .getByRole('button', { name: '关闭锁屏密码', exact: true })
         .click();
     await expect(panel(page, 'password')).toHaveCount(0);
     await expect(password).not.toBeChecked();
@@ -638,12 +653,15 @@ test('detail geometry matches compact desktop reference in both themes with inde
             await expectEmptyPreview(page, 'password');
             await bar.getByRole('checkbox', { name: '快捷预览', exact: true }).check();
             await expectEmptyPreview(page, 'quick');
-            await expect(previewWindow(page, 'password')).toHaveCSS('left', '126px');
+            await expect(previewWindow(page, 'password')).toHaveCSS(
+                'left',
+                `${Math.max(1280, width) - 300 - 192}px`,
+            );
             await expect(previewWindow(page, 'quick')).toHaveCSS(
                 'left',
                 `${Math.max(1280, width) - 300 - 192}px`,
             );
-            await expect(previewWindow(page, 'password')).toHaveCSS('top', '360px');
+            await expect(previewWindow(page, 'password')).toHaveCSS('top', '62px');
             await expect(previewWindow(page, 'quick')).toHaveCSS('top', '360px');
             const fixedBoxes = await page
                 .locator('.floating-viewer-preview')
@@ -664,8 +682,8 @@ test('detail geometry matches compact desktop reference in both themes with inde
             const quickBox = fixedBoxes.quick;
             expect(passwordBox.width).toBe(300);
             expect(quickBox.width).toBe(300);
-            expect(passwordBox.y).toBe(quickBox.y);
-            expect(intersects(passwordBox, quickBox)).toBe(false);
+            expect(passwordBox.x).toBeCloseTo(quickBox.x, 1);
+            expect(quickBox.y - passwordBox.y).toBeCloseTo(298, 1);
             await expect(previewWindow(page, 'password')).toHaveCSS('border-radius', '14px');
             await expect(previewWindow(page, 'quick')).toHaveCSS('border-radius', '14px');
             await expect(page.locator('.floating-viewer')).toHaveCount(4);
@@ -730,6 +748,6 @@ test('detail geometry matches compact desktop reference in both themes with inde
     expect(observation.requests).toEqual([]);
     expect(observation.errors).toEqual([]);
     console.log(
-        'DETAIL_PREVIEW_GEOMETRY PASS: light/dark 1920/1440/1280/800; topbar44/left110/right176/orbit180; tool34/radius7/font11; canvas#f8f9fb; viewer300/radius14/parallel; independent password/shortcut lower300px windows nonoverlapping; min1280/xscroll; atomic observed scroll deltas + settled scrollX360; anchored sidebars; added device commands/external/mutations=0',
+        'DETAIL_PREVIEW_GEOMETRY PASS: light/dark 1920/1440/1280/800; topbar44/left110/right176/orbit180; tool34/radius7/font11; canvas#f8f9fb; viewer300/radius14/parallel; independent300px passwordright192top62/shortcutright192top360 windows; min1280/xscroll; atomic observed scroll deltas + settled scrollX360; anchored sidebars; added device commands/external/mutations=0',
     );
 });

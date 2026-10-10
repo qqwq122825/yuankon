@@ -1,0 +1,35 @@
+{
+    "protocol": "mtx-analysis-demo/v1",
+    "schemaVersion": 1,
+    "datasetId": "DEMO-DEVICE-01",
+    "source": "synthetic-ui-fixture",
+    "fixtureOnly": true,
+    "description": "固定合成测试样本，仅本地展示；不代表设备记录。",
+    "items": [
+        {
+            "id": "DEMO-ANALYSIS-01",
+            "title": "短信样例统计",
+            "summary": "【合成测试】固定样本包含 8 条短信；这里只展示预设汇总，不调用 AI。",
+            "messageIds": [
+                "DEMO-SMS-01",
+                "DEMO-SMS-02",
+                "DEMO-SMS-03",
+                "DEMO-SMS-04",
+                "DEMO-SMS-05",
+                "DEMO-SMS-06",
+                "DEMO-SMS-07",
+                "DEMO-SMS-08"
+            ],
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-ANALYSIS-02",
+            "title": "账单样例摘要",
+            "summary": "【合成测试】演示账单为 128.00 测试单位，仅用于布局核对。",
+            "messageIds": [
+                "DEMO-SMS-02"
+            ],
+            "synthetic": true
+        }
+    ]
+}

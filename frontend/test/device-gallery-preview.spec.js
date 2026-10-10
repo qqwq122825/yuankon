@@ -34,8 +34,11 @@ async function expectEmpty(page) {
     await expect(gallery(page)).toHaveAccessibleName('相册图片');
     await expect(gallery(page)).toHaveAttribute('aria-busy', 'false');
     await expect(gallery(page)).toHaveAttribute('data-state', 'not_connected');
-    await expect(gallery(page).locator('.gallery-toolbar button')).toHaveCount(1);
-    await expect(gallery(page).getByRole('button')).toHaveCount(1);
+    await expect(gallery(page).locator('.gallery-toolbar button')).toHaveCount(2);
+    await expect(gallery(page).getByRole('button')).toHaveCount(2);
+    await expect(
+        gallery(page).getByRole('button', { name: '测试数据', exact: true }),
+    ).toHaveAttribute('aria-pressed', 'false');
     await expect(fetchButton(page)).toBeEnabled();
     await expect(gallery(page).locator('.gallery-empty')).toHaveText(emptyText);
     await expect(gallery(page).locator('img, video, canvas, .card, h2')).toHaveCount(0);
@@ -123,7 +126,7 @@ async function capture(page, filename) {
     await page.screenshot({ path: path.join(artifactDir, filename), animations: 'disabled' });
 }
 
-test('gallery is a plain empty canvas with one fetch button and only real GET refreshes, including Enter and Space', async ({
+test('gallery keeps its plain empty default with fetch and manual demo controls and real GET refreshes, including Enter and Space', async ({
     page,
 }) => {
     const observation = observe(page);
@@ -221,7 +224,10 @@ test('gallery rejects HTTP failures, null and malformed preview responses while 
         await expect(gallery(page).getByRole('alert')).toBeVisible();
         await expect(gallery(page).getByRole('alert')).not.toHaveText('');
         await expect(gallery(page).locator('.gallery-feedback')).toHaveAttribute('role', 'alert');
-        await expect(gallery(page).getByRole('button')).toHaveCount(1);
+        await expect(gallery(page).getByRole('button')).toHaveCount(2);
+        await expect(
+            gallery(page).getByRole('button', { name: '测试数据', exact: true }),
+        ).toBeDisabled();
         await expect(fetchButton(page)).toBeEnabled();
         await expect(gallery(page).locator('.gallery-empty')).toHaveText(emptyText);
         await expect(gallery(page)).not.toContainText('DEMO-GALLERY-MUST-NOT-RENDER');

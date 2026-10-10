@@ -1,0 +1,28 @@
+{
+    "protocol": "mtx-memos-demo/v1",
+    "schemaVersion": 1,
+    "datasetId": "DEMO-DEVICE-01",
+    "source": "synthetic-ui-fixture",
+    "fixtureOnly": true,
+    "description": "固定合成测试样本，仅本地展示；不代表设备记录。",
+    "items": [
+        {
+            "id": "DEMO-MEMO-01",
+            "body": "【合成测试】核对短信、应用与密码样本协议。",
+            "label": "follow_up",
+            "author": "样例研究员",
+            "createdAt": "2026-10-10T10:00:00+08:00",
+            "updatedAt": "2026-10-10T10:10:00+08:00",
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-MEMO-02",
+            "body": "【合成测试】只读样例与真实备忘录分开展示。",
+            "label": "handled",
+            "author": "样例研究员",
+            "createdAt": "2026-10-10T09:00:00+08:00",
+            "updatedAt": "2026-10-10T09:10:00+08:00",
+            "synthetic": true
+        }
+    ]
+}

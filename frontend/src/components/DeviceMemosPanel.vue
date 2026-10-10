@@ -1,9 +1,21 @@
 <script setup>
-import { nextTick, onUnmounted, ref, watch } from 'vue';
+import { computed, nextTick, onUnmounted, ref, watch } from 'vue';
 import { api, formatDate } from '../api.js';
 import { session } from '../session.js';
+import demoFixture from '../fixtures/device-memos-demo.json';
+import { readMemosDemo } from '../fixtures/device-fixture-protocol.js';
 
 const props = defineProps({ deviceId: Number });
+const demoData = readMemosDemo(demoFixture);
+const verified = ref(false);
+const requestedDemo = ref(false);
+const demoMode = computed(() =>
+    Boolean(demoData.valid && session.user && verified.value && requestedDemo.value),
+);
+function toggleDemo() {
+    if (demoData.valid && verified.value && !loading.value)
+        requestedDemo.value = !requestedDemo.value;
+}
 const labels = { none: '无标签', important: '重要', follow_up: '待跟进', handled: '已处理' };
 const memos = ref([]);
 const loading = ref(false);
@@ -41,6 +53,7 @@ const current = (key, request) => alive && key === context() && !request.signal.
 
 async function load() {
     loadController?.abort();
+    verified.value = false;
     if (!session.user || !Number.isSafeInteger(props.deviceId) || props.deviceId < 1) return;
     const request = (loadController = new AbortController());
     const key = context();
@@ -60,6 +73,7 @@ async function load() {
             new Set(result.data.map((item) => item.id)).size !== result.data.length
         )
             throw new Error('备忘录响应格式不符，请重试。');
+        verified.value = true;
         memos.value = result.data.map(({ id, body, label, author, createdAt, updatedAt }) => ({
             id,
             body,
@@ -159,6 +173,8 @@ watch(
         loadController = undefined;
         writeController = undefined;
         memos.value = [];
+        verified.value = false;
+        requestedDemo.value = false;
         loading.value = false;
         busy.value = false;
         error.value = '';
@@ -178,10 +194,26 @@ onUnmounted(() => {
 </script>
 
 <template>
-    <section class="memos-panel" aria-label="备忘录" :aria-busy="loading || busy">
+    <section
+        class="memos-panel"
+        aria-label="备忘录"
+        :aria-busy="loading || busy"
+        :data-demo="demoMode"
+        :data-protocol="demoData.valid ? demoFixture.protocol : undefined"
+        :data-dataset-id="demoData.valid ? demoFixture.datasetId : undefined"
+    >
         <header class="memos-heading">
             <h2>备忘录</h2>
             <div class="memos-actions">
+                <button
+                    type="button"
+                    class="memos-button"
+                    :disabled="!demoData.valid || !verified || loading || busy"
+                    :aria-pressed="demoMode"
+                    @click="toggleDemo"
+                >
+                    测试数据
+                </button>
                 <button
                     type="button"
                     class="memos-button"
@@ -209,6 +241,23 @@ onUnmounted(() => {
             </button>
         </div>
         <p v-if="feedback" class="memos-feedback" role="status">{{ feedback }}</p>
+        <div v-if="demoMode" class="memos-demo-list">
+            <p class="memos-count">共 {{ demoData.items.length }} 条 · 合成测试数据（只读）</p>
+            <article
+                v-for="memo in demoData.items"
+                :key="memo.id"
+                class="memos-item memos-demo-item"
+                :data-item-id="memo.id"
+            >
+                <header class="memos-item-heading">
+                    <span class="memos-tag" :class="`label-${memo.label}`">{{
+                        labels[memo.label]
+                    }}</span
+                    ><small>{{ memo.author }} · {{ formatDate(Date.parse(memo.updatedAt)) }}</small>
+                </header>
+                <p class="memos-body">{{ memo.body }}</p>
+            </article>
+        </div>
         <form
             v-if="editor"
             class="memos-editor"
@@ -291,7 +340,7 @@ onUnmounted(() => {
                 <p class="memos-body">{{ memo.body }}</p>
             </article>
         </div>
-        <p v-if="!loading && !error && !editor && !memos.length" class="memos-empty">
+        <p v-if="!loading && !error && !editor && !memos.length && !demoMode" class="memos-empty">
             暂无备忘录，点击“＋ 添加”开始记录
         </p>
     </section>

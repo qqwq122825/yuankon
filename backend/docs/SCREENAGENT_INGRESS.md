@@ -1,6 +1,6 @@
 # ScreenAgent 自动上线、心跳、实时最新帧与节点预览
 
-日期：2026-09-30。当前版本为 B 包 `screenagent-1.7.4`。该版本不再申请 POST_NOTIFICATIONS 运行时权限；用户安装 B 包并在 Android 系统设置中启用其无障碍服务后可自动上线。桌面页可选择 MediaProjection 或 takeScreenshot 模式；MediaProjection 模式需要用户确认 Android 系统屏幕共享。B 包提供桌面模式选择页。用户不填写后台地址、登记码或设备 JWT。后台域名与 APK ID 在构建时写入 B 包，设备凭证由 Node 静默签发并保存在应用私有存储。
+日期：2026-09-30。当前版本为 B 包 `screenagent-1.7.4`。该版本不再申请 POST_NOTIFICATIONS 运行时权限；用户安装 B 包并在 Android 系统设置中启用其无障碍服务后可自动上线。桌面页可选择 MediaProjection 或 takeScreenshot 模式；MediaProjection 模式需要用户确认 Android 系统屏幕共享。B 包提供桌面模式选择页。用户不填写后台地址、登记码或设备凭证。后台域名与 APK ID 在构建时写入 B 包，设备凭证由 Node 静默签发并保存在应用私有存储。
 
 ## 用户流程
 
@@ -44,7 +44,7 @@ Node 在事务中查询已启用的 `apk_routes.apk_id`，取得 `project_id` �
     "localId": 12,
     "apkId": "1",
     "owner": { "id": 1, "username": "mtx" },
-    "deviceToken": "内部 JWT",
+    "deviceToken": "设备凭证字符串",
     "expiresAt": 1790611200000,
     "heartbeatSeconds": 20
 }
@@ -118,6 +118,7 @@ npm run build:screenagent
 - 部署升级后在构建中心选择新的固定模板；本机示例 APK 未写入生产后台域名，应使用构建中心的配置包测试实际上线。
 
 ## 1.8.0 快速诊断
+
 API 调试提供开始诊断、停止诊断、复制诊断报告、导出 JSON；详细日志默认折叠。推荐操作：其他 App → Home 回桌面 → 打开其他 App。开始时如没有查看会话会启动现有查看租约与截图流，但不自动展开浮窗；停止时结束仅由诊断建立且未被用户打开查看窗口的租约，不关闭用户原有查看窗口。诊断只在用户开启期间附加收录。
 
 鉴权 GET `/api/devices/:id/diagnostic-report?sessionId=<UUID>` 按设备与 session 精确查询，最多 5000 个事件并显式标记 truncated；不输出截图私有路径或图片二进制。报告关联客户端 nodes_snapshot/nodes_send 与服务端 nodes_received（capturedAt）、网页 nodes_ready/nodes_displayed（snapshotId）及 screenshot_ready/image_decoded（frameId）。网页附加事件保留当前页面内最近 1000 条，满额显式标记；刷新页面会失去网页内存事件，服务器端本次诊断日志仍可导出。客户端时间与服务器时间分开，不直接据时钟偏差推断网络耗时。网页开始操作不代表手机已收到调试状态，需等待心跳下发。
@@ -127,9 +128,11 @@ API 调试提供开始诊断、停止诊断、复制诊断报告、导出 JSON�
 部署：提交固定模板/源码后在服务器 git pull --ff-only，npm ci、npm run build，重启现有 Node 服务，检查 /api/health 和构建模板 1.8.0。数据库和安装账号不重置。APK 构建/Lint/签名验证与真实手机 App→Home→App 验证分别报告。
 
 ### 1.8.3 接收断点诊断
+
 API 调试开启期间，节点校验失败记录 `nodes_rejected`：采集时间、节点数量、报文字节数、固定原因码及最多五个字段路径/校验类型，不记录拒收值或异常正文。WebSocket 超过既有 128 KiB 限制记录固定原因码 `websocket_payload_limit`；限制和鉴权不变。成功回执增加采集时间、节点数量和报文字节数，供后续客户端确认。`queued=true` 仍仅表示发送队列接受，不代表服务端接受。
 
 ### 实时节点无效矩形兼容
+
 1.8.3 服务端/网页修复：仅实时节点路径允许数值合法但边界倒置的矩形保留节点 ID 和父子关系，坐标归零、visible/clickable 关闭并标记 geometry_status=invalid。有效节点坐标不变。历史快照校验仍严格；引用、循环、深度、数值范围及数量限制不变。diagnostics 增加 invalid_bounds_count/empty_bounds_count；nodes_received 增加对应数量。阅读器不创建倒置、零面积或完全在视口外的绘制框，nodes_rendered 的 key 列表只包含实际绘制节点。无需 APK 升级。
 
 ### 1.8.4 本机桌面诊断授权
@@ -138,4 +141,4 @@ API 调试开启期间，节点校验失败记录 `nodes_rejected`：采集时�
 
 ### 到期总台的已登记设备
 
-总台未提前续期而到期时，服务器自动将其及子账号的已登记设备/历史记录转给平台超管。原设备 ID、APK ID、独立凭证 ID 与首次注册时间保留，原项目 JWT 失效；旧 WS 被关闭，B 包按既有 401/403 重连流程重新请求 `/api/client/online`，服务器仅对接管台账匹配的同一设备 + 原 APK ID 返回超管归属与平台 JWT。不会把到期 APK 路由整体指向超管，到期路由的新设备继续拒绝；拉黑、软删除或撤销设备仍拒绝。总台后来续期也不自动抢回已接管设备；续期后的新设备照常按原账号编号登记。本地 HTTP/WS 合成设备测试不等同于真机重连验收。
+总台未提前续期而到期时，服务器自动将其及子账号的已登记设备/历史记录转给平台超管。原设备 ID、APK ID、独立凭证 ID 与首次注册时间保留，原项目设备凭证失效；旧 WS 被关闭，B 包按既有 401/403 重连流程重新请求 `/api/client/online`，服务器仅对接管台账匹配的同一设备 + 原 APK ID 返回超管归属与平台设备凭证。不会把到期 APK 路由整体指向超管，到期路由的新设备继续拒绝；拉黑、软删除或撤销设备仍拒绝。总台后来续期也不自动抢回已接管设备；续期后的新设备照常按原账号编号登记。本地 HTTP/WS 合成设备测试不等同于真机重连验收。

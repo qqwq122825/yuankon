@@ -1,7 +1,14 @@
 <script setup>
-import { computed, nextTick, ref, watch } from 'vue';
+import { computed, nextTick, ref, useId, watch } from 'vue';
+import {
+    UI_DEMO_PROTOCOL,
+    LOCK_VALUE_TYPES,
+    lockDemoValue,
+    lockDemoPattern,
+} from '../fixtures/device-demo-protocol.js';
 
 const props = defineProps({ records: { type: Array, default: () => [] } });
+const footnoteId = useId();
 const category = ref('all');
 const selectedId = ref('');
 const feedback = ref('');
@@ -11,31 +18,32 @@ const copying = ref(false);
 const categories = [
     { id: 'all', label: '全部' },
     { id: 'system', label: '系统' },
-    { id: 'scenario', label: '样例' },
+    { id: 'scenario', label: '假锁' },
     { id: 'app', label: 'APP' },
 ];
 const records = computed(() =>
-    props.records.map((record, index) => ({
-        id: String(record.id ?? `demo-${index}`).slice(0, 64),
-        category: ['system', 'scenario', 'app'].includes(record.category)
-            ? record.category
-            : 'scenario',
-        label: String(record.label || '样例事件').slice(0, 24),
-        sampleValue: /^(?:DEMO-[A-Z0-9_-]+|图案示例 [A-Z])$/i.test(record.sampleValue)
-            ? record.sampleValue
-            : 'DEMO-UNSET',
-        source: /^dev\.mtx\.demo\.[a-z0-9._-]+$/i.test(record.source)
-            ? record.source
-            : 'dev.mtx.demo.sample',
-        time: /^\d{2}:\d{2}:\d{2}$/.test(record.time) ? record.time : '--:--:--',
-        pattern:
-            Array.isArray(record.pattern) &&
-            record.pattern.length <= 9 &&
-            record.pattern.every((value) => Number.isInteger(value) && value >= 1 && value <= 9) &&
-            new Set(record.pattern).size === record.pattern.length
-                ? [...record.pattern]
-                : [],
-    })),
+    props.records
+        .filter(
+            (record) =>
+                record &&
+                typeof record === 'object' &&
+                record.synthetic === true &&
+                LOCK_VALUE_TYPES.includes(record.valueType),
+        )
+        .map((record, index) => ({
+            id: String(record.id ?? `demo-${index}`).slice(0, 64),
+            category: ['system', 'scenario', 'app'].includes(record.category)
+                ? record.category
+                : 'scenario',
+            label: String(record.label || '样例事件').slice(0, 24),
+            valueType: record.valueType,
+            sampleValue: lockDemoValue(record),
+            source: /^dev\.mtx\.demo\.[a-z0-9._-]+$/i.test(record.source)
+                ? record.source
+                : 'dev.mtx.demo.sample',
+            time: /^\d{2}:\d{2}:\d{2}$/.test(record.time) ? record.time : '--:--:--',
+            pattern: lockDemoPattern(record),
+        })),
 );
 const filteredRecords = computed(() =>
     records.value.filter(
@@ -68,7 +76,17 @@ function selectRecord(record) {
 }
 async function copySample() {
     if (!selectedRecord.value || copying.value) return;
-    const payload = JSON.stringify({ synthetic: true, ...selectedRecord.value }, null, 2);
+    const payload = JSON.stringify(
+        {
+            protocol: UI_DEMO_PROTOCOL,
+            schemaVersion: 1,
+            fixtureOnly: true,
+            synthetic: true,
+            ...selectedRecord.value,
+        },
+        null,
+        2,
+    );
     copying.value = true;
     feedback.value = '';
     copyFallback.value = '';
@@ -87,14 +105,22 @@ async function copySample() {
     }
 }
 function preview(version) {
+    const record = selectedRecord.value;
+    if (!record) return;
+    const displayValue = record.pattern.length ? record.pattern.join(' → ') : record.sampleValue;
     copyFallback.value = '';
-    feedback.value = `${version}：仅展示合成样例，未下发设备指令。`;
+    feedback.value = `${version}：已选中「${record.label} · ${displayValue}」合成样例；仅本地演示，未下发设备指令。`;
 }
 </script>
 
 <template>
     <section class="lock-event-demo" aria-label="锁屏事件合成数据演示">
-        <p class="lock-event-demo-notice">合成测试数据 · 非设备记录</p>
+        <p class="lock-event-demo-notice">
+            合成测试数据 · 非设备记录
+            <span class="lock-event-demo-protocol" :title="UI_DEMO_PROTOCOL"
+                >协议 v1 · 固定假值</span
+            >
+        </p>
         <div class="lock-event-demo-tabs" role="group" aria-label="筛选样例类型">
             <button
                 v-for="tab in categories"
@@ -133,7 +159,9 @@ function preview(version) {
                     ></i>
                 </span>
                 <span class="lock-event-demo-value">
-                    <strong :title="record.sampleValue">{{ record.sampleValue }}</strong>
+                    <strong :title="record.sampleValue">{{
+                        record.pattern.length ? record.pattern.join(' → ') : record.sampleValue
+                    }}</strong>
                     <span :title="record.source">{{ record.source }}</span>
                 </span>
                 <time class="lock-event-demo-time">{{ record.time }}</time>
@@ -153,21 +181,25 @@ function preview(version) {
                 <button
                     type="button"
                     class="lock-event-demo-unlock"
+                    aria-label="一键解锁"
+                    :aria-describedby="footnoteId"
                     :disabled="!selectedRecord"
-                    @click="preview('解锁预览')"
+                    @click="preview('一键解锁')"
                 >
-                    解锁预览
+                    一键解锁
                 </button>
                 <button
                     type="button"
                     class="lock-event-demo-v2"
+                    aria-label="V2解锁"
+                    :aria-describedby="footnoteId"
                     :disabled="!selectedRecord"
-                    @click="preview('V2 预览')"
+                    @click="preview('V2解锁')"
                 >
-                    V2预览
+                    V2解锁
                 </button>
             </div>
-            <p class="lock-event-demo-footnote">仅界面演示 · 不执行设备操作</p>
+            <p :id="footnoteId" class="lock-event-demo-footnote">固定假数据 · 仅本地界面演示</p>
             <p v-if="feedback" class="lock-event-demo-feedback" role="status">{{ feedback }}</p>
             <textarea
                 v-if="copyFallback"
@@ -197,11 +229,20 @@ function preview(version) {
     font-size: 12px;
 }
 .lock-event-demo-notice {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4px;
     flex: 0 0 auto;
     margin: 0;
     padding: 6px 9px 0;
     color: var(--demo-muted);
     font-size: 10px;
+}
+.lock-event-demo-protocol {
+    flex: 0 0 auto;
+    font-size: 8px;
+    white-space: nowrap;
 }
 .lock-event-demo-tabs {
     display: flex;

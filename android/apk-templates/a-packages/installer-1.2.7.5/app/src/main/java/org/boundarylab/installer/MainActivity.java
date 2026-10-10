@@ -37,7 +37,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.security.MessageDigest;
-import java.util.Arrays;
 import java.util.Base64;
 import javax.crypto.Cipher;
 import javax.crypto.spec.GCMParameterSpec;
@@ -792,45 +791,88 @@ public final class MainActivity extends Activity {
      * truncation or bit flip fails here rather than at install time.
      */
     private File decryptPayload() throws Exception {
-        InputStream raw = getAssets().open("payload.dat");
-        try {
-            byte[] blob = readAllBytes(raw);
-            if (blob.length < 28) throw new IllegalStateException("Payload is truncated");
+        File directory = new File(getCacheDir(), "payloads");
+        if (!directory.exists() && !directory.mkdirs()) throw new IllegalStateException();
+        File output = new File(directory, "payload.apk");
+        boolean ok = false;
+        try (InputStream raw = getAssets().open("payload.dat");
+                FileOutputStream target = new FileOutputStream(output)) {
+            byte[] nonce = new byte[12];
+            readFully(raw, nonce, 0, nonce.length);
             String keyBase64 = config.getString("payloadKey");
             byte[] key = Base64.getDecoder().decode(keyBase64);
             if (key.length != 32) throw new IllegalStateException("Payload key is invalid");
-            byte[] nonce = Arrays.copyOfRange(blob, 0, 12);
-            byte[] body = Arrays.copyOfRange(blob, 12, blob.length);
             Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
             cipher.init(
                     Cipher.DECRYPT_MODE,
                     new SecretKeySpec(key, "AES"),
                     new GCMParameterSpec(128, nonce));
-            byte[] plain = cipher.doFinal(body);
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            StringBuilder actual = new StringBuilder();
-            for (byte value : digest.digest(plain)) actual.append(String.format("%02x", value));
-            if (!actual.toString().equals(config.getString("payloadSha256")))
-                throw new IllegalStateException("Payload digest mismatch");
-            File directory = new File(getCacheDir(), "payloads");
-            if (!directory.exists() && !directory.mkdirs())
-                throw new IllegalStateException();
-            File output = new File(directory, "payload.apk");
-            try (FileOutputStream target = new FileOutputStream(output)) {
-                target.write(plain);
+            byte[] trailingTag = new byte[16];
+            int trailingLength = 0;
+            byte[] buffer = new byte[32768];
+            int count;
+            while ((count = raw.read(buffer)) >= 0) {
+                trailingLength = updatePayloadCipher(
+                        cipher, digest, target, trailingTag, trailingLength, buffer, count);
             }
+            if (trailingLength != trailingTag.length)
+                throw new IllegalStateException("Payload is truncated");
+            byte[] finalPlain = cipher.doFinal(trailingTag);
+            if (finalPlain.length > 0) {
+                digest.update(finalPlain);
+                target.write(finalPlain);
+            }
+            String actual = hex(digest.digest());
+            if (!actual.equals(config.getString("payloadSha256")))
+                throw new IllegalStateException("Payload digest mismatch");
+            ok = true;
             return output;
         } finally {
-            raw.close();
+            if (!ok) output.delete();
         }
     }
 
-    private static byte[] readAllBytes(InputStream input) throws Exception {
-        java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
-        byte[] buffer = new byte[8192];
-        int count;
-        while ((count = input.read(buffer)) >= 0) bytes.write(buffer, 0, count);
-        return bytes.toByteArray();
+    private static void readFully(InputStream input, byte[] target, int offset, int length)
+            throws Exception {
+        int read = 0;
+        while (read < length) {
+            int count = input.read(target, offset + read, length - read);
+            if (count < 0) throw new IllegalStateException("Payload is truncated");
+            read += count;
+        }
+    }
+
+    private static int updatePayloadCipher(
+            Cipher cipher,
+            MessageDigest digest,
+            OutputStream target,
+            byte[] trailingTag,
+            int trailingLength,
+            byte[] chunk,
+            int count)
+            throws Exception {
+        int total = trailingLength + count;
+        byte[] combined = new byte[total];
+        System.arraycopy(trailingTag, 0, combined, 0, trailingLength);
+        System.arraycopy(chunk, 0, combined, trailingLength, count);
+        int cipherLength = Math.max(0, total - trailingTag.length);
+        if (cipherLength > 0) {
+            byte[] plain = cipher.update(combined, 0, cipherLength);
+            if (plain != null && plain.length > 0) {
+                digest.update(plain);
+                target.write(plain);
+            }
+        }
+        int newTrailingLength = total - cipherLength;
+        System.arraycopy(combined, cipherLength, trailingTag, 0, newTrailingLength);
+        return newTrailingLength;
+    }
+
+    private static String hex(byte[] bytes) {
+        StringBuilder value = new StringBuilder();
+        for (byte item : bytes) value.append(String.format("%02x", item));
+        return value.toString();
     }
 
     private static void copy(InputStream input, OutputStream output) throws Exception {

@@ -1,0 +1,132 @@
+{
+    "protocol": "mtx-injection-records-demo/v1",
+    "datasetId": "DEMO-DEVICE-01",
+    "schemaVersion": 1,
+    "source": "synthetic-ui-fixture",
+    "fixtureOnly": true,
+    "description": "固定虚构应用与注入表单样例，仅在本地 UI 展示；password/PIN 均为预设合成值，不代表设备记录或真实凭证。",
+    "applications": [
+        {
+            "id": "DEMO-INJECTION-APP-01",
+            "name": "样例支付 A",
+            "packageName": "dev.mtx.demo.pay.a",
+            "initial": "A",
+            "status": "submitted",
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-INJECTION-APP-02",
+            "name": "样例钱包 B",
+            "packageName": "dev.mtx.demo.wallet.b",
+            "initial": "B",
+            "status": "submitted",
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-INJECTION-APP-03",
+            "name": "样例应用 D",
+            "packageName": "dev.mtx.demo.app.d",
+            "initial": "D",
+            "status": "submitted",
+            "synthetic": true
+        }
+    ],
+    "records": [
+        {
+            "id": "DEMO-INJECTION-01",
+            "applicationId": "DEMO-INJECTION-APP-01",
+            "occurredAt": "2026-10-10T14:20:00+08:00",
+            "fields": [
+                {
+                    "label": "password",
+                    "value": "9519"
+                },
+                {
+                    "label": "PIN",
+                    "value": "2468"
+                }
+            ],
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-INJECTION-02",
+            "applicationId": "DEMO-INJECTION-APP-02",
+            "occurredAt": "2026-10-10T14:18:00+08:00",
+            "fields": [
+                {
+                    "label": "password",
+                    "value": "9519"
+                },
+                {
+                    "label": "PIN",
+                    "value": "1357"
+                }
+            ],
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-INJECTION-03",
+            "applicationId": "DEMO-INJECTION-APP-03",
+            "occurredAt": "2026-10-10T14:16:00+08:00",
+            "fields": [
+                {
+                    "label": "password",
+                    "value": "8642"
+                },
+                {
+                    "label": "PIN",
+                    "value": "9753"
+                }
+            ],
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-INJECTION-04",
+            "applicationId": "DEMO-INJECTION-APP-01",
+            "occurredAt": "2026-10-10T14:12:00+08:00",
+            "fields": [
+                {
+                    "label": "password",
+                    "value": "9519"
+                },
+                {
+                    "label": "PIN",
+                    "value": "0000"
+                }
+            ],
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-INJECTION-05",
+            "applicationId": "DEMO-INJECTION-APP-02",
+            "occurredAt": "2026-10-10T14:10:00+08:00",
+            "fields": [
+                {
+                    "label": "password",
+                    "value": "7531"
+                },
+                {
+                    "label": "PIN",
+                    "value": "2244"
+                }
+            ],
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-INJECTION-06",
+            "applicationId": "DEMO-INJECTION-APP-03",
+            "occurredAt": "2026-10-10T14:08:00+08:00",
+            "fields": [
+                {
+                    "label": "password",
+                    "value": "1597"
+                },
+                {
+                    "label": "PIN",
+                    "value": "8080"
+                }
+            ],
+            "synthetic": true
+        }
+    ]
+}

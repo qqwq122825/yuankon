@@ -28,7 +28,17 @@ async function openSms(page, id = 1) {
     await expect(sms(page)).toBeVisible();
 }
 
-async function expectDefault(page) {
+async function expectDefault(page, demo = true) {
+    if (demo) {
+        await expect(sms(page)).toHaveAccessibleName('短信记录');
+        await expect(sms(page)).toHaveAttribute('aria-busy', 'false');
+        await expect(sms(page)).toHaveAttribute('data-state', 'not_connected');
+        await expect(sms(page)).toHaveAttribute('data-demo', 'true');
+        await expect(demoToggle(page)).toHaveAttribute('aria-pressed', 'true');
+        await expect(search(page)).toHaveValue('');
+        await expectMessages(page, fixture.messages);
+        return;
+    }
     await expect(sms(page)).toHaveAccessibleName('短信记录');
     await expect(sms(page)).toHaveAttribute('aria-busy', 'false');
     await expect(sms(page)).toHaveAttribute('data-demo', 'false');
@@ -60,6 +70,13 @@ async function expectMessages(page, messages) {
     await expect(sms(page).locator('.sms-message-body')).toHaveText(
         messages.map((message) => message.body),
     );
+    expect(
+        await sms(page)
+            .locator('.sms-message-time')
+            .evaluateAll((times) => times.map((time) => time.dateTime)),
+    ).toEqual(messages.map((message) => message.receivedAt));
+    for (const time of await sms(page).locator('.sms-message-time').allTextContents())
+        expect(time).toMatch(/2026.*10.*10.*\d{2}:\d{2}:\d{2}/);
 }
 
 async function businessState(page) {
@@ -103,8 +120,12 @@ function observe(page) {
     return { requests, mutations, external, commands, errors, downloads };
 }
 
-function expectNoExecution(observation) {
-    expect(observation.mutations).toEqual([]);
+function expectNoExecution(observation, allowedAuth = false) {
+    expect(
+        allowedAuth
+            ? observation.mutations.filter((item) => !item.path.startsWith('/api/auth/'))
+            : observation.mutations,
+    ).toEqual([]);
     expect(observation.external).toEqual([]);
     expect(observation.commands).toEqual([]);
     expect(observation.errors).toEqual([]);
@@ -126,7 +147,7 @@ async function screenshot(page, filename) {
     await page.screenshot({ path: path.join(artifactDir, filename), animations: 'disabled' });
 }
 
-test('SMS defaults to strict empty GET data, authorization stays local and existing five-field scenario metadata is preserved', async ({
+test('SMS verifies real empty GET data before displaying sample messages, with local authorization and five-field scenario metadata preserved', async ({
     page,
 }) => {
     const observation = observe(page);
@@ -206,11 +227,11 @@ test('SMS defaults to strict empty GET data, authorization stays local and exist
     expect(await businessState(page)).toEqual(before);
     expectNoExecution(observation);
     console.log(
-        'DEVICE_SMS_EMPTY PASS: strict GET200 preview/not_connected/items[]/total0; opt-in false/count0; metadata5 native Enter/Space fold; authorization local/no permission mutation; fetch button only GET retry; password table preserved; devices/events/snapshots unchanged; POST/external/WS commands/downloads=0',
+        'DEVICE_SMS_EMPTY PASS: strict GET200 preview/not_connected/items[]/total0; sample-onlydefaulttrue/count8 afterstrictGET; metadata5 native Enter/Space fold; authorization local/no permission mutation; fetch button only GET retry; password table preserved; devices/events/snapshots unchanged; POST/external/WS commands/downloads=0',
     );
 });
 
-test('eight explicit synthetic SMS messages search locally across sender, address and text, escape markup and reset when disabled', async ({
+test('eight default synthetic SMS messages search locally across sender, address and text, escape markup and reset when disabled', async ({
     page,
 }) => {
     const observation = observe(page);
@@ -220,7 +241,6 @@ test('eight explicit synthetic SMS messages search locally across sender, addres
     await openSms(page);
     await expectDefault(page);
     const requestsBeforeDemo = observation.requests.length;
-    await demoToggle(page).click();
     await expect(demoToggle(page)).toHaveAttribute('aria-pressed', 'true');
     await expect(sms(page)).toHaveAttribute('data-demo', 'true');
     await expect(sms(page)).toContainText('合成测试数据 · 非设备短信');
@@ -229,6 +249,13 @@ test('eight explicit synthetic SMS messages search locally across sender, addres
     await expectMessages(page, fixture.messages);
     await expect(sms(page).getByRole('button', { name: /下载|导出/ })).toHaveCount(0);
     await expect(sms(page).locator('a[download]')).toHaveCount(0);
+    expect(
+        new Set(
+            await sms(page)
+                .locator('.sms-message-avatar')
+                .evaluateAll((items) => items.map((item) => item.dataset.avatarTone)),
+        ).size,
+    ).toBe(5);
     await screenshot(page, 'device-sms-records.png');
     const normalize = (value) => String(value).normalize('NFKC').toLowerCase();
     for (const query of [
@@ -260,7 +287,7 @@ test('eight explicit synthetic SMS messages search locally across sender, addres
     await search(page).fill('演示账单');
     await expectMessages(page, [fixture.messages[1]]);
     await demoToggle(page).click();
-    await expectDefault(page);
+    await expectDefault(page, false);
     await expect(sms(page).locator('.sms-demo-notice')).toHaveCount(0);
     await demoToggle(page).click();
     await expect(search(page)).toHaveValue('');
@@ -269,7 +296,7 @@ test('eight explicit synthetic SMS messages search locally across sender, addres
     expect(await businessState(page)).toEqual(before);
     expectNoExecution(observation);
     console.log(
-        'DEVICE_SMS_DEMO PASS: opt-in8 fixed synthetic messages; sender/address/body search with NFKC/case fold and exact counts; no-result0; HTML-like fixture rendered as text/no b/script; disable clears search and records/re-enable8; no download; search/demo issue no requests; devices/events/snapshots unchanged; POST/external/WS commands=0',
+        'DEVICE_SMS_DEMO PASS: sampledefault8 fixed synthetic messages; sender/address/body search with NFKC/case fold and exact counts; no-result0; HTML-like fixture rendered as text/no b/script; disable clears search and records/re-enable8; no download; search/demo issue no requests; devices/events/snapshots unchanged; POST/external/WS commands=0',
     );
 });
 
@@ -327,6 +354,8 @@ test('SMS GET failures and malformed states retry without fabricated records, an
     try {
         await sms(page).getByRole('button', { name: '获取短信', exact: true }).click();
         await expect(sms(page)).toHaveAttribute('aria-busy', 'true');
+        await expect(sms(page).locator('.sms-message')).toHaveCount(0);
+        await expect(demoToggle(page)).toBeDisabled();
         await sms(page).getByRole('button', { name: '自动授权', exact: true }).click();
         completeFeedback();
         expect((await feedbackResponse).status()).toBe(200);
@@ -398,6 +427,8 @@ test('SMS records preserve desktop geometry and keyboard actions in both themes 
             await expectDefault(page);
             await demoToggle(page).focus();
             await page.keyboard.press('Space');
+            await expectDefault(page, false);
+            await page.keyboard.press('Space');
             await expectMessages(page, fixture.messages);
             await search(page).focus();
             await page.keyboard.type('DEMO-10003');
@@ -457,5 +488,145 @@ test('SMS records preserve desktop geometry and keyboard actions in both themes 
     expectNoExecution(observation);
     console.log(
         'DEVICE_SMS_GEOMETRY PASS: light/dark1440/1280/800; 44header/110fixedrail/176tools/min1280 desktop; horizontal scroll360/fixednav; three toolbar controls retain one row; no internal horizontal overflow; Enter/Space/search keyboard; portable screenshots; devices/events/snapshots unchanged; POST/external/WS commands/downloads=0',
+    );
+});
+
+test('SMS sample defaults are verified source-specific and manual choices and search survive only the current device context', async ({
+    page,
+}) => {
+    const observation = observe(page);
+    let source = 'api';
+    await page.routeWebSocket(
+        (url) => url.pathname === '/ws/panel',
+        (socket) => {
+            const server = socket.connectToServer();
+            server.onMessage((raw) => {
+                let message;
+                try {
+                    message = JSON.parse(String(raw));
+                } catch {
+                    socket.send(raw);
+                    return;
+                }
+                if (
+                    [
+                        'get_device_state_response',
+                        'device_status_update',
+                        'device_online',
+                        'device_offline',
+                    ].includes(message.type) &&
+                    message.data?.localId === 1
+                )
+                    socket.send(JSON.stringify({ ...message, data: { ...message.data, source } }));
+                else socket.send(raw);
+            });
+        },
+    );
+    await login(page);
+    observation.mutations.length = 0;
+    const original = await (await page.request.get('/api/devices/1')).json();
+    await page.route('**/api/devices/1', (route) =>
+        route.fulfill({
+            status: 200,
+            json: { ...original, device: { ...original.device, source } },
+        }),
+    );
+    for (const otherSource of ['api', 'import', 'unknown', '']) {
+        source = otherSource;
+        await openSms(page);
+        await expectDefault(page, false);
+    }
+    await demoToggle(page).click();
+    await expectDefault(page);
+    await search(page).fill('DEMO-10002');
+    await expectMessages(page, [fixture.messages[1]]);
+    expect((await retryGet(page)).status()).toBe(200);
+    await expect(sms(page)).toHaveAttribute('aria-busy', 'false');
+    await expect(search(page)).toHaveValue('DEMO-10002');
+    await expectMessages(page, [fixture.messages[1]]);
+    source = 'sample';
+    await openSms(page);
+    await expectDefault(page);
+    await demoToggle(page).click();
+    await expectDefault(page, false);
+    expect((await retryGet(page)).status()).toBe(200);
+    await expectDefault(page, false);
+    await page.reload();
+    await expect(page.locator('.device-workbench')).toBeVisible();
+    await navigation(page).getByRole('button', { name: '短信记录', exact: true }).click();
+    await expectDefault(page);
+    await search(page).fill('DEMO-PRIOR-DEVICE');
+    await openSms(page, 2);
+    await expectDefault(page);
+    await demoToggle(page).click();
+    await expectDefault(page, false);
+    await page.goto('/settings/account');
+    await page.getByRole('button', { name: '退出登录', exact: true }).click();
+    await expect(page).toHaveURL('/login');
+    await login(page);
+    await openSms(page, 2);
+    await expectDefault(page);
+    expectNoExecution(observation, true);
+    console.log(
+        'DEVICE_SMS_SOURCE PASS: sample-only8 after verifiedGET; api/import/unknown/empty sources0; manualon/filterpersistthroughGET; manualoffpersistthroughGET; reload/device/account replacement resets source default; only explicit auth POSTs',
+    );
+});
+
+test('pending and unauthenticated SMS preview requests hide fixtures and disable demonstration toggles until verified reads finish', async ({
+    page,
+}) => {
+    const observation = observe(page);
+    await login(page);
+    observation.mutations.length = 0;
+    let release;
+    let started = 0;
+    const gate = new Promise((resolve) => {
+        release = resolve;
+    });
+    const endpoint = '**/api/devices/1/ui-preview/sms';
+    await page.route(
+        endpoint,
+        async (route) => {
+            started++;
+            await gate;
+            await route
+                .fulfill({ status: 401, json: { error: 'DEMO-SMS-AUTH-EXPIRED' } })
+                .catch(() => {});
+        },
+        { times: 1 },
+    );
+    try {
+        await openSms(page);
+        await expect.poll(() => started).toBe(1);
+        await expect(sms(page)).toHaveAttribute('aria-busy', 'true');
+        await expect(sms(page)).toHaveAttribute('data-demo', 'false');
+        await expect(sms(page).locator('.sms-message')).toHaveCount(0);
+        await expect(sms(page).locator('.sms-demo-notice')).toHaveCount(0);
+        await expect(demoToggle(page)).toBeDisabled();
+        release();
+        await expect(page).toHaveURL('/login');
+        await expect(sms(page)).toHaveCount(0);
+        // Mocked 401 clears the client, but the original server cookie must also
+        // be revoked before a fresh document and login exercise session reset.
+        const logout = await page.evaluate(async () => {
+            const response = await fetch('/api/auth/logout', {
+                method: 'POST',
+                headers: { 'X-Boundary-Request': '1', 'Content-Type': 'application/json' },
+                body: '{}',
+                credentials: 'same-origin',
+            });
+            return { status: response.status, body: await response.json() };
+        });
+        expect(logout).toEqual({ status: 200, body: { success: true } });
+        await login(page);
+        await openSms(page);
+        await expectDefault(page);
+    } finally {
+        release();
+        await page.unroute(endpoint);
+    }
+    expectNoExecution(observation, true);
+    console.log(
+        'DEVICE_SMS_AUTH_GATE PASS: pendingGET demo false/rows0/toggle disabled; GET401 removes view; real logout200 revokes cookie; fresh login verifiedGET restores8; no device mutations/commands/external/downloads',
     );
 });

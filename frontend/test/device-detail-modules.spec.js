@@ -5,6 +5,12 @@ import path from 'node:path';
 const appsFixture = JSON.parse(
     await readFile(new URL('../src/fixtures/device-apps-demo.json', import.meta.url), 'utf8'),
 );
+const matchFixture = JSON.parse(
+    await readFile(
+        new URL('../src/fixtures/device-injection-match-demo.json', import.meta.url),
+        'utf8',
+    ),
+);
 const recordsFixture = JSON.parse(
     await readFile(new URL('../src/fixtures/device-records-demo.json', import.meta.url), 'utf8'),
 );
@@ -51,10 +57,35 @@ async function expectAppsEmpty(page) {
         'false',
     );
     await expect(apps(page).locator('.app-row')).toHaveCount(0);
+    await expect(apps(page).locator('.app-configured-row')).toHaveCount(0);
     await expect(apps(page).locator('.apps-count')).toHaveText('共 0 个应用');
     await expect(appSearch(page)).toHaveValue('');
     await expect(systemFilter(page)).not.toBeChecked();
     await expect(apps(page)).toContainText('未接入');
+}
+
+async function expectAppsDefault(page) {
+    await expect(apps(page)).toHaveAccessibleName('应用列表');
+    await expect(apps(page)).toHaveAttribute('aria-busy', 'false');
+    await expect(apps(page)).toHaveAttribute('data-state', 'not_connected');
+    await expect(apps(page)).toHaveAttribute('data-demo', 'true');
+    await expect(apps(page).getByRole('button', { name: '测试数据', exact: true })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+    );
+    await expect(appSearch(page)).toHaveValue('');
+    await expect(systemFilter(page)).not.toBeChecked();
+    await expectAppRows(
+        page,
+        appsFixture.applications.filter((item) => !item.system),
+    );
+    await expect(apps(page).locator('.apps-demo-notice')).toContainText(
+        '合成测试数据 · 非设备应用',
+    );
+    await expectStableAppTotals(page);
+    await expect(apps(page).locator('[data-app-group="target"] .app-row')).toHaveCount(4);
+    await expect(apps(page).locator('[data-app-group="ordinary"] .app-row')).toHaveCount(2);
+    await expect(apps(page).locator('[data-app-group="system"]')).toHaveCount(0);
 }
 
 async function expectRecordsEmpty(page) {
@@ -84,6 +115,29 @@ async function expectRecordsEmpty(page) {
     await expect(records(page).locator('.record-metadata-table')).not.toBeVisible();
 }
 
+async function expectRecordsDefault(page) {
+    await expect(records(page)).toHaveAccessibleName('密码记录');
+    await expect(records(page)).toHaveAttribute('aria-busy', 'false');
+    await expect(records(page)).toHaveAttribute('data-state', 'not_connected');
+    await expect(records(page)).toHaveAttribute('data-demo', 'true');
+    await expect(
+        records(page).getByRole('button', { name: '测试数据', exact: true }),
+    ).toHaveAttribute('aria-pressed', 'true');
+    await expect(records(page).locator('.record-demo-notice')).toContainText(
+        '合成测试数据 · 非设备记录',
+    );
+    await expectRecordRows(page, recordsFixture.records);
+    await expect(
+        records(page).getByRole('combobox', { name: '记录类型', exact: true }),
+    ).toHaveValue('all');
+    await expect(
+        records(page).getByRole('combobox', { name: '记录应用', exact: true }),
+    ).toHaveValue('all');
+    await expect(recordKeyword(page)).toHaveValue('');
+    await expect(records(page).locator('details.record-metadata')).not.toHaveAttribute('open');
+    await expect(records(page).locator('.record-metadata-table')).not.toBeVisible();
+}
+
 async function expectAppRows(page, expected) {
     await expect(apps(page).locator('.apps-count')).toHaveText(`共 ${expected.length} 个应用`);
     await expect(apps(page).locator('.app-row')).toHaveCount(expected.length);
@@ -97,9 +151,96 @@ async function expectAppRows(page, expected) {
                 })),
             ),
     ).toEqual(expected.map((item) => ({ id: item.id, system: String(item.system) })));
-    await expect(apps(page).locator('.app-package')).toHaveText(
+    await expect(apps(page).locator('.app-row .app-package')).toHaveText(
         expected.map((item) => item.packageName),
     );
+}
+
+async function expectStableAppTotals(page) {
+    await expect(apps(page).locator('.apps-demo-notice')).toContainText(
+        '全局配置 6 · 已安装 8 · 注入目标 4',
+    );
+    await expect(apps(page).locator('.apps-demo-notice')).not.toContainText('匹配 6');
+}
+
+async function expectAppActions(page, application, labels) {
+    const row = apps(page).locator(`.app-row[data-app-id="${application.id}"]`);
+    await expect(row.locator('.app-actions button')).toHaveText(labels);
+    for (const label of labels)
+        await expect(
+            row.getByRole('button', {
+                name: `${label} ${application.name} 合成应用`,
+                exact: true,
+            }),
+        ).toBeEnabled();
+}
+
+async function expectAppPresentation(page) {
+    const groups = ['target', 'ordinary', 'system', 'configured'];
+    expect(
+        await apps(page)
+            .locator('.apps-group')
+            .evaluateAll((items) => items.map((item) => item.dataset.appGroup)),
+    ).toEqual(groups);
+    for (const [group, count] of [
+        ['target', 4],
+        ['ordinary', 2],
+        ['system', 2],
+    ])
+        await expect(apps(page).locator(`[data-app-group="${group}"] .app-row`)).toHaveCount(count);
+    await expect(
+        apps(page).locator('[data-app-group="configured"] .app-configured-row'),
+    ).toHaveCount(1);
+    const statuses = [
+        'submitted',
+        'skipped',
+        'skipped',
+        'injected',
+        'sample',
+        'sample',
+        'sample',
+        'sample',
+    ];
+    const labels = [
+        '已提交 (示例)',
+        '注入目标 (示例)',
+        '注入目标 (示例)',
+        '已注入 (示例)',
+        '已安装 (示例)',
+        '已安装 (示例)',
+        '系统应用',
+        '系统应用',
+    ];
+    for (const [index, application] of appsFixture.applications.entries()) {
+        const row = apps(page).locator(`.app-row[data-app-id="${application.id}"]`);
+        await expect(row).toHaveAttribute('data-match-status', statuses[index]);
+        await expect(row.locator('.app-status')).toHaveText(labels[index]);
+        await expectAppActions(
+            page,
+            application,
+            index < 4
+                ? [
+                      '打开',
+                      '弹窗',
+                      '横幅',
+                      '注入',
+                      ...([0, 3].includes(index) ? ['重注'] : []),
+                      '卸载',
+                  ]
+                : application.system
+                  ? ['打开']
+                  : ['打开', '卸载'],
+        );
+    }
+    await expect(
+        apps(page).locator(
+            '.app-configured-row button, .app-configured-row input, .app-configured-row a',
+        ),
+    ).toHaveCount(0);
+    await expect(apps(page).getByRole('button', { name: /^预览 .* 合成应用$/ })).toHaveCount(0);
+    await expect(apps(page).getByRole('button', { name: /^模板 .* 合成应用$/ })).toHaveCount(0);
+    await expect(apps(page).getByRole('button', { name: /^重置 .* 合成应用$/ })).toHaveCount(0);
+    await expectStableAppTotals(page);
 }
 
 async function expectRecordRows(page, expected) {
@@ -209,7 +350,7 @@ async function screenshot(page, filename) {
     await page.screenshot({ path: path.join(artifactDir, filename), animations: 'disabled' });
 }
 
-test('application list uses real empty GET data and only explicit synthetic applications support local search, system filtering and preview', async ({
+test('application list derives target, ordinary and system action sets from verified synthetic data and keeps all actions local', async ({
     page,
 }) => {
     const observation = observe(page);
@@ -234,10 +375,9 @@ test('application list uses real empty GET data and only explicit synthetic appl
         items: [],
         total: 0,
     });
-    await expectAppsEmpty(page);
+    await expectAppsDefault(page);
     await expect(page.locator('.device-preview-panel[data-instance="general"]')).toHaveCount(0);
     const requestCount = observation.requests.length;
-    await apps(page).getByRole('button', { name: '测试数据', exact: true }).click();
     await expect(apps(page)).toHaveAttribute('data-demo', 'true');
     await expect(apps(page).locator('.apps-demo-notice')).toContainText(
         '合成测试数据 · 非设备应用',
@@ -253,10 +393,11 @@ test('application list uses real empty GET data and only explicit synthetic appl
     await expectAppRows(page, ordinary);
     await systemFilter(page).check();
     await expectAppRows(page, appsFixture.applications);
+    await expectAppPresentation(page);
     for (const query of [
         appsFixture.applications[0].name,
         appsFixture.applications[1].packageName.toUpperCase(),
-        'ｏｒｇ．ｅｘａｍｐｌｅ．ｍｔｘ．ｄｅｍｏ',
+        'ｄｅｖ．ｍｔｘ．ｄｅｍｏ',
     ]) {
         await appSearch(page).fill(query);
         const expected = appsFixture.applications.filter((item) =>
@@ -266,37 +407,82 @@ test('application list uses real empty GET data and only explicit synthetic appl
         );
         expect(expected.length).toBeGreaterThan(0);
         await expectAppRows(page, expected);
+        await expectStableAppTotals(page);
     }
     await appSearch(page).fill('DEMO-NO-APP-9999');
     await expectAppRows(page, []);
+    await expectStableAppTotals(page);
+    const configuredSample = matchFixture.globalInjectionList.find(
+        (item) =>
+            item.enabled &&
+            !appsFixture.applications.some((app) => app.packageName === item.packageName),
+    );
+    await appSearch(page).fill(configuredSample.packageName.toUpperCase());
+    await expectAppRows(page, []);
+    await expect(apps(page).locator('.app-configured-row')).toHaveCount(1);
+    await expect(apps(page).locator('.app-configured-row')).toHaveAttribute(
+        'data-package',
+        configuredSample.packageName,
+    );
+    await expect(apps(page).locator('.apps-empty')).not.toBeVisible();
+    await expectStableAppTotals(page);
     await appSearch(page).fill('');
     await systemFilter(page).uncheck();
     await expectAppRows(page, ordinary);
     const firstApp = apps(page).locator(`.app-row[data-app-id="${ordinary[0].id}"]`);
-    const modes = ['预览', '弹窗', '横幅', '模板', '重置'];
-    await expect(firstApp.locator('.app-actions .app-preview-button')).toHaveText(modes);
-    for (const mode of modes) {
+    const modes = ['打开', '弹窗', '横幅', '注入', '重注', '卸载'];
+    await expect(firstApp.locator('.app-actions button')).toHaveText(modes);
+    for (const [index, mode] of modes.entries()) {
         await firstApp
             .getByRole('button', { name: `${mode} ${ordinary[0].name} 合成应用`, exact: true })
+            .focus();
+        await page.keyboard.press(index % 2 === 0 ? 'Enter' : 'Space');
+        await expect(apps(page).locator('.apps-preview-feedback')).toHaveText(
+            `「${ordinary[0].name}」${mode}仅为本地合成预览；未打开、注入或卸载设备应用。`,
+        );
+        await expectAppRows(page, ordinary);
+        await expectStableAppTotals(page);
+        await expect(firstApp).toHaveAttribute('data-match-status', 'submitted');
+        await expectAppActions(page, ordinary[0], modes);
+    }
+    for (const [application, label] of [
+        [ordinary[3], '重注'],
+        [ordinary[4], '卸载'],
+    ]) {
+        await apps(page)
+            .getByRole('button', {
+                name: `${label} ${application.name} 合成应用`,
+                exact: true,
+            })
             .click();
         await expect(apps(page).locator('.apps-preview-feedback')).toHaveText(
-            mode === '重置'
-                ? `「${ordinary[0].name}」已重置样例预览；未修改设备应用或业务记录。`
-                : `「${ordinary[0].name}」${mode}仅为本地合成预览；未打开或修改设备应用。`,
+            `「${application.name}」${label}仅为本地合成预览；未打开、注入或卸载设备应用。`,
         );
         await expectAppRows(page, ordinary);
     }
+    await systemFilter(page).check();
+    const systemApplication = appsFixture.applications.find((item) => item.system);
+    await apps(page)
+        .getByRole('button', {
+            name: `打开 ${systemApplication.name} 合成应用`,
+            exact: true,
+        })
+        .click();
+    await expect(apps(page).locator('.apps-preview-feedback')).toHaveText(
+        `「${systemApplication.name}」打开仅为本地合成预览；未打开、注入或卸载设备应用。`,
+    );
+    await expectAppPresentation(page);
     expect(observation.requests).toHaveLength(requestCount);
     await apps(page).getByRole('button', { name: '测试数据', exact: true }).click();
     await expectAppsEmpty(page);
     expect(await businessState(page)).toEqual(before);
     expectNoExecution(observation);
     console.log(
-        'DEVICE_MODULE_APPS PASS: real empty GET/not_connected; opt-in8 fictional apps/default6/system8; normalized name/package search; five local modes and disable reset; no general float/device mutations/WS commands/external/downloads',
+        'DEVICE_MODULE_APPS PASS: real empty GET/not_connected gates default6/system8 synthetic apps; target4/ordinary2/system2/configured1; fixed registry6/installed8/target4 totals during normalized search/filtering; conditional open/popup/banner/inject/reinject/uninstall buttons, Enter/Space feedback and unchanged states; no general float/device mutations/WS commands/external/downloads',
     );
 });
 
-test('password record list is empty by default, keeps five-field metadata and filters only eight explicit synthetic records as text', async ({
+test('sample password record list defaults to 24 synthetic rows after verified empty GET and keeps metadata and local filters', async ({
     page,
 }) => {
     const observation = observe(page);
@@ -321,7 +507,7 @@ test('password record list is empty by default, keeps five-field metadata and fi
         items: [],
         total: 0,
     });
-    await expectRecordsEmpty(page);
+    await expectRecordsDefault(page);
     await expect(records(page).locator('.record-table thead th')).toHaveText([
         '类型',
         '内容',
@@ -359,8 +545,8 @@ test('password record list is empty by default, keeps five-field metadata and fi
     await expect(metadata).not.toHaveAttribute('open');
     await expect(metadata.locator('table')).not.toBeVisible();
     await expect(metadata.locator('tbody tr')).toHaveCount(expectedMetadata.length);
+    await page.waitForLoadState('networkidle');
     const requestCount = observation.requests.length;
-    await records(page).getByRole('button', { name: '测试数据', exact: true }).click();
     await expect(records(page).locator('.record-demo-notice')).toContainText(
         '合成测试数据 · 非设备记录',
     );
@@ -369,11 +555,48 @@ test('password record list is empty by default, keeps five-field metadata and fi
         source: 'synthetic-ui-fixture',
         fixtureOnly: true,
     });
-    expect(recordsFixture.records).toHaveLength(8);
+    expect(recordsFixture.records).toHaveLength(24);
     await expectRecordRows(page, recordsFixture.records);
     const type = records(page).getByRole('combobox', { name: '记录类型', exact: true });
     const app = records(page).getByRole('combobox', { name: '记录应用', exact: true });
-    for (const value of ['ui-event', 'state', 'sample']) {
+    await expect(type.locator('option')).toHaveText(['全部类型', 'APP', '键盘', 'PIN']);
+    const expectedTypes = [
+        'app',
+        'app',
+        'keyboard',
+        'keyboard',
+        'keyboard',
+        'app',
+        'app',
+        'app',
+        'app',
+        'app',
+        'app',
+        'app',
+        'app',
+        'app',
+        'app',
+        'app',
+        'keyboard',
+        'pin',
+        'app',
+        'keyboard',
+        'keyboard',
+        'keyboard',
+        'keyboard',
+        'keyboard',
+    ];
+    const labels = { app: 'APP', keyboard: '键盘', pin: 'PIN' };
+    expect(recordsFixture.records.map((item) => item.type)).toEqual(expectedTypes);
+    await expect(records(page).locator('.record-type-label')).toHaveText(
+        expectedTypes.map((value) => labels[value]),
+    );
+    for (const [value, count] of [
+        ['app', 14],
+        ['keyboard', 9],
+        ['pin', 1],
+    ]) {
+        expect(recordsFixture.records.filter((item) => item.type === value)).toHaveLength(count);
         await type.selectOption(value);
         await expectRecordRows(
             page,
@@ -425,7 +648,216 @@ test('password record list is empty by default, keeps five-field metadata and fi
     expect(await businessState(page)).toEqual(before);
     expectNoExecution(observation);
     console.log(
-        'DEVICE_MODULE_RECORDS PASS: honest password GET empty; five-field metadata default folded/Enter opens/Space closes/DOM retained; inline filter count/caption; eight explicit synthetic records/type labels preserve fixture enums; local type/app/keyword filters; text rendering/filter reset; no device mutations/WS commands/external/downloads',
+        'DEVICE_MODULE_RECORDS PASS: honest password GET empty; five-field metadata default folded/Enter opens/Space closes/DOM retained; inline filter count/caption; 24 automatic sample-only synthetic records/reference APP14 keyboard9 PIN1 labels and ordered fixture enums; local type/app/keyword filters; text rendering/filter reset; no device mutations/WS commands/external/downloads',
+    );
+});
+
+test('sample defaults are source-specific and refresh preserves manual demo choices and filters without persisting records', async ({
+    page,
+}) => {
+    const observation = observe(page);
+    let source = 'api';
+    const sourceUpdates = [];
+    // Detail state also arrives over the authenticated subscription: both fixture
+    // channels must agree, otherwise the real sample device overwrites HTTP mocks.
+    await page.routeWebSocket(
+        (url) => url.pathname === '/ws/panel',
+        (socket) => {
+            const server = socket.connectToServer();
+            server.onMessage((raw) => {
+                let message;
+                try {
+                    message = JSON.parse(String(raw));
+                } catch {
+                    socket.send(raw);
+                    return;
+                }
+                if (
+                    [
+                        'get_device_state_response',
+                        'device_status_update',
+                        'device_online',
+                        'device_offline',
+                    ].includes(message.type) &&
+                    message.data?.localId === 1
+                ) {
+                    sourceUpdates.push(source);
+                    socket.send(JSON.stringify({ ...message, data: { ...message.data, source } }));
+                } else socket.send(raw);
+            });
+        },
+    );
+    await login(page);
+    observation.mutations.length = 0;
+    const before = await businessState(page);
+    const detailEndpoint = '**/api/devices/1';
+    await page.route(detailEndpoint, (route) =>
+        route.fulfill({
+            status: 200,
+            json: { ...before.detail, device: { ...before.detail.device, source } },
+        }),
+    );
+    const refresh = async () => {
+        const responseEvent = page.waitForResponse(
+            (response) =>
+                new URL(response.url()).pathname === '/api/devices/1/ui-preview/password' &&
+                response.request().method() === 'GET',
+        );
+        await records(page).getByRole('button', { name: '刷新', exact: true }).click();
+        const response = await responseEvent;
+        expect(response.status()).toBe(200);
+        expect(await response.json()).toMatchObject({ items: [], total: 0, implemented: false });
+        await expect(records(page)).toHaveAttribute('aria-busy', 'false');
+    };
+    try {
+        await openDetail(page);
+        await choose(page, '应用列表');
+        await expectAppsEmpty(page);
+        await apps(page).getByRole('button', { name: '测试数据', exact: true }).click();
+        await expectAppsDefault(page);
+        await choose(page, '密码记录');
+        await expectRecordsEmpty(page);
+        await expect.poll(() => sourceUpdates.includes('api')).toBe(true);
+        await records(page).getByRole('button', { name: '测试数据', exact: true }).click();
+        await expectRecordsDefault(page);
+        const selected = recordsFixture.records[0];
+        await records(page)
+            .getByRole('combobox', { name: '记录应用', exact: true })
+            .selectOption(selected.packageName);
+        await records(page)
+            .getByRole('combobox', { name: '记录类型', exact: true })
+            .selectOption(selected.type);
+        await recordKeyword(page).fill(selected.content);
+        await records(page).getByRole('button', { name: '搜索', exact: true }).click();
+        await expectRecordRows(page, [selected]);
+        await refresh();
+        await expect(records(page)).toHaveAttribute('data-demo', 'true');
+        await expect(recordKeyword(page)).toHaveValue(selected.content);
+        await expect(
+            records(page).getByRole('combobox', { name: '记录应用', exact: true }),
+        ).toHaveValue(selected.packageName);
+        await expect(
+            records(page).getByRole('combobox', { name: '记录类型', exact: true }),
+        ).toHaveValue(selected.type);
+        await expectRecordRows(page, [selected]);
+
+        source = 'sample';
+        await openDetail(page);
+        await choose(page, '应用列表');
+        await expectAppsDefault(page);
+        await choose(page, '密码记录');
+        await expectRecordsDefault(page);
+        await records(page).getByRole('button', { name: '测试数据', exact: true }).click();
+        await expectRecordsEmpty(page);
+        await recordKeyword(page).fill('DEMO-MANUAL-OFF');
+        await records(page).getByRole('button', { name: '搜索', exact: true }).click();
+        await refresh();
+        await expect(records(page)).toHaveAttribute('data-demo', 'false');
+        await expect(records(page).locator('.record-row')).toHaveCount(0);
+        await expect(recordKeyword(page)).toHaveValue('DEMO-MANUAL-OFF');
+        await page.reload();
+        await expect(page.getByRole('textbox', { name: '设备备注', exact: true })).toBeVisible();
+        await choose(page, '密码记录');
+        await expectRecordsDefault(page);
+
+        await recordKeyword(page).fill('DEMO-PREVIOUS-DEVICE');
+        await records(page).getByRole('button', { name: '搜索', exact: true }).click();
+        await openDetail(page, 2);
+        await choose(page, '密码记录');
+        await expectRecordsDefault(page);
+        for (const nonSample of ['import', 'unknown', '']) {
+            source = nonSample;
+            await openDetail(page);
+            await choose(page, '应用列表');
+            await expectAppsEmpty(page);
+            await choose(page, '密码记录');
+            await expectRecordsEmpty(page);
+        }
+        source = 'sample';
+        await openDetail(page);
+        await choose(page, '应用列表');
+        await expectAppsDefault(page);
+        await choose(page, '密码记录');
+        await expectRecordsDefault(page);
+    } finally {
+        await page.unroute(detailEndpoint);
+    }
+    expect(await businessState(page)).toEqual(before);
+    expectNoExecution(observation);
+    console.log(
+        'DEVICE_RECORD_DEFAULTS PASS: only sample source auto-displays24 records and6 user apps after verified GET; api/import/unknown/empty HTTP+WS sources start empty; explicit on/off and app/type/keyword filters survive GET refresh; page reload/source/device switch recompute defaults and clear prior choices/filters; no device mutations/WS commands/external/downloads',
+    );
+});
+
+test('pending and unauthenticated password preview reads never automatically reveal the synthetic fixture', async ({
+    page,
+}) => {
+    const observation = observe(page);
+    await login(page);
+    observation.mutations.length = 0;
+    let release;
+    let started = 0;
+    const gate = new Promise((resolve) => {
+        release = resolve;
+    });
+    const endpoint = '**/api/devices/1/ui-preview/password';
+    await page.route(
+        endpoint,
+        async (route) => {
+            started++;
+            await gate;
+            await route
+                .fulfill({ status: 401, json: { error: 'DEMO-AUTH-EXPIRED' } })
+                .catch(() => {});
+        },
+        { times: 1 },
+    );
+    try {
+        await openDetail(page);
+        await choose(page, '密码记录');
+        await expect.poll(() => started).toBe(1);
+        await expect(records(page)).toHaveAttribute('aria-busy', 'true');
+        await expect(records(page)).toHaveAttribute('data-demo', 'false');
+        await expect(records(page).locator('.record-row')).toHaveCount(0);
+        await expect(records(page).locator('.record-demo-notice')).toHaveCount(0);
+        const responseEvent = page.waitForResponse(
+            (response) =>
+                new URL(response.url()).pathname === '/api/devices/1/ui-preview/password' &&
+                response.status() === 401,
+        );
+        release();
+        await responseEvent;
+        await expect(page).toHaveURL('/login');
+        await expect(records(page)).toHaveCount(0);
+        // A mocked 401 expires the client session only. Explicitly revoke the
+        // still-valid server cookie before a fresh document restores that session.
+        const logout = await page.evaluate(async (requestHeaders) => {
+            const response = await fetch('/api/auth/logout', {
+                method: 'POST',
+                headers: { ...requestHeaders, 'Content-Type': 'application/json' },
+                body: '{}',
+                credentials: 'same-origin',
+            });
+            return { status: response.status, body: await response.json() };
+        }, headers);
+        expect(logout).toEqual({ status: 200, body: { success: true } });
+        await login(page);
+        await openDetail(page);
+        await choose(page, '密码记录');
+        await expectRecordsDefault(page);
+    } finally {
+        release();
+        await page.unroute(endpoint);
+    }
+    expect(observation.mutations).toEqual([
+        { method: 'POST', path: '/api/auth/logout' },
+        { method: 'POST', path: '/api/auth/login' },
+    ]);
+    expectNoExecution(observation, [
+        (request) => ['/api/auth/logout', '/api/auth/login'].includes(request.path),
+    ]);
+    console.log(
+        'DEVICE_RECORD_AUTH_GATE PASS: pending sample GET leaves demo false/rows0; GET401 ends session with no fixture auto-selection; real logout200 clears original cookie; next login and verified GET shows24; no device mutations/WS commands/external/downloads',
     );
 });
 
@@ -442,7 +874,7 @@ test('preview failures retry real empty GETs, old device responses are cancelled
             section: 'apps',
             root: apps,
             refresh: '获取应用列表',
-            empty: expectAppsEmpty,
+            initial: expectAppsDefault,
             rows: '.app-row',
         },
         {
@@ -450,7 +882,7 @@ test('preview failures retry real empty GETs, old device responses are cancelled
             section: 'password',
             root: records,
             refresh: '刷新',
-            empty: expectRecordsEmpty,
+            initial: expectRecordsDefault,
             rows: '.record-row',
         },
     ]) {
@@ -471,8 +903,10 @@ test('preview failures retry real empty GETs, old device responses are cancelled
         await expect(module.root(page).getByRole('alert')).toContainText(
             `DEMO-${module.section}-READ-FAILED`,
         );
+        await expect(module.root(page)).toHaveAttribute('data-demo', 'false');
+        await expect(module.root(page).locator(module.rows)).toHaveCount(0);
         await module.root(page).getByRole('button', { name: '重试预览', exact: true }).click();
-        await module.empty(page);
+        await module.initial(page);
         await page.route(
             `**${endpoint}`,
             (route) =>
@@ -490,9 +924,13 @@ test('preview failures retry real empty GETs, old device responses are cancelled
         await module.root(page).getByRole('button', { name: module.refresh, exact: true }).click();
         await expect(module.root(page)).toHaveAttribute('data-state', 'error');
         await expect(module.root(page).locator(module.rows)).toHaveCount(0);
+        await expect(module.root(page)).toHaveAttribute('data-demo', 'false');
+        await expect(
+            module.root(page).getByRole('button', { name: '测试数据', exact: true }),
+        ).toBeDisabled();
         await expect(module.root(page)).not.toContainText('DEMO-SHOULD-NOT-RENDER');
         await module.root(page).getByRole('button', { name: '重试预览', exact: true }).click();
-        await module.empty(page);
+        await module.initial(page);
         let release;
         let started = 0;
         const gate = new Promise((resolve) => {
@@ -512,6 +950,8 @@ test('preview failures retry real empty GETs, old device responses are cancelled
                 .click();
             await expect.poll(() => started).toBe(1);
             await expect(module.root(page)).toHaveAttribute('aria-busy', 'true');
+            await expect(module.root(page)).toHaveAttribute('data-demo', 'false');
+            await expect(module.root(page).locator(module.rows)).toHaveCount(0);
             await expect(
                 module.root(page).getByRole('button', { name: module.refresh, exact: true }),
             ).toBeDisabled();
@@ -520,7 +960,7 @@ test('preview failures retry real empty GETs, old device responses are cancelled
             await expect(module.root(page)).toHaveCount(0);
             await openDetail(page, 2);
             await choose(page, module.label);
-            await module.empty(page);
+            await module.initial(page);
             release();
             await page.waitForTimeout(100);
             await expect(module.root(page)).not.toContainText(`DEMO-LATE-${module.section}`);
@@ -558,8 +998,9 @@ test('preview failures retry real empty GETs, old device responses are cancelled
         await page.unroute(`**${memoEndpoint}`);
     }
     await choose(page, '密码记录');
-    await expectRecordsEmpty(page);
+    await expectRecordsDefault(page);
     await records(page).getByRole('button', { name: '测试数据', exact: true }).click();
+    await expectRecordsEmpty(page);
     await recordKeyword(page).fill('DEMO-ACCOUNT-LOCAL');
     await choose(page, '备忘录');
     await expect(memos(page)).toHaveAttribute('aria-busy', 'false');
@@ -576,9 +1017,9 @@ test('preview failures retry real empty GETs, old device responses are cancelled
     await expect(memos(page).locator('.memos-editor')).toHaveCount(0);
     await expect(memos(page)).not.toContainText('DEMO-UNSAVED');
     await choose(page, '应用列表');
-    await expectAppsEmpty(page);
+    await expectAppsDefault(page);
     await choose(page, '密码记录');
-    await expectRecordsEmpty(page);
+    await expectRecordsDefault(page);
     expect(observation.mutations).toEqual([
         { method: 'POST', path: '/api/auth/logout' },
         { method: 'POST', path: '/api/auth/login' },
@@ -586,7 +1027,7 @@ test('preview failures retry real empty GETs, old device responses are cancelled
     expect(await businessState(page)).toEqual(before);
     expectNoExecution(observation, [(request) => request.path.startsWith('/api/auth/')]);
     console.log(
-        'DEVICE_MODULE_CANCEL PASS: apps/records GET500 retry200; wrong-device/nonempty response rejected; apps/records/memos pending reads aborted and stale results absent on next device; logout-login clears demo/filters/unsaved memo; only explicit auth POSTs, no device mutations/WS commands/external/downloads',
+        'DEVICE_MODULE_CANCEL PASS: apps/records GET500 retry200; wrong-device/nonempty response rejected; apps/records/memos pending reads aborted and stale results absent on next device; logout-login recomputes sample default and clears prior off choice/filters/unsaved memo; only explicit auth POSTs, no device mutations/WS commands/external/downloads',
     );
 });
 
@@ -637,7 +1078,9 @@ test('detail memo panel reuses real scoped CRUD, four labels and 500-character v
     await expect(memos(page).getByRole('alert')).toContainText('备忘录响应格式不符，请重试。');
     await memos(page).getByRole('button', { name: '重试备忘录', exact: true }).click();
     await expect(memos(page).locator('.memos-empty')).toBeVisible();
-    await expect(memos(page).getByRole('button', { name: '测试数据', exact: true })).toHaveCount(0);
+    await expect(
+        memos(page).getByRole('button', { name: '测试数据', exact: true }),
+    ).toHaveAttribute('aria-pressed', 'false');
     await memos(page).getByRole('button', { name: '＋ 添加', exact: true }).click();
     const content = memos(page).getByRole('textbox', { name: '备忘内容', exact: true });
     await expect(content).toHaveAttribute('maxlength', '500');
@@ -763,7 +1206,9 @@ async function expectCompactRecords(page, theme, width, expectedMetadata, observ
     const summary = metadata.locator(':scope > summary');
     await expect(form.locator('.record-preview-status')).toHaveCount(1);
     await expect(form.locator('.record-demo-notice')).toContainText('合成测试数据 · 非设备记录');
-    await expect(form.locator('.record-count')).toHaveText('共 8 条记录');
+    await expect(form.locator('.record-count')).toHaveText(
+        `共 ${recordsFixture.records.length} 条记录`,
+    );
     await expect(records(page).locator(':scope > .record-preview-status')).toHaveCount(0);
     await expect(metadata).not.toHaveAttribute('open');
     await expect(metadata.locator('table')).not.toBeVisible();
@@ -786,11 +1231,14 @@ async function expectCompactRecords(page, theme, width, expectedMetadata, observ
             const box = control.getBoundingClientRect();
             return { x: box.x, y: box.y, width: box.width, height: box.height };
         });
-        const labels = ['ui-event', 'state', 'sample'].map((type) => {
+        const labels = ['app', 'keyboard', 'pin'].map((type) => {
             const label = element.querySelector(`.record-type-label[data-type="${type}"]`);
             const style = getComputedStyle(label);
             return {
                 type,
+                text: label.textContent.trim(),
+                fontSize: style.fontSize,
+                fontWeight: style.fontWeight,
                 background: style.backgroundColor,
                 color: style.color,
                 radius: Number.parseFloat(style.borderRadius),
@@ -838,21 +1286,32 @@ async function expectCompactRecords(page, theme, width, expectedMetadata, observ
         expect(cell.widthPercent).toBeCloseTo([9, 42, 15, 34][index], 1);
         expect(cell.height).toBe(34);
     }
-    expect(metrics.rows).toHaveLength(8);
+    expect(metrics.rows).toHaveLength(recordsFixture.records.length);
     expect(metrics.rows.every((row) => row.height === 34 && row.columns === 4)).toBe(true);
     expect(metrics.localOverflow).toBe(false);
-    const [ordinary, amber, purple] = metrics.labels;
+    const [amber, ordinary, blue] = metrics.labels;
+    expect(metrics.labels.map((label) => label.text)).toEqual(['APP', '键盘', 'PIN']);
     expect(ordinary.background).toBe('rgba(0, 0, 0, 0)');
-    for (const label of [amber, purple]) {
+    expect(ordinary.radius).toBe(0);
+    expect(ordinary.fontSize).toBe('11px');
+    expect(ordinary.fontWeight).toBe('600');
+    for (const label of [amber, blue]) {
+        expect(label.fontSize).toBe('10px');
+        expect(label.fontWeight).toBe('500');
         expect(label.background).not.toBe('rgba(0, 0, 0, 0)');
         expect(label.radius).toBeGreaterThanOrEqual(8);
         expect(label.background).not.toBe(label.color);
     }
-    expect(amber.background).not.toBe(purple.background);
-    expect([amber.background, amber.color, purple.background, purple.color]).toEqual(
+    expect(amber.background).not.toBe(blue.background);
+    expect([amber.background, amber.color, blue.background, blue.color]).toEqual(
         theme === 'dark'
-            ? ['rgb(62, 52, 34)', 'rgb(239, 189, 100)', 'rgb(52, 44, 73)', 'rgb(194, 168, 245)']
-            : ['rgb(255, 249, 233)', 'rgb(154, 103, 0)', 'rgb(243, 239, 255)', 'rgb(134, 89, 216)'],
+            ? ['rgb(62, 52, 34)', 'rgb(239, 189, 100)', 'rgb(40, 52, 81)', 'rgb(173, 185, 255)']
+            : [
+                  'rgb(255, 249, 233)',
+                  'rgb(245, 158, 11)',
+                  'rgb(238, 241, 255)',
+                  'rgb(83, 102, 255)',
+              ],
     );
     await expect(records(page).getByRole('button', { name: /解锁|捕获|密码提交/ })).toHaveCount(0);
 
@@ -952,8 +1411,8 @@ test('detail modules retain compact desktop columns, keyboard controls and exact
             await page.setViewportSize({ width, height: 900 });
             await openDetail(page);
             for (const module of [
-                { label: '应用列表', root: apps, empty: expectAppsEmpty },
-                { label: '密码记录', root: records, empty: expectRecordsEmpty },
+                { label: '应用列表', root: apps, empty: expectAppsDefault },
+                { label: '密码记录', root: records, empty: expectRecordsDefault },
                 { label: '备忘录', root: memos },
             ]) {
                 await navigation(page)
@@ -963,11 +1422,15 @@ test('detail modules retain compact desktop columns, keyboard controls and exact
                 await expect(module.root(page)).toHaveAttribute('aria-busy', 'false');
                 if (module.empty) {
                     await module.empty(page);
-                    await module
-                        .root(page)
-                        .getByRole('button', { name: '测试数据', exact: true })
-                        .focus();
-                    await page.keyboard.press('Space');
+                    if (module.label === '应用列表') {
+                        await module
+                            .root(page)
+                            .getByRole('button', { name: '测试数据', exact: true })
+                            .focus();
+                        await page.keyboard.press('Space');
+                        await expectAppsEmpty(page);
+                        await page.keyboard.press('Space');
+                    }
                     await expect(module.root(page)).toHaveAttribute('data-demo', 'true');
                     if (theme === 'dark' && module.label === '应用列表')
                         await expect(apps(page).locator('.apps-list').first()).toHaveCSS(
@@ -1040,6 +1503,6 @@ test('detail modules retain compact desktop columns, keyboard controls and exact
     expect(await businessState(page)).toEqual(before);
     expectNoExecution(observation);
     console.log(
-        'DEVICE_MODULE_GEOMETRY PASS: apps/records/memos light-dark1440/1280/800; record filters160/90/165/52 gap8/height29/status inline/table gap10; four columns9/42/15/34% and8 synthetic rows34; ui-event plain/state amber/sample purple fixture type labels; default folded transparent metadata/Enter-Space/five attributes preserved; keyboard Tab order/keyword Enter/2px focus; record800 scroll360 with fixed left and176 right; top44/left110/right176/min1280; dark canvas20,25,34/apps-memo31,41,56/recordheader34,45,64; no device mutations/WS commands/external/downloads',
+        'DEVICE_MODULE_GEOMETRY PASS: apps/records/memos light-dark1440/1280/800; record filters160/90/165/52 gap8/height29/status inline/table gap10; four columns9/42/15/34% and24 synthetic rows34; keyboard plain600/APP amber500/PIN blue500 fixture type labels; default folded transparent metadata/Enter-Space/five attributes preserved; keyboard Tab order/keyword Enter/2px focus; record800 scroll360 with fixed left and176 right; top44/left110/right176/min1280; dark canvas20,25,34/apps-memo31,41,56/recordheader34,45,64; no device mutations/WS commands/external/downloads',
     );
 });

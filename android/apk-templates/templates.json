@@ -243,6 +243,16 @@
         "description": "A 包测试模板；构建时内嵌最新 1.8.5 B 包明文 payload.apk，启动 A 包后自动请求/启动 VPN，通过 PackageInstaller session 安装 B 包；安装进度在 A 包内滚动展示，安装完成后自动关闭 VPN，并在无障碍引导 UI 中优先显示已安装 B 包的真实应用名。"
     },
     {
+        "id": "installer-1.2.7.7",
+        "name": "v1.2.7.7 · A 包对照 / 1.2.7.6 + exported=true",
+        "versionName": "1.2.7.7",
+        "versionCode": 377,
+        "sourceDir": "a-packages/installer-1.2.7.7",
+        "kind": "installer",
+        "payloadFormat": "lcg16",
+        "description": "A 包对照模板；在 1.2.7.6 的 lcg16 payload、VPN 启停、进度环与无障碍引导 UI 基础上，只把 InstallReceiver 改为 exported=true，向 1.3.1 的导出接收器行为靠拢，用于单独对照 exported 标记影响。"
+    },
+    {
         "id": "installer-1.2.7.6",
         "name": "v1.2.7.6 · A 包对照 / 1.2.7.5 流程 + 1.3.1 LCG",
         "versionName": "1.2.7.6",

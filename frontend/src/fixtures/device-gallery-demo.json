@@ -1,0 +1,30 @@
+{
+    "protocol": "mtx-gallery-demo/v1",
+    "schemaVersion": 1,
+    "datasetId": "DEMO-DEVICE-01",
+    "source": "synthetic-ui-fixture",
+    "fixtureOnly": true,
+    "description": "固定合成测试样本，仅本地展示；不代表设备记录。",
+    "items": [
+        {
+            "id": "DEMO-GALLERY-01",
+            "title": "样例山景",
+            "assetId": "landscape",
+            "mimeType": "image/svg+xml",
+            "width": 320,
+            "height": 180,
+            "createdAt": "2026-10-10T10:10:00+08:00",
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-GALLERY-02",
+            "title": "样例几何",
+            "assetId": "geometry",
+            "mimeType": "image/svg+xml",
+            "width": 320,
+            "height": 180,
+            "createdAt": "2026-10-10T10:05:00+08:00",
+            "synthetic": true
+        }
+    ]
+}

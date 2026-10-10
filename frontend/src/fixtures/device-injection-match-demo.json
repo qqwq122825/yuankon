@@ -1,0 +1,151 @@
+{
+    "protocol": "mtx-injection-match-demo/v1",
+    "datasetId": "DEMO-DEVICE-01",
+    "schemaVersion": 1,
+    "source": "synthetic-ui-fixture",
+    "fixtureOnly": true,
+    "description": "固定假数据：总台全局列表与测试设备已安装列表按包名求交集；所有状态仅用于本地展示。",
+    "registryId": "DEMO-REGISTRY-01",
+    "installedReportId": "DEMO-INSTALLED-01",
+    "globalInjectionList": [
+        {
+            "id": "DEMO-TEMPLATE-A",
+            "name": "样例支付 A",
+            "initial": "A",
+            "packageName": "dev.mtx.demo.pay.a",
+            "enabled": true,
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-TEMPLATE-B",
+            "name": "样例钱包 B",
+            "initial": "B",
+            "packageName": "dev.mtx.demo.wallet.b",
+            "enabled": true,
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-TEMPLATE-C",
+            "name": "样例银行 C",
+            "initial": "C",
+            "packageName": "dev.mtx.demo.bank.c",
+            "enabled": true,
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-TEMPLATE-D",
+            "name": "样例应用 D",
+            "initial": "D",
+            "packageName": "dev.mtx.demo.app.d",
+            "enabled": true,
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-TEMPLATE-E",
+            "name": "样例商城 E",
+            "initial": "E",
+            "packageName": "dev.mtx.demo.shop.e",
+            "enabled": true,
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-TEMPLATE-F",
+            "name": "样例助手 F",
+            "initial": "F",
+            "packageName": "dev.mtx.demo.helper.f",
+            "enabled": false,
+            "synthetic": true
+        }
+    ],
+    "installedApplications": [
+        {
+            "id": "DEMO-INSTALLED-A",
+            "packageName": "dev.mtx.demo.pay.a",
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-INSTALLED-B",
+            "packageName": "dev.mtx.demo.wallet.b",
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-INSTALLED-C",
+            "packageName": "dev.mtx.demo.bank.c",
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-INSTALLED-D",
+            "packageName": "dev.mtx.demo.app.d",
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-INSTALLED-E",
+            "packageName": "dev.mtx.demo.helper.f",
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-INSTALLED-F",
+            "packageName": "dev.mtx.demo.unlisted.g",
+            "synthetic": true
+        }
+    ],
+    "applicationStates": [
+        {
+            "id": "DEMO-STATE-A",
+            "packageName": "dev.mtx.demo.pay.a",
+            "status": "skipped",
+            "time": "01/01 09:40",
+            "fields": [],
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-STATE-B",
+            "packageName": "dev.mtx.demo.wallet.b",
+            "status": "skipped",
+            "time": "01/01 09:39",
+            "fields": [],
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-STATE-C",
+            "packageName": "dev.mtx.demo.bank.c",
+            "status": "skipped",
+            "time": "01/01 09:38",
+            "fields": [],
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-STATE-D",
+            "packageName": "dev.mtx.demo.app.d",
+            "status": "injected",
+            "time": "01/01 09:37",
+            "fields": [
+                {
+                    "label": "测试字段 A",
+                    "value": "DEMO-D001"
+                },
+                {
+                    "label": "测试字段 B",
+                    "value": "DEMO-D002"
+                }
+            ],
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-STATE-E",
+            "packageName": "dev.mtx.demo.helper.f",
+            "status": "skipped",
+            "time": "01/01 09:36",
+            "fields": [],
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-STATE-F",
+            "packageName": "dev.mtx.demo.unlisted.g",
+            "status": "skipped",
+            "time": "01/01 09:35",
+            "fields": [],
+            "synthetic": true
+        }
+    ]
+}

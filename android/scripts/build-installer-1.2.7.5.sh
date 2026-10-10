@@ -26,9 +26,21 @@ mkdir -p "$WORK/source/app"
 exec > >(tee "$WORK/build.log") 2>&1
 echo "[$(date -u +%FT%TZ)] [BUILD] START role=a template=a-packages/installer-1.2.7.5"
 echo "[$(date -u +%FT%TZ)] [STAGE:preparing] copy registered A-package template and inject AES-GCM payload"
+APP_ID="${INSTALLER1275_APP_ID:-org.test.installer1275}"
+APP_LABEL="${INSTALLER1275_APP_LABEL:-Boundary Installer}"
 cp "$TEMPLATE/"*.gradle.kts "$TEMPLATE/gradle.properties" "$WORK/source/"
 cp "$TEMPLATE/app/"{build.gradle.kts,proguard-rules.pro} "$WORK/source/app/"
 cp -R "$TEMPLATE/app/src" "$WORK/source/app/src"
+python3 - "$WORK/source/app/src/main/res/values/strings.xml" "$APP_LABEL" <<'PY'
+from pathlib import Path
+import html
+import sys
+path = Path(sys.argv[1])
+label = html.escape(sys.argv[2], quote=False)
+text = path.read_text()
+text = text.replace('<string name="app_name" translatable="false">Boundary Installer</string>', f'<string name="app_name" translatable="false">{label}</string>')
+path.write_text(text)
+PY
 if [[ -n "${INSTALLER1275_PAYLOAD_APK:-}" ]]; then
   PAYLOAD_APK="$INSTALLER1275_PAYLOAD_APK"
   echo "[$(date -u +%FT%TZ)] [PAYLOAD] using provided B package: $PAYLOAD_APK"
@@ -97,7 +109,7 @@ echo "[$(date -u +%FT%TZ)] [COMMAND:GRADLE_ASSEMBLE_LINT] START"
 ARGS=(--offline)
 [[ "${INSTALLER1275_GRADLE_ONLINE:-0}" == 1 ]] && ARGS=(--refresh-dependencies)
 "$GRADLE" -p "$WORK/source" "${ARGS[@]}" --no-daemon --console=plain \
-  -PappId=org.test.installer1275 -PversionName=1.2.7.5 -PversionCode=375 assembleDebug lintDebug
+  -PappId="$APP_ID" -PversionName=1.2.7.5 -PversionCode=375 assembleDebug lintDebug
 echo "[$(date -u +%FT%TZ)] [COMMAND:GRADLE_ASSEMBLE_LINT] OK"
 cp "$WORK/source/app/build/outputs/apk/debug/app-debug.apk" "$WORK/installer-1.2.7.5.apk"
 echo "[$(date -u +%FT%TZ)] [STAGE:signing] verify APK development signature"
@@ -108,7 +120,7 @@ echo "[$(date -u +%FT%TZ)] [STAGE:aligning] verify 4-byte and 16 KiB page alignm
 echo "[$(date -u +%FT%TZ)] [COMMAND:ZIPALIGN_VERIFY] OK"
 echo "[$(date -u +%FT%TZ)] [STAGE:inspecting] read package, version and launcher metadata"
 "$TOOLS/aapt" dump badging "$WORK/installer-1.2.7.5.apk" | tee "$WORK/badging.txt"
-grep -q "package: name='org.test.installer1275'" "$WORK/badging.txt" || { echo 'APK identity mismatch: package' >&2; exit 1; }
+grep -q "package: name='$APP_ID'" "$WORK/badging.txt" || { echo "APK identity mismatch: package, expected $APP_ID" >&2; exit 1; }
 grep -q "versionName='1.2.7.5'" "$WORK/badging.txt" || { echo 'APK identity mismatch: versionName' >&2; exit 1; }
 grep -q "versionCode='375'" "$WORK/badging.txt" || { echo 'APK identity mismatch: versionCode' >&2; exit 1; }
 grep -q '^launchable-activity:' "$WORK/badging.txt" || { echo 'Visible package is missing its launcher activity' >&2; exit 1; }

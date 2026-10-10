@@ -2,6 +2,8 @@
 
 当前后端为 Node；实际 HTTP / WebSocket 契约见 [NODE_PROTOCOL.md](NODE_PROTOCOL.md)。
 
+Android 对接先读 [ANDROID_CLIENT_PROTOCOL.md](ANDROID_CLIENT_PROTOCOL.md)：区分现有无障碍、截图、点击链路，工作台接口与十一份合成展示数据；列出共用身份、不同载荷、接通状态及旧文档差异。
+
 已实现：本机独立设备 JWT、`/ws/device`（别名 `/ws/session`）状态上报、心跳和只读面板订阅。
 
 另已实现 [ScreenAgent 自动上线与实时最新帧](SCREENAGENT_INGRESS.md)：构建页把域名和 APK ID 写入 B 包；无障碍服务连接后使用 `/api/client/online` 按 APK ID 自动归属并取得内部设备 Token，不需要用户输入登记码。随后上传一张列表临时缩略图并保持 WS 心跳；网页点击实时查看后通过 [boundary-screenshot-v2](SCREENSHOT_COMMAND_PROTOCOL.md) 下发 `SCREENSHOT_NOW`，B 包在 12 秒续租期间串行更新最新帧。图片由 `/api/device/screenshot-session` + `/api/device/screenshot` 接收并暂存 5 分钟。

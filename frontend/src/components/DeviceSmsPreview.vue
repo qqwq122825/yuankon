@@ -1,46 +1,32 @@
 <script setup>
-import { computed, onUnmounted, ref, useId, watch } from 'vue';
-import { api } from '../api.js';
-import { session } from '../session.js';
+import { computed, ref, useId, watch } from 'vue';
+import { useDeviceDemoPreview } from '../composables/useDeviceDemoPreview.js';
 import fixture from '../fixtures/device-sms-demo.json';
+import { readSmsDemo } from '../fixtures/device-fixture-protocol.js';
 
 const props = defineProps({
     deviceId: Number,
+    deviceSource: { type: String, default: '' },
     observations: { type: Array, default: () => [] },
 });
 const searchId = useId();
-const demoMode = ref(false);
+const { demoMode, loading, error, ready, feedback, contextKey, toggleDemo, refresh } =
+    useDeviceDemoPreview(props, 'sms');
 const query = ref('');
-const loading = ref(false);
-const error = ref('');
-const feedback = ref('');
-const result = ref(null);
-let controller;
-let alive = true;
-let feedbackRevision = 0;
-const context = () =>
-    JSON.stringify([
-        props.deviceId,
-        session.user?.id,
-        session.user?.role,
-        session.user?.projectId,
-        session.user?.parentAccountId,
-    ]);
-const demoMessages =
-    fixture.schemaVersion === 1 &&
-    fixture.source === 'synthetic-ui-fixture' &&
-    fixture.fixtureOnly === true &&
-    Array.isArray(fixture.messages)
-        ? fixture.messages
-              .filter((item) => item?.synthetic === true)
-              .map((item) => ({
-                  id: String(item.id ?? ''),
-                  sender: String(item.sender ?? ''),
-                  address: String(item.address ?? ''),
-                  body: String(item.body ?? ''),
-                  receivedAt: String(item.receivedAt ?? ''),
-              }))
-        : [];
+const localFeedback = ref('');
+const avatarTones = ['green', 'purple', 'pink', 'orange', 'blue'];
+const displayError = computed(() =>
+    error.value === '预览状态不符合当前约定，请重试。'
+        ? '短信预览状态不符合当前约定，请重试。'
+        : error.value,
+);
+const demoData = readSmsDemo(fixture);
+const fixtureProtocol = demoData.valid ? fixture.protocol : undefined;
+const datasetId = demoData.valid ? fixture.datasetId : undefined;
+const demoMessages = demoData.messages.map((item, index) => ({
+    ...item,
+    avatarTone: avatarTones[index % avatarTones.length],
+}));
 const normalized = (value) => String(value).normalize('NFKC').toLowerCase();
 const messages = computed(() => {
     if (!demoMode.value) return [];
@@ -72,6 +58,7 @@ function messageTime(value) {
     if (!Number.isFinite(date.getTime())) return '—';
     return new Intl.DateTimeFormat('zh-CN', {
         timeZone: 'Asia/Shanghai',
+        year: 'numeric',
         month: '2-digit',
         day: '2-digit',
         hour: '2-digit',
@@ -80,86 +67,29 @@ function messageTime(value) {
         hour12: false,
     }).format(date);
 }
-function toggleDemo() {
-    feedbackRevision++;
-    demoMode.value = !demoMode.value;
+function changeDemo() {
     query.value = '';
-    feedback.value = '';
+    localFeedback.value = '';
+    toggleDemo();
 }
 function previewAuthorization() {
-    feedbackRevision++;
-    feedback.value = '自动授权尚未接入；未改变设备权限。';
+    localFeedback.value = '自动授权尚未接入；未改变设备权限。';
 }
-function reset() {
-    feedbackRevision++;
-    controller?.abort();
-    controller = undefined;
-    demoMode.value = false;
-    query.value = '';
-    loading.value = false;
-    error.value = '';
-    feedback.value = '';
-    result.value = null;
-}
-async function load(interactive = false) {
-    controller?.abort();
-    if (!alive || !session.user || !Number.isSafeInteger(props.deviceId) || props.deviceId <= 0)
-        return;
-    const request = (controller = new AbortController());
-    const key = context();
-    const deviceId = props.deviceId;
-    loading.value = true;
-    error.value = '';
-    result.value = null;
-    if (interactive) {
-        feedbackRevision++;
-        feedback.value = '';
-    }
-    const revision = feedbackRevision;
-    try {
-        const response = await api(`/api/devices/${deviceId}/ui-preview/sms`, {
-            signal: request.signal,
-        });
-        if (request.signal.aborted || !alive || key !== context() || controller !== request) return;
-        if (
-            response.mode !== 'preview' ||
-            response.implemented !== false ||
-            response.state !== 'not_connected' ||
-            response.deviceId !== deviceId ||
-            response.section?.id !== 'sms' ||
-            !Array.isArray(response.items) ||
-            response.items.length !== 0 ||
-            response.total !== 0
-        )
-            throw new Error('短信预览状态不符合当前约定，请重试。');
-        result.value = response;
-        if (interactive && feedbackRevision === revision)
-            feedback.value = '已读取预览状态；设备短信功能尚未接入。';
-    } catch (failure) {
-        if (
-            !request.signal.aborted &&
-            failure.name !== 'AbortError' &&
-            alive &&
-            key === context() &&
-            controller === request
-        )
-            error.value = failure.message;
-    } finally {
-        if (controller === request) loading.value = false;
-    }
+async function refreshSms() {
+    const key = contextKey.value;
+    localFeedback.value = '';
+    await refresh();
+    if (ready.value && key === contextKey.value && !localFeedback.value)
+        localFeedback.value = '已读取预览状态；设备短信功能尚未接入。';
 }
 watch(
-    context,
+    contextKey,
     () => {
-        reset();
-        load();
+        query.value = '';
+        localFeedback.value = '';
     },
-    { immediate: true, flush: 'sync' },
+    { flush: 'sync' },
 );
-onUnmounted(() => {
-    alive = false;
-    controller?.abort();
-});
 </script>
 
 <template>
@@ -168,12 +98,18 @@ onUnmounted(() => {
         aria-label="短信记录"
         :aria-busy="loading"
         :data-demo="demoMode"
-        :data-state="result?.state || (error ? 'error' : 'loading')"
+        :data-state="loading ? 'loading' : error ? 'error' : 'not_connected'"
+        :data-protocol="fixtureProtocol"
+        :data-dataset-id="datasetId"
     >
-        <header class="sms-preview-heading">
+        <header
+            class="sms-preview-heading"
+            :data-protocol="fixtureProtocol"
+            :data-dataset-id="datasetId"
+        >
             <h2 class="sms-heading-title">短信记录</h2>
             <div class="sms-preview-actions">
-                <button type="button" class="sms-button" :disabled="loading" @click="load(true)">
+                <button type="button" class="sms-button" :disabled="loading" @click="refreshSms">
                     <span aria-hidden="true">💬</span>获取短信
                 </button>
                 <button
@@ -187,7 +123,8 @@ onUnmounted(() => {
                     type="button"
                     class="sms-button sms-button-demo"
                     :aria-pressed="demoMode"
-                    @click="toggleDemo"
+                    :disabled="!ready"
+                    @click="changeDemo"
                 >
                     测试数据
                 </button>
@@ -203,36 +140,46 @@ onUnmounted(() => {
                 placeholder="搜索短信内容或号码"
                 autocomplete="off"
             />
-            <span class="sms-count">共 {{ messages.length }} 条短信</span>
         </div>
-        <p v-if="demoMode" class="sms-demo-notice">
-            <strong>合成测试数据 · 非设备短信</strong>
-            <span>匹配 {{ messages.length }} / 共 {{ demoMessages.length }} 条合成样例</span>
-        </p>
-        <p v-else class="sms-preview-caption">未接入 · 当前接口仅提供短信预览空态。</p>
+        <div class="sms-preview-summary">
+            <span class="sms-count">共 {{ messages.length }} 条短信</span>
+            <p v-if="demoMode" class="sms-demo-notice">
+                <strong>合成测试数据 · 非设备短信</strong>
+                <span>匹配 {{ messages.length }} / 共 {{ demoMessages.length }} 条合成样例</span>
+            </p>
+            <p v-else-if="ready" class="sms-preview-caption">未接入 · UI 预览</p>
+        </div>
         <p v-if="loading" class="sms-preview-loading" role="status">正在读取短信预览状态…</p>
         <div v-if="error" class="sms-preview-error" role="alert">
-            <span>{{ error }}</span>
-            <button type="button" class="sms-button" :disabled="loading" @click="load(true)">
+            <span>{{ displayError }}</span>
+            <button type="button" class="sms-button" :disabled="loading" @click="refreshSms">
                 重试预览
             </button>
         </div>
-        <p v-if="feedback" class="sms-preview-feedback" role="status">{{ feedback }}</p>
+        <p v-if="localFeedback || feedback" class="sms-preview-feedback" role="status">
+            {{ localFeedback || feedback }}
+        </p>
         <div class="sms-message-list">
             <article
                 v-for="message in messages"
                 :key="message.id"
                 class="sms-message"
                 :data-message-id="message.id"
+                :data-address="message.address"
+                :data-protocol="fixtureProtocol"
+                :data-dataset-id="datasetId"
                 data-synthetic="true"
             >
                 <header class="sms-message-heading">
-                    <span class="sms-message-avatar" aria-hidden="true">{{
-                        Array.from(message.sender.trim())[0] || 'S'
-                    }}</span>
+                    <span
+                        class="sms-message-avatar"
+                        :data-avatar-tone="message.avatarTone"
+                        aria-hidden="true"
+                        >{{ Array.from(message.sender.trim())[0] || 'S' }}</span
+                    >
                     <div class="sms-message-sender">
                         <strong>{{ message.sender }}</strong>
-                        <span>{{ message.address }}</span>
+                        <span class="sms-visually-hidden">{{ message.address }}</span>
                     </div>
                     <time class="sms-message-time" :datetime="message.receivedAt">{{
                         messageTime(message.receivedAt)
@@ -290,7 +237,8 @@ onUnmounted(() => {
     font-size: 16px;
     font-weight: 650;
 }
-.sms-heading-title {
+.sms-heading-title,
+.sms-visually-hidden {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -361,7 +309,8 @@ onUnmounted(() => {
     white-space: nowrap;
 }
 .sms-search {
-    width: min(424px, 100%);
+    width: 400px;
+    max-width: 100%;
     min-width: 0;
     min-height: 32px;
     flex: 0 0 auto;
@@ -382,12 +331,18 @@ onUnmounted(() => {
     font-size: 11px;
     white-space: nowrap;
 }
-.sms-demo-notice {
+.sms-preview-summary {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    justify-content: space-between;
     gap: 10px;
     margin: 10px 0;
+}
+.sms-demo-notice {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
     color: #5b6cb8;
     font-size: 10px;
 }
@@ -395,7 +350,7 @@ onUnmounted(() => {
     font-weight: 600;
 }
 .sms-preview-caption {
-    margin: 10px 0;
+    margin: 0;
     color: var(--lab-muted, #9299aa);
     font-size: 10px;
 }
@@ -430,8 +385,8 @@ onUnmounted(() => {
 .sms-message {
     min-width: 0;
     border: 1px solid var(--lab-line, #e5e8f0);
-    border-radius: 9px;
-    padding: 12px 14px;
+    border-radius: 11px;
+    padding: 14px 15px;
     background: #fff;
 }
 .sms-message-heading {
@@ -451,6 +406,21 @@ onUnmounted(() => {
     font-size: 13px;
     font-weight: 600;
 }
+.sms-message-avatar[data-avatar-tone='green'] {
+    background: #20b980;
+}
+.sms-message-avatar[data-avatar-tone='purple'] {
+    background: #8b61e8;
+}
+.sms-message-avatar[data-avatar-tone='pink'] {
+    background: #ee6fa0;
+}
+.sms-message-avatar[data-avatar-tone='orange'] {
+    background: #f0a13d;
+}
+.sms-message-avatar[data-avatar-tone='blue'] {
+    background: #4085ee;
+}
 .sms-message-sender {
     display: grid;
     min-width: 0;
@@ -460,7 +430,7 @@ onUnmounted(() => {
 .sms-message-sender strong {
     overflow-wrap: anywhere;
     font-size: 12px;
-    font-weight: 650;
+    font-weight: 600;
 }
 .sms-message-sender > span {
     overflow-wrap: anywhere;

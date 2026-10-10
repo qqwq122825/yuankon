@@ -6,9 +6,16 @@ import FloatingViewer from './FloatingViewer.vue';
 import DeviceLockEventDemo from './DeviceLockEventDemo.vue';
 import DeviceTemplateDemo from './DeviceTemplateDemo.vue';
 import demoFixture from '../fixtures/device-ui-demo.json';
+import { readLockDemo } from '../fixtures/device-fixture-protocol.js';
+import { UI_DEMO_PROTOCOL } from '../fixtures/device-demo-protocol.js';
+import injectionFixture from '../fixtures/device-injection-match-demo.json';
+import { matchInjectionDemo } from '../fixtures/injection-demo-match.js';
+import injectionSubmissionFixture from '../fixtures/device-injection-submission-demo.json';
+import { attachInjectionSubmissions } from '../fixtures/injection-submission-demo.js';
 
 const props = defineProps({
     deviceId: Number,
+    deviceSource: { type: String, default: '' },
     sectionId: String,
     sections: { type: Array, default: () => [] },
     tools: { type: Array, default: () => [] },
@@ -49,23 +56,41 @@ const allowedActions = new Set([
 const loading = ref(false);
 const error = ref('');
 const result = ref(null);
-const demoMode = ref(false);
+const requestedDemo = ref(false);
 const demoResetKey = ref(0);
 const demoFeedback = ref('');
+let demoInitialized = false;
 const demoCapable = computed(
     () => props.fixedSection && ['password', 'templates'].includes(props.sectionId),
 );
+const ready = computed(() => Boolean(session.user && result.value));
+const demoMode = computed(() => ready.value && demoCapable.value && requestedDemo.value);
+const lockData = readLockDemo(demoFixture);
+const lockEvents = lockData.lockEvents;
+const injectionMatch = attachInjectionSubmissions(
+    matchInjectionDemo(injectionFixture),
+    injectionSubmissionFixture,
+);
+const applications = injectionMatch.applications;
+const submittedCount = ref(injectionMatch.submittedCount);
 const demoMeta = computed(() =>
     props.sectionId === 'password'
-        ? `${demoFixture.lockEvents.length} 条`
-        : `已提交 ${demoFixture.applications.filter((item) => item.status === 'submitted').length}/${demoFixture.applications.length}`,
+        ? `${lockEvents.length} 条`
+        : `已提交 ${submittedCount.value}/${injectionMatch.matchedCount}`,
 );
+function syncSubmittedCount(count) {
+    if (Number.isSafeInteger(count) && count >= 0 && count <= applications.length)
+        submittedCount.value = count;
+}
 function toggleDemo() {
-    demoMode.value = !demoMode.value;
+    if (!ready.value || !demoCapable.value) return;
+    demoInitialized = true;
+    requestedDemo.value = !requestedDemo.value;
     demoFeedback.value = '';
     demoResetKey.value++;
 }
 function resetDemo() {
+    if (!demoMode.value) return;
     demoResetKey.value++;
     demoFeedback.value = '测试数据已恢复；未执行设备操作。';
 }
@@ -81,7 +106,9 @@ const selectorId = computed(() => `device-preview-section-${props.instanceKey}`)
 const context = () =>
     JSON.stringify([
         props.deviceId,
+        props.deviceSource,
         props.sectionId,
+        props.fixedSection,
         session.user?.id,
         session.user?.role,
         session.user?.projectId,
@@ -103,31 +130,61 @@ async function load() {
         return;
     const request = (controller = new AbortController());
     const key = context();
+    const deviceId = props.deviceId;
+    const sectionId = props.sectionId;
     loading.value = true;
     try {
-        const response = await api(`/api/devices/${props.deviceId}/ui-preview/${props.sectionId}`, {
+        const response = await api(`/api/devices/${deviceId}/ui-preview/${sectionId}`, {
             signal: request.signal,
         });
-        if (request.signal.aborted || !alive || key !== context()) return;
+        if (request.signal.aborted || !alive || key !== context() || controller !== request) return;
         if (
+            !response ||
+            typeof response !== 'object' ||
             response.mode !== 'preview' ||
             response.implemented !== false ||
-            response.state !== 'not_connected'
+            response.state !== 'not_connected' ||
+            response.deviceId !== deviceId ||
+            response.section?.id !== sectionId ||
+            !Array.isArray(response.items) ||
+            response.items.length !== 0 ||
+            response.total !== 0
         )
             throw new Error('预览接口状态不符合当前约定，请重试。');
         result.value = response;
+        if (!demoInitialized) {
+            requestedDemo.value = demoCapable.value && props.deviceSource === 'sample';
+            demoInitialized = true;
+        }
     } catch (failure) {
-        if (failure.name !== 'AbortError' && alive && key === context())
+        if (
+            !request.signal.aborted &&
+            failure.name !== 'AbortError' &&
+            alive &&
+            key === context() &&
+            controller === request
+        )
             error.value = failure.message;
     } finally {
         if (controller === request) loading.value = false;
     }
 }
-watch(context, load, { immediate: true });
-watch(context, () => {
-    demoMode.value = false;
-    demoFeedback.value = '';
-});
+watch(
+    context,
+    () => {
+        controller?.abort();
+        controller = undefined;
+        result.value = null;
+        requestedDemo.value = false;
+        demoInitialized = false;
+        loading.value = false;
+        error.value = '';
+        demoFeedback.value = '';
+        demoResetKey.value++;
+        load();
+    },
+    { immediate: true, flush: 'sync' },
+);
 onUnmounted(() => {
     alive = false;
     controller?.abort();
@@ -147,7 +204,7 @@ onUnmounted(() => {
     >
         <template v-if="demoCapable" #heading-title>
             <strong :class="{ 'device-demo-heading-quick': sectionId === 'templates' }">
-                <span aria-hidden="true">{{ sectionId === 'password' ? '🔐' : '✎' }}</span>
+                <span aria-hidden="true">{{ sectionId === 'password' ? '🔐' : '💉' }}</span>
                 {{ title }}
             </strong>
         </template>
@@ -157,6 +214,7 @@ onUnmounted(() => {
                 type="button"
                 class="btn device-demo-toggle"
                 :aria-pressed="demoMode"
+                :disabled="!ready"
                 @click="toggleDemo"
             >
                 测试数据
@@ -178,17 +236,33 @@ onUnmounted(() => {
             :data-instance="instanceKey"
             :data-demo="demoMode"
             :data-demo-capable="demoCapable"
+            :data-protocol="
+                sectionId === 'password'
+                    ? lockData.valid
+                        ? UI_DEMO_PROTOCOL
+                        : undefined
+                    : injectionMatch.valid
+                      ? injectionMatch.protocol
+                      : undefined
+            "
+            :data-dataset-id="
+                (sectionId === 'password' ? lockData.valid : injectionMatch.valid)
+                    ? demoFixture.datasetId
+                    : undefined
+            "
         >
             <template v-if="demoMode && demoCapable">
                 <DeviceLockEventDemo
                     v-if="sectionId === 'password'"
                     :key="demoResetKey"
-                    :records="demoFixture.lockEvents"
+                    :records="lockEvents"
                 />
                 <DeviceTemplateDemo
                     v-else
                     :key="demoResetKey"
-                    :applications="demoFixture.applications"
+                    :applications="applications"
+                    :match-summary="injectionMatch"
+                    @submitted-count="syncSubmittedCount"
                 />
                 <p v-if="demoFeedback" class="device-demo-feedback" role="status">
                     {{ demoFeedback }}
@@ -329,7 +403,7 @@ onUnmounted(() => {
 ) {
     min-height: 42px;
 }
-:global([data-bs-theme='dark']) .device-demo-toggle[aria-pressed='true'] {
+[data-bs-theme='dark'] .device-demo-toggle[aria-pressed='true'] {
     color: #b5c0ff;
     background: #293253;
     border-color: #6472c7;
@@ -427,12 +501,12 @@ onUnmounted(() => {
     font-size: 9px;
     line-height: 1.5;
 }
-:global([data-bs-theme='dark']) .device-preview-error,
-:global([data-bs-theme='dark']) .device-preview-feedback.error {
+[data-bs-theme='dark'] .device-preview-error,
+[data-bs-theme='dark'] .device-preview-feedback.error {
     background: #382733;
     color: #e7a9ad;
 }
-:global([data-bs-theme='dark']) .device-preview-feedback {
+[data-bs-theme='dark'] .device-preview-feedback {
     background: #24324c;
     color: #aebcf5;
 }

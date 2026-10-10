@@ -28,9 +28,14 @@ import DeviceSmsPreview from '../components/DeviceSmsPreview.vue';
 import DeviceAppsPreview from '../components/DeviceAppsPreview.vue';
 import DeviceGalleryPreview from '../components/DeviceGalleryPreview.vue';
 import DeviceRecordPreview from '../components/DeviceRecordPreview.vue';
+import DevicePaymentPreview from '../components/DevicePaymentPreview.vue';
+import DeviceInjectionRecordsPreview from '../components/DeviceInjectionRecordsPreview.vue';
 import DeviceMemosPanel from '../components/DeviceMemosPanel.vue';
 import DeviceRightTools from '../components/DeviceRightTools.vue';
 import { session } from '../session.js';
+import analysisFixture from '../fixtures/device-analysis-demo.json';
+import smsFixture from '../fixtures/device-sms-demo.json';
+import { readAnalysisDemo } from '../fixtures/device-fixture-protocol.js';
 const diagnosticSessionId = ref(null);
 let diagnosticOwnsViewer = false;
 const browserDiagnosticEvents = ref([]);
@@ -118,6 +123,16 @@ function rememberMoreTools(event) {
 }
 const previewCatalogLoading = ref(false);
 const previewCatalogError = ref('');
+const analysisDemoData = readAnalysisDemo(analysisFixture, smsFixture);
+const analysisRequestedDemo = ref(false);
+const analysisDemoMode = computed(() =>
+    Boolean(
+        analysisDemoData.valid &&
+        session.user &&
+        analysisPreview.value &&
+        analysisRequestedDemo.value,
+    ),
+);
 const analysisPreview = ref(null);
 const analysisLoading = ref(false);
 const analysisError = ref('');
@@ -134,8 +149,8 @@ const previewSections = [
     { id: 'apps', label: '应用列表' },
     { id: 'gallery', label: '相册图片' },
     { id: 'password', label: '密码记录' },
-    { id: 'payments', label: '支付场景' },
-    { id: 'templates', label: '模板' },
+    { id: 'payments', label: '支付密码' },
+    { id: 'templates', label: '注入记录' },
     { id: 'input-events', label: '事件状态' },
     { id: 'diagnostic', label: '诊断' },
 ];
@@ -179,6 +194,7 @@ const accountKey = () =>
     ]);
 const previewContext = () => JSON.stringify([accountKey(), route.fullPath, data.value?.device.id]);
 function resetPreview() {
+    analysisRequestedDemo.value = false;
     analysisController?.abort();
     analysisController = undefined;
     analysisPreview.value = null;
@@ -448,8 +464,8 @@ const primarySections = [
     { id: 'apps', label: '应用列表' },
     { id: 'gallery', label: '相册图片' },
     { id: 'password', label: '密码记录' },
-    { id: 'payments', label: '支付场景', preview: true },
-    { id: 'templates', label: '模板预览', preview: true },
+    { id: 'payments', label: '支付密码' },
+    { id: 'templates', label: '注入记录' },
     { id: 'memos', label: '备忘录' },
 ];
 const researchSections = sections.filter(([key]) => ['nodes', 'debug', 'note'].includes(key));
@@ -940,6 +956,7 @@ function openPrimary() {
     else openBoth();
 }
 function choose(value) {
+    if (value !== 'info') analysisRequestedDemo.value = false;
     closePreview(false);
     analysisController?.abort();
     analysisController = undefined;
@@ -1087,6 +1104,11 @@ function choose(value) {
                 </div>
                 <section
                     class="card detail-analysis-card"
+                    :data-demo="analysisDemoMode"
+                    :data-protocol="analysisDemoData.valid ? analysisFixture.protocol : undefined"
+                    :data-dataset-id="
+                        analysisDemoData.valid ? analysisFixture.datasetId : undefined
+                    "
                     aria-label="AI 金融分析"
                     :aria-busy="analysisLoading || previewActionBusy"
                     :data-state="analysisPreview?.state || (analysisError ? 'error' : 'loading')"
@@ -1094,6 +1116,20 @@ function choose(value) {
                     <div class="card-header">
                         <strong>AI 金融分析</strong>
                         <span class="summary-actions">
+                            <button
+                                type="button"
+                                class="btn"
+                                :disabled="
+                                    !analysisDemoData.valid ||
+                                    !analysisPreview ||
+                                    analysisLoading ||
+                                    previewActionBusy
+                                "
+                                :aria-pressed="analysisDemoMode"
+                                @click="analysisRequestedDemo = !analysisRequestedDemo"
+                            >
+                                测试数据
+                            </button>
                             <button
                                 type="button"
                                 class="btn btn-primary"
@@ -1112,7 +1148,19 @@ function choose(value) {
                             </button>
                         </span>
                     </div>
-                    <div class="detail-analysis-empty">
+                    <div v-if="analysisDemoMode" class="analysis-demo-list">
+                        <article
+                            v-for="item in analysisDemoData.items"
+                            :key="item.id"
+                            class="analysis-demo-item"
+                            :data-item-id="item.id"
+                        >
+                            <strong>{{ item.title }}</strong>
+                            <p>{{ item.summary }}</p>
+                            <small>{{ item.messageIds.join(' · ') }}</small>
+                        </article>
+                    </div>
+                    <div v-else class="detail-analysis-empty">
                         <span v-if="analysisLoading" role="status">正在读取分析状态…</span>
                         <span v-else-if="analysisError" role="alert">{{ analysisError }}</span>
                         <span v-else>无短信缓存</span>
@@ -1142,10 +1190,29 @@ function choose(value) {
             <DeviceSmsPreview
                 v-else-if="section === 'sms'"
                 :device-id="data.device.id"
+                :device-source="data.device.source"
                 :observations="data.snapshot?.payload.observations || []"
             />
-            <DeviceAppsPreview v-else-if="section === 'apps'" :device-id="data.device.id" />
-            <DeviceGalleryPreview v-else-if="section === 'gallery'" :device-id="data.device.id" />
+            <DeviceAppsPreview
+                v-else-if="section === 'apps'"
+                :device-id="data.device.id"
+                :device-source="data.device.source"
+            />
+            <DeviceGalleryPreview
+                v-else-if="section === 'gallery'"
+                :device-id="data.device.id"
+                :device-source="data.device.source"
+            />
+            <DevicePaymentPreview
+                v-else-if="section === 'payments'"
+                :device-id="data.device.id"
+                :device-source="data.device.source"
+            />
+            <DeviceInjectionRecordsPreview
+                v-else-if="section === 'templates'"
+                :device-id="data.device.id"
+                :device-source="data.device.source"
+            />
             <DeviceMemosPanel v-else-if="section === 'memos'" :device-id="data.device.id" />
             <template v-if="section === 'metadata' || section === 'note'"
                 ><details class="detail-research-info" :open="section === 'note'">
@@ -1266,6 +1333,7 @@ function choose(value) {
             ><template v-else-if="section === 'password'">
                 <DeviceRecordPreview
                     :device-id="data.device.id"
+                    :device-source="data.device.source"
                     :observations="data.snapshot?.payload.observations || []"
                 /> </template
             ><template v-else-if="section === 'debug'"
@@ -1619,6 +1687,7 @@ function choose(value) {
         v-if="previewSection && data"
         :key="previewSection"
         :device-id="data.device.id"
+        :device-source="data.device.source"
         :section-id="previewSection"
         :sections="previewSectionChoices"
         :tools="previewTools"
@@ -1636,11 +1705,13 @@ function choose(value) {
         v-if="passwordPreview && data"
         :key="`password-preview-${data.device.id}`"
         :device-id="data.device.id"
+        :device-source="data.device.source"
         section-id="password"
         :sections="previewSectionChoices"
         fixed-section
         instance-key="password"
-        panel-title="密码事件预览"
+        panel-title="锁屏密码"
+        :initial-position="{ right: 192, top: 62 }"
         :active="front === 'password-preview'"
         :reset-key="resetKey"
         @activate="front = 'password-preview'"
@@ -1650,11 +1721,12 @@ function choose(value) {
         v-if="quickPreview && data"
         :key="`quick-preview-${data.device.id}`"
         :device-id="data.device.id"
+        :device-source="data.device.source"
         section-id="templates"
         :sections="previewSectionChoices"
         fixed-section
         instance-key="quick"
-        panel-title="快捷预览"
+        panel-title="注入应用快捷"
         :initial-position="{ right: 192, top: 360 }"
         :active="front === 'quick-preview'"
         :reset-key="resetKey"

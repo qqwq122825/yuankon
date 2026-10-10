@@ -1,57 +1,50 @@
 <script setup>
-import { computed, onUnmounted, ref, useId, watch } from 'vue';
-import { api } from '../api.js';
-import { session } from '../session.js';
+import { computed, ref, useId, watch } from 'vue';
+import { useDeviceDemoPreview } from '../composables/useDeviceDemoPreview.js';
 import fixture from '../fixtures/device-records-demo.json';
+import catalogFixture from '../fixtures/device-apps-demo.json';
+import { readRecordDemo } from '../fixtures/device-fixture-protocol.js';
 
 const props = defineProps({
     deviceId: Number,
+    deviceSource: { type: String, default: '' },
     observations: { type: Array, default: () => [] },
 });
 const keywordId = useId();
-const demoMode = ref(false);
+const {
+    demoMode,
+    loading,
+    error,
+    ready,
+    feedback,
+    contextKey,
+    toggleDemo: toggleDemoPreview,
+    refresh,
+} = useDeviceDemoPreview(props, 'password');
 const appFilter = ref('all');
 const typeFilter = ref('all');
 const keyword = ref('');
 const appliedKeyword = ref('');
-const loading = ref(false);
-const error = ref('');
-const feedback = ref('');
-const result = ref(null);
+const localFeedback = ref('');
 const metadataOpen = ref(false);
+const displayError = computed(() =>
+    error.value === '预览状态不符合当前约定，请重试。'
+        ? '记录预览状态不符合当前约定，请重试。'
+        : error.value,
+);
 const types = [
-    { id: 'ui-event', label: '界面事件' },
-    { id: 'state', label: '状态事件' },
-    { id: 'sample', label: '样例标记' },
+    { id: 'app', label: 'APP' },
+    { id: 'keyboard', label: '键盘' },
+    { id: 'pin', label: 'PIN' },
 ];
 const typeLabels = new Map(types.map((type) => [type.id, type.label]));
-const demoRecords =
-    fixture.schemaVersion === 1 &&
-    fixture.source === 'synthetic-ui-fixture' &&
-    fixture.fixtureOnly === true &&
-    Array.isArray(fixture.records)
-        ? fixture.records
-              .filter(
-                  (item) =>
-                      item?.synthetic === true &&
-                      typeLabels.has(item.type) &&
-                      /^DEMO-RECORD-\d{2}$/.test(item.id) &&
-                      typeof item.content === 'string' &&
-                      /^DEMO-[A-Z0-9_-]+ · /.test(item.content) &&
-                      /^样例/.test(item.appName) &&
-                      /^dev\.mtx\.demo\.[a-z\d]+$/.test(item.packageName) &&
-                      Number.isFinite(Date.parse(item.occurredAt)),
-              )
-              .map((item) => ({
-                  id: item.id,
-                  type: item.type,
-                  typeLabel: typeLabels.get(item.type),
-                  content: item.content.slice(0, 512),
-                  appName: String(item.appName).slice(0, 64),
-                  packageName: String(item.packageName).slice(0, 128),
-                  occurredAt: String(item.occurredAt).slice(0, 48),
-              }))
-        : [];
+const demoData = readRecordDemo(fixture, catalogFixture);
+const fixtureProtocol = demoData.valid ? fixture.protocol : undefined;
+const datasetId = demoData.valid ? fixture.datasetId : undefined;
+const demoRecords = demoData.records.map((item) => ({
+    ...item,
+    typeLabel: typeLabels.get(item.type),
+}));
 const applications = computed(() =>
     demoMode.value
         ? Array.from(
@@ -107,17 +100,7 @@ function recordTime(value) {
         hour12: false,
     }).format(date);
 }
-let controller;
-let alive = true;
 let feedbackRevision = 0;
-const context = () =>
-    JSON.stringify([
-        props.deviceId,
-        session.user?.id,
-        session.user?.role,
-        session.user?.projectId,
-        session.user?.parentAccountId,
-    ]);
 function resetFilters() {
     appFilter.value = 'all';
     typeFilter.value = 'all';
@@ -125,89 +108,36 @@ function resetFilters() {
     appliedKeyword.value = '';
 }
 function toggleDemo() {
+    if (!ready.value) return;
     feedbackRevision++;
-    demoMode.value = !demoMode.value;
+    toggleDemoPreview();
     resetFilters();
-    feedback.value = '';
+    localFeedback.value = '';
 }
 function applyFilters() {
     feedbackRevision++;
     appliedKeyword.value = keyword.value;
-    feedback.value = '已应用本地筛选；未读取设备输入。';
+    localFeedback.value = '已应用本地筛选；未读取设备输入。';
 }
-function reset() {
+async function refreshRecords() {
+    const key = contextKey.value;
     feedbackRevision++;
-    controller?.abort();
-    controller = undefined;
-    demoMode.value = false;
-    resetFilters();
-    metadataOpen.value = false;
-    loading.value = false;
-    error.value = '';
-    feedback.value = '';
-    result.value = null;
-}
-async function load(interactive = false) {
-    controller?.abort();
-    if (!alive || !session.user || !Number.isSafeInteger(props.deviceId) || props.deviceId <= 0)
-        return;
-    const request = (controller = new AbortController());
-    const key = context();
-    const deviceId = props.deviceId;
-    loading.value = true;
-    error.value = '';
-    result.value = null;
-    if (interactive) {
-        feedbackRevision++;
-        feedback.value = '';
-    }
+    localFeedback.value = '';
     const revision = feedbackRevision;
-    try {
-        const response = await api(`/api/devices/${deviceId}/ui-preview/password`, {
-            signal: request.signal,
-        });
-        if (request.signal.aborted || !alive || key !== context() || controller !== request) return;
-        if (
-            !response ||
-            typeof response !== 'object' ||
-            response.mode !== 'preview' ||
-            response.implemented !== false ||
-            response.state !== 'not_connected' ||
-            response.deviceId !== deviceId ||
-            response.section?.id !== 'password' ||
-            !Array.isArray(response.items) ||
-            response.items.length !== 0 ||
-            response.total !== 0
-        )
-            throw new Error('记录预览状态不符合当前约定，请重试。');
-        result.value = response;
-        if (interactive && revision === feedbackRevision)
-            feedback.value = '已读取预览状态；设备记录功能尚未接入。';
-    } catch (failure) {
-        if (
-            !request.signal.aborted &&
-            failure.name !== 'AbortError' &&
-            alive &&
-            key === context() &&
-            controller === request
-        )
-            error.value = failure.message;
-    } finally {
-        if (controller === request) loading.value = false;
-    }
+    await refresh();
+    if (ready.value && key === contextKey.value && revision === feedbackRevision)
+        localFeedback.value = '已读取预览状态；设备记录功能尚未接入。';
 }
 watch(
-    context,
+    contextKey,
     () => {
-        reset();
-        load();
+        feedbackRevision++;
+        resetFilters();
+        metadataOpen.value = false;
+        localFeedback.value = '';
     },
-    { immediate: true, flush: 'sync' },
+    { flush: 'sync' },
 );
-onUnmounted(() => {
-    alive = false;
-    controller?.abort();
-});
 </script>
 
 <template>
@@ -216,10 +146,18 @@ onUnmounted(() => {
         aria-label="密码记录"
         :aria-busy="loading"
         :data-demo="demoMode"
-        :data-state="error ? 'error' : loading ? 'loading' : result?.state || 'not_connected'"
+        :data-state="loading ? 'loading' : error ? 'error' : 'not_connected'"
+        :data-protocol="fixtureProtocol"
+        :data-dataset-id="datasetId"
     >
         <h2 class="record-heading-title">密码记录</h2>
-        <form class="record-filters" aria-label="记录筛选" @submit.prevent="applyFilters">
+        <form
+            class="record-filters"
+            aria-label="记录筛选"
+            :data-protocol="fixtureProtocol"
+            :data-dataset-id="datasetId"
+            @submit.prevent="applyFilters"
+        >
             <select
                 v-model="appFilter"
                 class="record-app-filter"
@@ -264,13 +202,19 @@ onUnmounted(() => {
                 >
             </div>
             <div class="record-preview-actions">
-                <button type="button" class="record-button" :disabled="loading" @click="load(true)">
+                <button
+                    type="button"
+                    class="record-button"
+                    :disabled="loading"
+                    @click="refreshRecords"
+                >
                     刷新
                 </button>
                 <button
                     type="button"
                     class="record-button record-demo-button"
                     :aria-pressed="demoMode"
+                    :disabled="!ready"
                     @click="toggleDemo"
                 >
                     测试数据
@@ -279,12 +223,14 @@ onUnmounted(() => {
         </form>
         <p v-if="loading" class="record-preview-loading" role="status">正在读取记录预览状态…</p>
         <div v-if="error" class="record-preview-error" role="alert">
-            <span>{{ error }}</span>
-            <button type="button" class="record-button" :disabled="loading" @click="load(true)">
+            <span>{{ displayError }}</span>
+            <button type="button" class="record-button" :disabled="loading" @click="refreshRecords">
                 重试预览
             </button>
         </div>
-        <p v-if="feedback" class="record-preview-feedback" role="status">{{ feedback }}</p>
+        <p v-if="localFeedback || feedback" class="record-preview-feedback" role="status">
+            {{ localFeedback || feedback }}
+        </p>
         <table class="record-table">
             <colgroup>
                 <col class="record-type-column" />
@@ -306,6 +252,9 @@ onUnmounted(() => {
                     :key="record.id"
                     class="record-row"
                     :data-record-id="record.id"
+                    :data-package="record.packageName"
+                    :data-protocol="fixtureProtocol"
+                    :data-dataset-id="datasetId"
                     data-synthetic="true"
                 >
                     <td class="record-type">
@@ -524,8 +473,8 @@ onUnmounted(() => {
 .record-type {
     font-weight: 600;
 }
-.record-type-label[data-type='state'],
-.record-type-label[data-type='sample'] {
+.record-type-label[data-type='app'],
+.record-type-label[data-type='pin'] {
     display: inline-block;
     border-radius: 10px;
     padding: 1px 7px;
@@ -533,13 +482,13 @@ onUnmounted(() => {
     font-weight: 500;
     line-height: 14px;
 }
-.record-type-label[data-type='state'] {
+.record-type-label[data-type='app'] {
     background: #fff9e9;
-    color: #9a6700;
+    color: #f59e0b;
 }
-.record-type-label[data-type='sample'] {
-    background: #f3efff;
-    color: #8659d8;
+.record-type-label[data-type='pin'] {
+    background: #eef1ff;
+    color: #5366ff;
 }
 .record-content {
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -600,13 +549,13 @@ onUnmounted(() => {
 [data-bs-theme='dark'] .record-metadata[open] {
     background: #1f2938;
 }
-[data-bs-theme='dark'] .record-type-label[data-type='state'] {
+[data-bs-theme='dark'] .record-type-label[data-type='app'] {
     background: #3e3422;
     color: #efbd64;
 }
-[data-bs-theme='dark'] .record-type-label[data-type='sample'] {
-    background: #342c49;
-    color: #c2a8f5;
+[data-bs-theme='dark'] .record-type-label[data-type='pin'] {
+    background: #283451;
+    color: #adb9ff;
 }
 [data-bs-theme='dark'] .record-table th {
     background: #222d40;

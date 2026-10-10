@@ -191,6 +191,15 @@ test('preview catalogue is fixed, labelled as unimplemented, and contains no dev
         expectedSections,
     );
     assert.deepEqual(
+        response.body.sections
+            .filter(({ id }) => ['payments', 'templates'].includes(id))
+            .map(({ id, label }) => ({ id, label })),
+        [
+            { id: 'payments', label: '支付密码' },
+            { id: 'templates', label: '注入记录' },
+        ],
+    );
+    assert.deepEqual(
         response.body.tools.map(({ id }) => id),
         expectedActions,
     );

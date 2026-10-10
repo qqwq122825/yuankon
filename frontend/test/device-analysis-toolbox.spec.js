@@ -192,9 +192,13 @@ test('device information shows the empty AI card, preserves research metadata an
     ]) {
         await page.locator('.device-topbar').getByRole('checkbox', { name, exact: true }).check();
         await expect(fixedPanel(page, instance)).toHaveAttribute('aria-busy', 'false');
-        await fixedWindow(page, instance)
-            .getByRole('button', { name: '测试数据', exact: true })
-            .click();
+        const demo = fixedWindow(page, instance).getByRole('button', {
+            name: '测试数据',
+            exact: true,
+        });
+        if ((await demo.getAttribute('aria-pressed')) !== 'true') await demo.click();
+        await expect(demo).toHaveAttribute('aria-pressed', 'true');
+        await expect(fixedPanel(page, instance)).toHaveAttribute('data-demo', 'true');
         await expect(fixedPanel(page, instance)).toContainText('合成测试数据 · 非设备记录');
         await expect(
             fixedWindow(page, instance).getByRole('button', { name: /下载|导出/ }),

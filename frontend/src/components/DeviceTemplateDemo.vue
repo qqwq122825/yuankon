@@ -1,13 +1,105 @@
 <script setup>
-import { ref, useId, watch } from 'vue';
+import { computed, ref, useId, watch } from 'vue';
+import { INJECTION_DEMO_PROTOCOL } from '../fixtures/injection-demo-match.js';
+import {
+    INJECTION_SUBMISSION_DEMO_PROTOCOL,
+    validInjectionSubmission,
+} from '../fixtures/injection-submission-demo.js';
 
 const props = defineProps({
     applications: { type: Array, default: () => [] },
+    matchSummary: { type: Object, default: () => ({}) },
 });
+const emit = defineEmits(['submitted-count']);
 const instanceId = useId();
 const applications = ref([]);
 const feedback = ref('');
+const submittedCount = computed(
+    () => applications.value.filter((item) => item.status === 'submitted').length,
+);
 let originals = [];
+const matchSummary = computed(() => {
+    const summary = props.matchSummary;
+    return summary?.protocol === INJECTION_DEMO_PROTOCOL &&
+        [summary.registryCount, summary.installedCount, summary.matchedCount].every(
+            (count) => Number.isSafeInteger(count) && count >= 0,
+        ) &&
+        summary.matchedCount === applications.value.length &&
+        summary.matchedCount <= summary.registryCount &&
+        summary.matchedCount <= summary.installedCount &&
+        (summary.submissionProtocol === undefined ||
+            (summary.submissionProtocol === INJECTION_SUBMISSION_DEMO_PROTOCOL &&
+                Number.isSafeInteger(summary.submittedCount) &&
+                summary.submittedCount >= 0 &&
+                summary.submittedCount <= summary.matchedCount))
+        ? summary
+        : null;
+});
+
+function validApplicationSubmission(item) {
+    return (
+        validInjectionSubmission(item.submission) &&
+        item.submission.applicationId === item.id &&
+        item.submission.packageName === item.packageName
+    );
+}
+
+function validApplication(item) {
+    return (
+        item?.synthetic === true &&
+        typeof item.id === 'string' &&
+        /^DEMO-[A-Z0-9_-]{1,64}$/.test(item.id) &&
+        item.id.length <= 64 &&
+        typeof item.name === 'string' &&
+        /^样例/.test(item.name) &&
+        item.name.length <= 60 &&
+        typeof item.packageName === 'string' &&
+        /^dev\.mtx\.demo\.[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*$/.test(item.packageName) &&
+        ['skipped', 'injected', 'submitted'].includes(item.status) &&
+        typeof item.skip === 'boolean' &&
+        (item.status === 'skipped') === item.skip &&
+        (item.submission == null || validApplicationSubmission(item)) &&
+        (item.status !== 'submitted' || validApplicationSubmission(item)) &&
+        Array.isArray(item.fields) &&
+        item.fields.length <= 2 &&
+        item.fields.every(
+            (field) =>
+                typeof field?.label === 'string' &&
+                /^测试字段 [AB]$/.test(field.label) &&
+                typeof field.value === 'string' &&
+                /^DEMO-[A-Z0-9_-]{1,64}$/.test(field.value),
+        )
+    );
+}
+
+function copySubmission(record) {
+    if (!record) return null;
+    return {
+        id: record.id,
+        applicationId: record.applicationId,
+        packageName: record.packageName,
+        status: record.status,
+        formType: record.formType,
+        submittedAt: record.submittedAt,
+        fields: record.fields.map((field) => ({
+            kind: field.kind,
+            label: field.label,
+            sampleValue: field.sampleValue,
+        })),
+        synthetic: true,
+    };
+}
+
+function submissionTime(record) {
+    const date = new Date(record.submittedAt);
+    const pad = (value) => String(value).padStart(2, '0');
+    return `${pad(date.getUTCMonth() + 1)}/${pad(date.getUTCDate())} ${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}:${pad(date.getUTCSeconds())}`;
+}
+
+function statusLabel(item) {
+    if (item.status === 'submitted') return '已提交 (示例)';
+    return item.status === 'skipped' ? '已跳过 (示例)' : '已注入 (示例)';
+}
 
 // Fixture state belongs to this component; no device record or parent object is changed.
 function copyApplication(item, index) {
@@ -16,13 +108,15 @@ function copyApplication(item, index) {
         name: String(item.name ?? `测试应用 ${index + 1}`),
         initial: String(item.initial ?? 'D').slice(0, 2),
         packageName: String(item.packageName ?? ''),
-        status: item.status === 'submitted' ? 'submitted' : 'ready',
+        status: item.status,
         time: String(item.time ?? '—'),
         fields: (Array.isArray(item.fields) ? item.fields : []).map((field) => ({
             label: String(field.label ?? '测试字段'),
             value: String(field.value ?? 'DEMO-EMPTY'),
         })),
         skip: Boolean(item.skip),
+        submission: copySubmission(item.submission),
+        synthetic: true,
         expanded: item.status === 'submitted',
     };
 }
@@ -39,30 +133,51 @@ function openApplication(item) {
     feedback.value = `已展开「${item.name}」的合成详情；未启动外部应用。`;
 }
 function changeSkip(item) {
+    item.status = item.skip ? 'skipped' : item.submission ? 'submitted' : 'injected';
     feedback.value = `「${item.name}」${item.skip ? '已跳过' : '已取消跳过'}本地示例；未下发设备指令。`;
 }
 watch(
     () => props.applications,
     (items) => {
-        originals = items.map(copyApplication);
+        originals = items.filter(validApplication).map(copyApplication);
         applications.value = originals.map(copyApplication);
         feedback.value = '';
     },
     { deep: true, immediate: true },
 );
+watch(submittedCount, (count) => emit('submitted-count', count), { immediate: true });
 defineExpose({ resetAll });
 </script>
 
 <template>
-    <section class="template-demo" aria-label="合成模板快捷预览">
-        <p class="template-demo-notice">合成测试数据 · 非设备记录</p>
+    <section
+        class="template-demo"
+        aria-label="合成模板快捷预览"
+        :data-protocol="matchSummary?.protocol"
+        :data-submission-protocol="matchSummary?.submissionProtocol"
+    >
+        <p class="template-demo-notice">
+            合成测试数据 · 非设备记录
+            <span v-if="matchSummary" class="template-demo-match-summary">
+                全局 {{ matchSummary.registryCount }} · 已安装 {{ matchSummary.installedCount }} ·
+                匹配 {{ matchSummary.matchedCount }}
+            </span>
+        </p>
         <div class="template-demo-body">
             <article
                 v-for="(item, index) in applications"
                 :key="item.id"
                 class="template-demo-card"
-                :class="{ 'is-submitted': item.status === 'submitted' }"
+                :class="{
+                    'is-skipped': item.status === 'skipped',
+                    'is-injected': item.status === 'injected',
+                    'is-submitted': item.status === 'submitted',
+                }"
                 :data-demo-app="item.id"
+                :data-package="item.packageName"
+                :data-status="item.status"
+                :data-submission-id="item.submission?.id"
+                data-synthetic="true"
             >
                 <div class="template-demo-app">
                     <span class="template-demo-icon" aria-hidden="true">{{ item.initial }}</span>
@@ -70,7 +185,7 @@ defineExpose({ resetAll });
                         <strong>{{ item.name }}</strong>
                         <div class="template-demo-state">
                             <span class="template-demo-badge">
-                                {{ item.status === 'submitted' ? '已提交 (示例)' : '就绪 (示例)' }}
+                                {{ statusLabel(item) }}
                             </span>
                             <time v-if="!item.expanded">{{ item.time }}</time>
                         </div>
@@ -109,12 +224,44 @@ defineExpose({ resetAll });
                     v-if="item.expanded"
                     :id="`${instanceId}-details-${index}`"
                     class="template-demo-details"
+                    :class="{ 'template-demo-submission-details': item.status === 'submitted' }"
+                    :aria-label="
+                        item.status === 'submitted'
+                            ? '注入内容（合成示例）'
+                            : '模板内容（合成示例）'
+                    "
+                    :data-submission="item.status === 'submitted'"
                 >
-                    <strong class="template-demo-details-title">模板内容 (示例)</strong>
+                    <strong class="template-demo-details-title">
+                        {{ item.status === 'submitted' ? '注入内容 (示例)' : '模板内容 (示例)' }}
+                    </strong>
                     <div class="template-demo-details-meta">
-                        <span>合成表单</span><time>{{ item.time }}</time>
+                        <span>合成表单</span>
+                        <time
+                            v-if="item.status === 'submitted'"
+                            class="template-demo-submission-time"
+                            :datetime="item.submission.submittedAt"
+                            >{{ submissionTime(item.submission) }}</time
+                        >
+                        <time v-else>{{ item.time }}</time>
                     </div>
-                    <dl class="template-demo-fields">
+                    <dl
+                        v-if="item.status === 'submitted'"
+                        class="template-demo-fields template-demo-submission-fields"
+                        aria-label="固定合成密码与 PIN 字段"
+                    >
+                        <div
+                            v-for="field in item.submission.fields"
+                            :key="field.kind"
+                            class="template-demo-submission-field"
+                            :data-kind="field.kind"
+                            :data-field-kind="field.kind"
+                        >
+                            <dt>{{ field.label }}：</dt>
+                            <dd class="template-demo-sample-value">{{ field.sampleValue }}</dd>
+                        </div>
+                    </dl>
+                    <dl v-else class="template-demo-fields">
                         <div v-for="(field, fieldIndex) in item.fields" :key="fieldIndex">
                             <dt>{{ field.label }}：</dt>
                             <dd>{{ field.value }}</dd>
@@ -123,12 +270,18 @@ defineExpose({ resetAll });
                     <p v-if="item.packageName" class="template-demo-package">
                         {{ item.packageName }}
                     </p>
-                    <p v-if="!item.fields.length" class="template-demo-empty-fields">
+                    <p class="template-demo-match-source">
+                        匹配来源：总台全局注入列表 ∩ 测试设备已安装应用
+                    </p>
+                    <p
+                        v-if="item.status !== 'submitted' && !item.fields.length"
+                        class="template-demo-empty-fields"
+                    >
                         此合成示例没有表单字段。
                     </p>
                 </div>
             </article>
-            <p v-if="!applications.length" class="template-demo-empty">暂无合成模板示例</p>
+            <p v-if="!applications.length" class="template-demo-empty">暂无匹配的合成应用</p>
         </div>
         <footer class="template-demo-footer">
             <p>跳过 / 打开 / 重置仅影响本地预览</p>
@@ -163,6 +316,11 @@ defineExpose({ resetAll });
     border-bottom: 1px solid var(--lab-line, #dfe3ec);
     color: var(--demo-muted);
     font-size: 9px;
+}
+.template-demo-match-summary {
+    display: block;
+    margin-top: 2px;
+    color: #707fb6;
 }
 .template-demo-body {
     display: grid;
@@ -236,8 +394,12 @@ defineExpose({ resetAll });
     font-size: 9px;
     line-height: 1.25;
 }
+.is-skipped .template-demo-badge {
+    background: var(--demo-icon-bg);
+    color: var(--lab-muted, #798294);
+}
 .is-submitted .template-demo-badge {
-    background: #e8fbf2;
+    background: var(--demo-inset-bg);
     color: var(--demo-green);
 }
 .template-demo-controls {
@@ -336,6 +498,7 @@ defineExpose({ resetAll });
     letter-spacing: 0.4px;
 }
 .template-demo-package,
+.template-demo-match-source,
 .template-demo-empty-fields {
     margin: 4px 0 0;
     overflow-wrap: anywhere;
@@ -367,7 +530,7 @@ defineExpose({ resetAll });
     color: var(--lab-muted, #798294);
     font-size: 9px;
 }
-:global([data-bs-theme='dark']) .template-demo {
+[data-bs-theme='dark'] .template-demo {
     --demo-green: #68dab2;
     --demo-violet: #b596ff;
     --demo-muted: #9faac0;
@@ -377,19 +540,26 @@ defineExpose({ resetAll });
     --demo-green-line: #31554a;
     --demo-icon-bg: #2c3648;
 }
-:global([data-bs-theme='dark']) .template-demo-badge {
+[data-bs-theme='dark'] .template-demo-badge {
     background: #293656;
     color: #94b1ff;
 }
-:global([data-bs-theme='dark']) .is-submitted .template-demo-badge {
-    background: #234438;
+[data-bs-theme='dark'] .is-skipped .template-demo-badge {
+    background: #2c3648;
+    color: var(--demo-muted);
+}
+[data-bs-theme='dark'] .is-submitted .template-demo-badge {
+    background: var(--demo-inset-bg);
     color: var(--demo-green);
 }
-:global([data-bs-theme='dark']) .template-demo-open {
+[data-bs-theme='dark'] .template-demo-match-summary {
+    color: #a2b1e8;
+}
+[data-bs-theme='dark'] .template-demo-open {
     border-color: #3b6255 !important;
     background: #254639;
 }
-:global([data-bs-theme='dark']) .template-demo-reset {
+[data-bs-theme='dark'] .template-demo-reset {
     border-color: #574676 !important;
     background: #352b4b;
 }

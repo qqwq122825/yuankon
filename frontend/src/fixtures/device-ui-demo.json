@@ -1,4 +1,6 @@
 {
+    "protocol": "mtx-ui-demo/v1",
+    "datasetId": "DEMO-DEVICE-01",
     "schemaVersion": 1,
     "source": "synthetic-ui-fixture",
     "fixtureOnly": true,
@@ -7,10 +9,12 @@
         {
             "id": "DEMO-EVENT-01",
             "category": "system",
-            "label": "锁类型",
-            "sampleValue": "DEMO-001",
+            "label": "系统PIN",
+            "sampleValue": "000000",
             "source": "dev.mtx.demo.system",
-            "time": "09:40:00"
+            "time": "09:40:00",
+            "synthetic": true,
+            "valueType": "pin"
         },
         {
             "id": "DEMO-EVENT-02",
@@ -19,7 +23,14 @@
             "sampleValue": "图案示例 B",
             "source": "dev.mtx.demo.system",
             "time": "09:39:00",
-            "pattern": [1, 2, 3, 6]
+            "pattern": [
+                1,
+                2,
+                3,
+                6
+            ],
+            "synthetic": true,
+            "valueType": "pattern"
         },
         {
             "id": "DEMO-EVENT-03",
@@ -28,15 +39,24 @@
             "sampleValue": "图案示例 C",
             "source": "dev.mtx.demo.system",
             "time": "09:38:00",
-            "pattern": [2, 5, 8, 9]
+            "pattern": [
+                2,
+                5,
+                8,
+                9
+            ],
+            "synthetic": true,
+            "valueType": "pattern"
         },
         {
             "id": "DEMO-EVENT-04",
             "category": "system",
             "label": "锁类型",
-            "sampleValue": "DEMO-004",
+            "sampleValue": "pattern",
             "source": "dev.mtx.demo.system",
-            "time": "09:37:00"
+            "time": "09:37:00",
+            "synthetic": true,
+            "valueType": "type"
         },
         {
             "id": "DEMO-EVENT-05",
@@ -45,7 +65,14 @@
             "sampleValue": "图案示例 E",
             "source": "dev.mtx.demo.system",
             "time": "09:36:00",
-            "pattern": [1, 2, 3, 6]
+            "pattern": [
+                1,
+                2,
+                3,
+                6
+            ],
+            "synthetic": true,
+            "valueType": "pattern"
         },
         {
             "id": "DEMO-EVENT-06",
@@ -54,7 +81,14 @@
             "sampleValue": "图案示例 F",
             "source": "dev.mtx.demo.system",
             "time": "09:35:00",
-            "pattern": [2, 5, 8, 9]
+            "pattern": [
+                2,
+                5,
+                8,
+                9
+            ],
+            "synthetic": true,
+            "valueType": "pattern"
         },
         {
             "id": "DEMO-EVENT-07",
@@ -62,7 +96,9 @@
             "label": "锁类型",
             "sampleValue": "DEMO-007",
             "source": "dev.mtx.demo.system",
-            "time": "09:34:00"
+            "time": "09:34:00",
+            "synthetic": true,
+            "valueType": "sample"
         },
         {
             "id": "DEMO-EVENT-08",
@@ -71,7 +107,14 @@
             "sampleValue": "图案示例 H",
             "source": "dev.mtx.demo.system",
             "time": "09:33:00",
-            "pattern": [1, 2, 3, 6]
+            "pattern": [
+                1,
+                2,
+                3,
+                6
+            ],
+            "synthetic": true,
+            "valueType": "pattern"
         },
         {
             "id": "DEMO-EVENT-09",
@@ -80,7 +123,14 @@
             "sampleValue": "图案示例 I",
             "source": "dev.mtx.demo.system",
             "time": "09:32:00",
-            "pattern": [2, 5, 8, 9]
+            "pattern": [
+                2,
+                5,
+                8,
+                9
+            ],
+            "synthetic": true,
+            "valueType": "pattern"
         },
         {
             "id": "DEMO-EVENT-10",
@@ -88,7 +138,9 @@
             "label": "锁类型",
             "sampleValue": "DEMO-010",
             "source": "dev.mtx.demo.system",
-            "time": "09:31:00"
+            "time": "09:31:00",
+            "synthetic": true,
+            "valueType": "sample"
         },
         {
             "id": "DEMO-EVENT-11",
@@ -97,7 +149,14 @@
             "sampleValue": "图案示例 K",
             "source": "dev.mtx.demo.system",
             "time": "09:30:00",
-            "pattern": [1, 2, 3, 6]
+            "pattern": [
+                1,
+                2,
+                3,
+                6
+            ],
+            "synthetic": true,
+            "valueType": "pattern"
         },
         {
             "id": "DEMO-EVENT-12",
@@ -106,41 +165,54 @@
             "sampleValue": "图案示例 L",
             "source": "dev.mtx.demo.system",
             "time": "09:29:00",
-            "pattern": [2, 5, 8, 9]
+            "pattern": [
+                2,
+                5,
+                8,
+                9
+            ],
+            "synthetic": true,
+            "valueType": "pattern"
         },
         {
             "id": "DEMO-EVENT-13",
             "category": "scenario",
-            "label": "场景样例",
+            "label": "假锁样例",
             "sampleValue": "DEMO-013",
             "source": "dev.mtx.demo.scene",
-            "time": "09:28:00"
+            "time": "09:28:00",
+            "synthetic": true,
+            "valueType": "sample"
         },
         {
             "id": "DEMO-EVENT-14",
             "category": "app",
-            "label": "APP样例",
-            "sampleValue": "图案示例 N",
+            "label": "APP密码",
+            "sampleValue": "111111",
             "source": "dev.mtx.demo.app1",
             "time": "09:27:00",
-            "pattern": [1, 2, 3, 6]
+            "synthetic": true,
+            "valueType": "pin"
         },
         {
             "id": "DEMO-EVENT-15",
             "category": "app",
-            "label": "APP样例",
-            "sampleValue": "图案示例 O",
+            "label": "APP密码",
+            "sampleValue": "222222",
             "source": "dev.mtx.demo.app2",
             "time": "09:26:00",
-            "pattern": [2, 5, 8, 9]
+            "synthetic": true,
+            "valueType": "pin"
         },
         {
             "id": "DEMO-EVENT-16",
             "category": "app",
-            "label": "APP样例",
-            "sampleValue": "DEMO-016",
+            "label": "APP密码",
+            "sampleValue": "333333",
             "source": "dev.mtx.demo.app3",
-            "time": "09:25:00"
+            "time": "09:25:00",
+            "synthetic": true,
+            "valueType": "pin"
         }
     ],
     "applications": [
