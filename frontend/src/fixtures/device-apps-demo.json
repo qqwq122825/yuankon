@@ -1,0 +1,80 @@
+{
+    "schemaVersion": 1,
+    "source": "synthetic-ui-fixture",
+    "fixtureOnly": true,
+    "description": "应用列表界面的固定合成测试数据；不是设备应用记录，不含第三方应用模板或执行指令。",
+    "applications": [
+        {
+            "id": "DEMO-APP-01",
+            "name": "示例星河笔记",
+            "packageName": "org.example.mtx.demo.notes",
+            "initial": "记",
+            "system": false,
+            "group": "常用应用",
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-APP-02",
+            "name": "示例云杉日历",
+            "packageName": "org.example.mtx.demo.calendar",
+            "initial": "历",
+            "system": false,
+            "group": "常用应用",
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-APP-03",
+            "name": "示例萤火相册",
+            "packageName": "org.example.mtx.demo.gallery",
+            "initial": "图",
+            "system": false,
+            "group": "常用应用",
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-APP-04",
+            "name": "示例石竹阅读",
+            "packageName": "org.example.mtx.demo.reader",
+            "initial": "读",
+            "system": false,
+            "group": "常用应用",
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-APP-05",
+            "name": "示例青禾时钟",
+            "packageName": "org.example.mtx.demo.clock",
+            "initial": "时",
+            "system": false,
+            "group": "常用应用",
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-APP-06",
+            "name": "示例北辰地图",
+            "packageName": "org.example.mtx.demo.map",
+            "initial": "图",
+            "system": false,
+            "group": "常用应用",
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-APP-07",
+            "name": "示例系统设置",
+            "packageName": "org.example.mtx.demo.system.settings",
+            "initial": "设",
+            "system": true,
+            "group": "系统应用",
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-APP-08",
+            "name": "示例系统桌面",
+            "packageName": "org.example.mtx.demo.system.launcher",
+            "initial": "桌",
+            "system": true,
+            "group": "系统应用",
+            "synthetic": true
+        }
+    ]
+}

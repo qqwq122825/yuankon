@@ -79,6 +79,13 @@ test('numeric device IDs, server sorting/search, memo titles and keyboard detail
     await page.keyboard.press('Enter');
     await expect(page).toHaveURL('/devices/12');
     await expect(page.locator('.device-system')).toContainText('12 · Android');
+    await page
+        .getByRole('navigation', { name: '设备内导航', exact: true })
+        .getByRole('button', { name: '备注', exact: true })
+        .click();
+    const researchSummary = page.locator('details.detail-research-info > summary');
+    await expect(researchSummary).toHaveText('设备研究信息');
+    await expect(page.locator('details.detail-research-info')).toHaveAttribute('open');
     const metadata = page.locator('.metadata-list');
     await expect(
         metadata

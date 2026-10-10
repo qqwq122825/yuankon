@@ -22,6 +22,15 @@ import { shouldResumeCapture } from '../capture-state.js';
 import FloatingViewer from '../components/FloatingViewer.vue';
 import NodeReader from '../components/NodeReader.vue';
 import DeviceScreenshot from '../components/DeviceScreenshot.vue';
+import DevicePreviewPanel from '../components/DevicePreviewPanel.vue';
+import DeviceToolboxPreview from '../components/DeviceToolboxPreview.vue';
+import DeviceSmsPreview from '../components/DeviceSmsPreview.vue';
+import DeviceAppsPreview from '../components/DeviceAppsPreview.vue';
+import DeviceGalleryPreview from '../components/DeviceGalleryPreview.vue';
+import DeviceRecordPreview from '../components/DeviceRecordPreview.vue';
+import DeviceMemosPanel from '../components/DeviceMemosPanel.vue';
+import DeviceRightTools from '../components/DeviceRightTools.vue';
+import { session } from '../session.js';
 const diagnosticSessionId = ref(null);
 let diagnosticOwnsViewer = false;
 const browserDiagnosticEvents = ref([]);
@@ -101,6 +110,291 @@ const route = useRoute(),
     debugBusy = ref(false),
     debugError = ref(''),
     tapPending = ref(false);
+const previewCatalog = ref(null);
+const moreToolsOpen = ref(false);
+let moreToolsDeviceId;
+function rememberMoreTools(event) {
+    if (event.currentTarget?.isConnected) moreToolsOpen.value = event.currentTarget.open;
+}
+const previewCatalogLoading = ref(false);
+const previewCatalogError = ref('');
+const analysisPreview = ref(null);
+const analysisLoading = ref(false);
+const analysisError = ref('');
+const previewSection = ref('');
+const passwordPreview = ref(false);
+const quickPreview = ref(false);
+const previewActionBusy = ref(false);
+const previewActionFeedback = ref('');
+const previewActionError = ref(false);
+const previewSections = [
+    { id: 'analysis', label: '分析' },
+    { id: 'tools', label: '工具箱' },
+    { id: 'sms', label: '短信记录' },
+    { id: 'apps', label: '应用列表' },
+    { id: 'gallery', label: '相册图片' },
+    { id: 'password', label: '密码记录' },
+    { id: 'payments', label: '支付场景' },
+    { id: 'templates', label: '模板' },
+    { id: 'input-events', label: '事件状态' },
+    { id: 'diagnostic', label: '诊断' },
+];
+const previewSectionIds = new Set(previewSections.map((item) => item.id));
+const previewActionIds = new Set([
+    'analyze-sample',
+    'screen-preview',
+    'camera-preview',
+    'permissions-preview',
+    'diagnostic-preview',
+    'export-preview',
+    'apps-preview',
+    'gallery-preview',
+    'refresh-preview',
+]);
+const previewSectionChoices = computed(
+    () =>
+        previewCatalog.value?.sections?.filter((item) => previewSectionIds.has(item.id)) ||
+        previewSections,
+);
+const previewTools = computed(
+    () => previewCatalog.value?.tools?.filter((item) => previewActionIds.has(item.id)) || [],
+);
+const previewToolGroups = [
+    { key: 'view', label: '画面与预览', tone: 'primary' },
+    { key: 'diagnostic', label: '状态与诊断', tone: 'muted' },
+    { key: 'data', label: '分析与模板', tone: 'mint' },
+];
+let analysisController;
+let previewCatalogController;
+let previewActionController;
+let previewOpener;
+const fixedPreviewOpeners = { password: null, quick: null };
+let detailAlive = true;
+const accountKey = () =>
+    JSON.stringify([
+        session.user?.id,
+        session.user?.role,
+        session.user?.projectId,
+        session.user?.parentAccountId,
+    ]);
+const previewContext = () => JSON.stringify([accountKey(), route.fullPath, data.value?.device.id]);
+function resetPreview() {
+    analysisController?.abort();
+    analysisController = undefined;
+    analysisPreview.value = null;
+    analysisLoading.value = false;
+    analysisError.value = '';
+    previewCatalogController?.abort();
+    previewActionController?.abort();
+    previewCatalogController = undefined;
+    previewActionController = undefined;
+    previewCatalog.value = null;
+    previewCatalogLoading.value = false;
+    previewCatalogError.value = '';
+    previewSection.value = '';
+    passwordPreview.value = false;
+    quickPreview.value = false;
+    previewActionBusy.value = false;
+    previewActionFeedback.value = '';
+    previewActionError.value = false;
+    previewOpener = undefined;
+    fixedPreviewOpeners.password = null;
+    fixedPreviewOpeners.quick = null;
+}
+async function loadPreviewCatalog() {
+    if (!detailAlive || !session.user || !data.value) return;
+    previewCatalogController?.abort();
+    const request = (previewCatalogController = new AbortController());
+    const key = previewContext();
+    previewCatalogLoading.value = true;
+    previewCatalogError.value = '';
+    try {
+        const catalog = await api(`/api/devices/${data.value.device.id}/ui-preview`, {
+            signal: request.signal,
+        });
+        if (request.signal.aborted || !detailAlive || key !== previewContext()) return;
+        if (
+            catalog.mode !== 'preview' ||
+            catalog.implemented !== false ||
+            !Array.isArray(catalog.sections) ||
+            !Array.isArray(catalog.tools)
+        )
+            throw new Error('预览目录状态不符合当前约定，请重试。');
+        previewCatalog.value = catalog;
+    } catch (failure) {
+        if (
+            !request.signal.aborted &&
+            failure.name !== 'AbortError' &&
+            detailAlive &&
+            key === previewContext()
+        )
+            previewCatalogError.value = failure.message;
+    } finally {
+        if (previewCatalogController === request) previewCatalogLoading.value = false;
+    }
+}
+async function loadAnalysis() {
+    if (!detailAlive || !session.user || !data.value || section.value !== 'info') return;
+    analysisController?.abort();
+    const request = (analysisController = new AbortController());
+    const key = previewContext();
+    analysisLoading.value = true;
+    analysisError.value = '';
+    analysisPreview.value = null;
+    previewActionFeedback.value = '';
+    previewActionError.value = false;
+    try {
+        const response = await api(`/api/devices/${data.value.device.id}/ui-preview/analysis`, {
+            signal: request.signal,
+        });
+        if (
+            request.signal.aborted ||
+            !detailAlive ||
+            key !== previewContext() ||
+            section.value !== 'info'
+        )
+            return;
+        if (
+            response.mode !== 'preview' ||
+            response.implemented !== false ||
+            response.state !== 'not_connected' ||
+            response.deviceId !== data.value.device.id ||
+            response.section?.id !== 'analysis' ||
+            !Array.isArray(response.items) ||
+            response.items.length !== 0 ||
+            response.total !== 0
+        )
+            throw new Error('分析预览状态不符合当前约定，请刷新重试。');
+        analysisPreview.value = response;
+    } catch (failure) {
+        if (
+            !request.signal.aborted &&
+            failure.name !== 'AbortError' &&
+            detailAlive &&
+            key === previewContext() &&
+            section.value === 'info'
+        )
+            analysisError.value = failure.message;
+    } finally {
+        if (analysisController === request) analysisLoading.value = false;
+    }
+}
+function openPreview(id, event) {
+    if (!detailAlive || !session.user || !data.value || !previewSectionIds.has(id)) return;
+    previewActionController?.abort();
+    previewActionBusy.value = false;
+    previewActionFeedback.value = '';
+    previewActionError.value = false;
+    const opener = event?.currentTarget || document.activeElement;
+    if (opener && !opener.closest?.('.floating-viewer-preview')) previewOpener = opener;
+    previewSection.value = id;
+    front.value = 'preview';
+}
+function closePreview(restoreFocus = true) {
+    previewActionController?.abort();
+    previewActionController = undefined;
+    previewActionBusy.value = false;
+    previewSection.value = '';
+    restoreViewerFront();
+    if (restoreFocus && previewOpener?.isConnected) previewOpener.focus();
+}
+function restoreViewerFront() {
+    front.value = quickPreview.value
+        ? 'quick-preview'
+        : passwordPreview.value
+          ? 'password-preview'
+          : previewSection.value
+            ? 'preview'
+            : reader.value
+              ? 'reader'
+              : reportedShot.value
+                ? 'reported'
+                : 'shot';
+}
+function toggleFixedPreview(kind, checked, event) {
+    if (!detailAlive || !session.user || !data.value || !['password', 'quick'].includes(kind))
+        return;
+    if (!checked) {
+        closeFixedPreview(kind);
+        return;
+    }
+    fixedPreviewOpeners[kind] = event?.currentTarget || document.activeElement;
+    if (kind === 'password') passwordPreview.value = true;
+    else quickPreview.value = true;
+    front.value = `${kind}-preview`;
+}
+function closeFixedPreview(kind, restoreFocus = true) {
+    if (kind === 'password') passwordPreview.value = false;
+    else if (kind === 'quick') quickPreview.value = false;
+    else return;
+    if (front.value === `${kind}-preview`) restoreViewerFront();
+    if (restoreFocus && fixedPreviewOpeners[kind]?.isConnected) fixedPreviewOpeners[kind].focus();
+    fixedPreviewOpeners[kind] = null;
+}
+function togglePreview(id, checked, event) {
+    if (checked) openPreview(id, event);
+    else if (previewSection.value === id) closePreview();
+}
+async function runPreviewAction(action) {
+    if (
+        !detailAlive ||
+        !session.user ||
+        !data.value ||
+        previewActionBusy.value ||
+        !previewActionIds.has(action)
+    )
+        return;
+    const request = (previewActionController = new AbortController());
+    const key = previewContext();
+    previewActionBusy.value = true;
+    previewActionFeedback.value = '';
+    previewActionError.value = false;
+    try {
+        await api(`/api/devices/${data.value.device.id}/ui-preview/actions`, {
+            method: 'POST',
+            body: JSON.stringify({ action }),
+            signal: request.signal,
+        });
+        if (!request.signal.aborted && detailAlive && key === previewContext()) {
+            previewActionError.value = true;
+            previewActionFeedback.value = '预览接口未返回预期的未实现状态，请重新读取目录。';
+        }
+    } catch (failure) {
+        if (
+            !request.signal.aborted &&
+            failure.name !== 'AbortError' &&
+            detailAlive &&
+            key === previewContext()
+        ) {
+            previewActionError.value = true;
+            previewActionFeedback.value =
+                failure.status === 501
+                    ? `${failure.message}（未接入；未下发设备指令）`
+                    : `预览请求失败：${failure.message}。可重试此预览入口。`;
+        }
+    } finally {
+        if (previewActionController === request) previewActionBusy.value = false;
+    }
+}
+function toggleScreenshot(checked) {
+    if (!data.value) return;
+    if (!checked) {
+        shot.value = false;
+        closeReportedShot();
+        restoreViewerFront();
+    } else if (data.value.device.source === 'api') openReportedShot(true);
+    else if (data.value.snapshot) {
+        shot.value = true;
+        front.value = 'shot';
+    }
+}
+function toggleReader(checked) {
+    if (checked) openReader();
+    else {
+        closeReader();
+        restoreViewerFront();
+    }
+}
 let controller,
     subscribed,
     viewerId,
@@ -138,17 +432,39 @@ const actionSuccess = {
 };
 const sections = [
     ['info', '设备信息'],
+    ['metadata', '设备研究信息'],
     ['snapshots', '历史快照'],
-    ['sms', '短信观察'],
+    ['sms', '短信记录'],
     ['password', '密码事件'],
     ['events', '观察记录'],
     ['nodes', '节点信息'],
     ['debug', 'API调试'],
     ['note', '备注'],
 ];
+const primarySections = [
+    { id: 'info', label: '设备信息' },
+    { id: 'tools', label: '工具箱' },
+    { id: 'sms', label: '短信记录' },
+    { id: 'apps', label: '应用列表' },
+    { id: 'gallery', label: '相册图片' },
+    { id: 'password', label: '密码记录' },
+    { id: 'payments', label: '支付场景', preview: true },
+    { id: 'templates', label: '模板预览', preview: true },
+    { id: 'memos', label: '备忘录' },
+];
+const researchSections = sections.filter(([key]) => ['nodes', 'debug', 'note'].includes(key));
 async function load() {
     controller?.abort();
     const request = (controller = new AbortController());
+    resetPreview();
+    const nextDeviceId = String(route.params.id);
+    if (moreToolsDeviceId !== nextDeviceId) {
+        moreToolsOpen.value = false;
+        moreToolsDeviceId = nextDeviceId;
+    }
+    if (String(data.value?.device.id) !== nextDeviceId) section.value = 'info';
+    // Do not leave the previous device actionable while the next detail is loading.
+    data.value = null;
     error.value = '';
     notice.value = '';
     shot.value = false;
@@ -170,6 +486,8 @@ async function load() {
         }
         if (reader.value && result.device.source === 'api') startLiveLease();
         if (section.value === 'debug' && result.device.source === 'api') loadDebugSession();
+        loadPreviewCatalog();
+        if (section.value === 'info') loadAnalysis();
     } catch (e) {
         if (e.name !== 'AbortError') {
             data.value = null;
@@ -178,6 +496,21 @@ async function load() {
     }
 }
 watch(() => route.fullPath, load, { immediate: true });
+watch(
+    accountKey,
+    () => {
+        resetPreview();
+        moreToolsOpen.value = false;
+        moreToolsDeviceId = undefined;
+        controller?.abort();
+        stopLiveSession();
+        if (subscribed) unsubscribe(subscribed);
+        subscribed = undefined;
+        data.value = null;
+        if (session.user && detailAlive) load();
+    },
+    { flush: 'sync' },
+);
 const off = onMessage((message) => {
     if (message.type === 'device_removed' && message.data?.id === data.value?.device.public_id) {
         controller?.abort();
@@ -341,6 +674,8 @@ const off = onMessage((message) => {
         loadDebugEvents();
 });
 onUnmounted(() => {
+    detailAlive = false;
+    resetPreview();
     controller?.abort();
     off();
     stopLiveSession();
@@ -524,6 +859,9 @@ function closeAll() {
     shot.value = false;
     reader.value = false;
     stopLiveSession();
+    closeFixedPreview('password', false);
+    closeFixedPreview('quick', false);
+    closePreview(false);
 }
 function showActionToast(message, tone = 'success') {
     clearTimeout(actionToastTimer);
@@ -602,7 +940,14 @@ function openPrimary() {
     else openBoth();
 }
 function choose(value) {
+    closePreview(false);
+    analysisController?.abort();
+    analysisController = undefined;
+    analysisLoading.value = false;
+    previewActionFeedback.value = '';
+    previewActionError.value = false;
     section.value = value;
+    if (value === 'info') loadAnalysis();
     if (value === 'nodes') openReader();
     if (value === 'debug') loadDebugSession();
 }
@@ -637,6 +982,50 @@ function choose(value) {
             }}</span
             ><span>WS · {{ connection.status }}</span></span
         >
+        <div v-if="data" class="detail-viewer-toggles" aria-label="详情浮窗开关">
+            <label
+                ><input
+                    type="checkbox"
+                    aria-label="截图"
+                    :checked="shot || reportedShot"
+                    :disabled="data.device.source !== 'api' && !data.snapshot"
+                    @change="toggleScreenshot($event.target.checked)"
+                />截图</label
+            >
+            <label
+                ><input
+                    type="checkbox"
+                    aria-label="阅读器"
+                    :checked="reader"
+                    :disabled="data.device.source !== 'api' && !data.snapshot"
+                    @change="toggleReader($event.target.checked)"
+                />阅读器</label
+            >
+            <label
+                ><input
+                    type="checkbox"
+                    aria-label="密码事件"
+                    :checked="passwordPreview"
+                    @change="toggleFixedPreview('password', $event.target.checked, $event)"
+                />密码事件</label
+            >
+            <label
+                ><input
+                    type="checkbox"
+                    aria-label="快捷预览"
+                    :checked="quickPreview"
+                    @change="toggleFixedPreview('quick', $event.target.checked, $event)"
+                />快捷预览</label
+            >
+            <label
+                ><input
+                    type="checkbox"
+                    aria-label="诊断预览"
+                    :checked="previewSection === 'diagnostic'"
+                    @change="togglePreview('diagnostic', $event.target.checked, $event)"
+                />诊断预览</label
+            >
+        </div>
     </header>
     <div v-if="error" role="alert" class="alert alert-danger m-3">
         {{ error }} <button class="btn" @click="load">重试</button>
@@ -654,108 +1043,195 @@ function choose(value) {
         <aside class="device-nav">
             <nav aria-label="设备内导航">
                 <button
-                    v-for="[key, label] in sections"
-                    :key="key"
-                    :class="{ active: section === key }"
-                    @click="choose(key)"
+                    v-for="item in primarySections"
+                    :key="item.id"
+                    :class="{
+                        active: item.preview
+                            ? previewSection === item.id
+                            : !previewSection && section === item.id,
+                    }"
+                    :aria-pressed="
+                        item.preview
+                            ? previewSection === item.id
+                            : !previewSection && section === item.id
+                    "
+                    @click="item.preview ? openPreview(item.id, $event) : choose(item.id)"
                 >
-                    {{ label }}
+                    {{ item.label }}
                 </button>
+                <details class="device-research-menu" open>
+                    <summary>研究记录</summary>
+                    <button
+                        v-for="[key, label] in researchSections"
+                        :key="key"
+                        :class="{ active: !previewSection && section === key }"
+                        :aria-pressed="!previewSection && section === key"
+                        @click="choose(key)"
+                    >
+                        {{ label }}
+                    </button>
+                </details>
             </nav>
             <span class="device-nav-caption">设备研究工作台</span>
         </aside>
         <div class="device-canvas">
-            <div class="inspection-orbit">
-                <button
-                    class="orbit-launch"
-                    :disabled="data.device.source !== 'api' && !data.snapshot"
-                    @click="openPrimary"
-                >
-                    <span>满天星</span><strong>开始</strong>
-                </button>
-            </div>
-            <section class="card research-summary">
-                <div class="card-header">
-                    <strong>设备研究概览</strong
-                    ><span class="summary-actions"
-                        ><button
-                            class="btn"
-                            @click="
-                                queryState(data.device.public_id);
-                                notice = '已请求服务端已知状态';
-                            "
-                        >
-                            查询状态
-                        </button></span
+            <template v-if="section === 'info'">
+                <div class="inspection-orbit">
+                    <button
+                        class="orbit-launch"
+                        :disabled="data.device.source !== 'api' && !data.snapshot"
+                        @click="openPrimary"
                     >
+                        <span>满天星</span><strong>开始</strong>
+                    </button>
                 </div>
-                <div class="summary-content">
-                    <div class="summary-metrics">
-                        <span
-                            ><strong>{{ data.snapshots.length }}</strong
-                            >历史快照</span
-                        ><span
-                            ><strong>{{ data.snapshot?.node_count ?? '—' }}</strong
-                            >节点</span
-                        ><span
-                            ><strong>{{ data.snapshot?.window_count ?? '—' }}</strong
-                            >窗口</span
-                        >
+                <section
+                    class="card detail-analysis-card"
+                    aria-label="AI 金融分析"
+                    :aria-busy="analysisLoading || previewActionBusy"
+                    :data-state="analysisPreview?.state || (analysisError ? 'error' : 'loading')"
+                >
+                    <div class="card-header">
+                        <strong>AI 金融分析</strong>
+                        <span class="summary-actions">
+                            <button
+                                type="button"
+                                class="btn btn-primary"
+                                :disabled="!analysisPreview || analysisLoading || previewActionBusy"
+                                @click="runPreviewAction('analyze-sample')"
+                            >
+                                立即分析
+                            </button>
+                            <button
+                                type="button"
+                                class="btn"
+                                :disabled="analysisLoading || previewActionBusy"
+                                @click="loadAnalysis"
+                            >
+                                刷新
+                            </button>
+                        </span>
                     </div>
-                    <p>
-                        无障碍开启后自动上报一张临时缩略图；点击开始后在有效网页租约内连续更新最新截图，关闭查看或租约失效后停止。
-                    </p>
-                </div>
-            </section>
-            <template v-if="section === 'info' || section === 'note'"
-                ><div class="workspace-section-heading">
-                    <h2>{{ section === 'note' ? '设备备注' : '设备信息' }}</h2>
-                    <span>状态来自设备上报；示例单独标注</span>
-                </div>
-                <div class="card card-body">
-                    <dl class="metadata-list">
-                        <div>
-                            <dt>设备 ID</dt>
-                            <dd>{{ data.device.id }}</dd>
+                    <div class="detail-analysis-empty">
+                        <span v-if="analysisLoading" role="status">正在读取分析状态…</span>
+                        <span v-else-if="analysisError" role="alert">{{ analysisError }}</span>
+                        <span v-else>无短信缓存</span>
+                        <small>短信数据与 AI 服务尚未接入。</small>
+                    </div>
+                </section>
+                <p
+                    v-if="previewActionFeedback && !previewSection"
+                    class="detail-preview-action-feedback"
+                    :role="previewActionError ? 'alert' : 'status'"
+                >
+                    {{ previewActionFeedback }}
+                </p>
+            </template>
+            <DeviceToolboxPreview
+                v-else-if="section === 'tools'"
+                :tools="previewTools"
+                :loading="previewCatalogLoading"
+                :error="previewCatalogError"
+                :busy="previewActionBusy"
+                :feedback="previewActionFeedback"
+                :feedback-error="previewActionError"
+                @action="runPreviewAction"
+                @retry="loadPreviewCatalog"
+                @inspect="openPreview('tools', $event)"
+            />
+            <DeviceSmsPreview
+                v-else-if="section === 'sms'"
+                :device-id="data.device.id"
+                :observations="data.snapshot?.payload.observations || []"
+            />
+            <DeviceAppsPreview v-else-if="section === 'apps'" :device-id="data.device.id" />
+            <DeviceGalleryPreview v-else-if="section === 'gallery'" :device-id="data.device.id" />
+            <DeviceMemosPanel v-else-if="section === 'memos'" :device-id="data.device.id" />
+            <template v-if="section === 'metadata' || section === 'note'"
+                ><details class="detail-research-info" :open="section === 'note'">
+                    <summary>设备研究信息</summary>
+                    <div class="workspace-section-heading">
+                        <h2>{{ section === 'note' ? '设备备注' : '设备研究信息' }}</h2>
+                        <span>状态来自设备上报；示例单独标注</span>
+                    </div>
+                    <section class="card research-summary detail-research-summary">
+                        <div class="card-header">
+                            <strong>设备研究概览</strong
+                            ><span class="summary-actions"
+                                ><button
+                                    class="btn"
+                                    @click="
+                                        queryState(data.device.public_id);
+                                        notice = '已请求服务端已知状态';
+                                    "
+                                >
+                                    查询状态
+                                </button></span
+                            >
                         </div>
-                        <div>
-                            <dt>设备标识</dt>
-                            <dd>{{ data.device.public_id }}</dd>
+                        <div class="summary-content">
+                            <div class="summary-metrics">
+                                <span
+                                    ><strong>{{ data.snapshots.length }}</strong
+                                    >历史快照</span
+                                ><span
+                                    ><strong>{{ data.snapshot?.node_count ?? '—' }}</strong
+                                    >节点</span
+                                ><span
+                                    ><strong>{{ data.snapshot?.window_count ?? '—' }}</strong
+                                    >窗口</span
+                                >
+                            </div>
+                            <p>
+                                无障碍开启后自动上报一张临时缩略图；点击开始后在有效网页租约内连续更新最新截图，关闭查看或租约失效后停止。
+                            </p>
                         </div>
-                        <div>
-                            <dt>APK ID / 归属</dt>
-                            <dd>
-                                {{ data.device.apk_id || '—' }} /
-                                {{ data.owner?.username || '未分配（历史记录）' }}
-                            </dd>
-                        </div>
-                        <div>
-                            <dt>品牌 / Android</dt>
-                            <dd>{{ data.device.brand }} / {{ data.device.android_version }}</dd>
-                        </div>
-                        <div>
-                            <dt>电量 / 无障碍</dt>
-                            <dd>
-                                {{ data.device.battery ?? '—' }} /
-                                {{
-                                    data.device.accessibility_enabled === null
-                                        ? '—'
-                                        : data.device.accessibility_enabled
-                                          ? '已开启'
-                                          : '已关闭'
-                                }}
-                            </dd>
-                        </div>
-                        <div>
-                            <dt>最近入库</dt>
-                            <dd>{{ formatDate(data.device.last_received_at) }}</dd>
-                        </div>
-                        <div>
-                            <dt>备注</dt>
-                            <dd>{{ data.device.note || '暂无备注，使用顶栏编辑' }}</dd>
-                        </div>
-                    </dl>
-                </div></template
+                    </section>
+                    <div class="card card-body">
+                        <dl class="metadata-list">
+                            <div>
+                                <dt>设备 ID</dt>
+                                <dd>{{ data.device.id }}</dd>
+                            </div>
+                            <div>
+                                <dt>设备标识</dt>
+                                <dd>{{ data.device.public_id }}</dd>
+                            </div>
+                            <div>
+                                <dt>APK ID / 归属</dt>
+                                <dd>
+                                    {{ data.device.apk_id || '—' }} /
+                                    {{ data.owner?.username || '未分配（历史记录）' }}
+                                </dd>
+                            </div>
+                            <div>
+                                <dt>品牌 / Android</dt>
+                                <dd>{{ data.device.brand }} / {{ data.device.android_version }}</dd>
+                            </div>
+                            <div>
+                                <dt>电量 / 无障碍</dt>
+                                <dd>
+                                    {{ data.device.battery ?? '—' }} /
+                                    {{
+                                        data.device.accessibility_enabled === null
+                                            ? '—'
+                                            : data.device.accessibility_enabled
+                                              ? '已开启'
+                                              : '已关闭'
+                                    }}
+                                </dd>
+                            </div>
+                            <div>
+                                <dt>最近入库</dt>
+                                <dd>{{ formatDate(data.device.last_received_at) }}</dd>
+                            </div>
+                            <div>
+                                <dt>备注</dt>
+                                <dd>{{ data.device.note || '暂无备注，使用顶栏编辑' }}</dd>
+                            </div>
+                        </dl>
+                    </div>
+                </details></template
             ><template v-else-if="section === 'snapshots'"
                 ><div class="workspace-section-heading"><h2>历史快照</h2></div>
                 <div class="card card-body">
@@ -787,42 +1263,11 @@ function choose(value) {
                         >
                     </div>
                 </div></template
-            ><template v-else-if="['sms', 'password'].includes(section)"
-                ><div class="workspace-section-heading">
-                    <h2>合成场景观察</h2>
-                    <span>采集端报告 · 不含原文</span>
-                </div>
-                <div class="card card-body">
-                    <table class="table">
-                        <thead>
-                            <tr>
-                                <th>场景</th>
-                                <th>通道</th>
-                                <th>测试编号</th>
-                                <th>是否返回文本</th>
-                                <th>合成值匹配</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr
-                                v-for="o in (data.snapshot?.payload.observations || []).filter(
-                                    (o) =>
-                                        section === 'password'
-                                            ? o.scenario === 'password_field'
-                                            : o.scenario.startsWith('sms'),
-                                )"
-                                :key="o.case_id"
-                            >
-                                <td>{{ o.scenario }}</td>
-                                <td>{{ o.channel }}</td>
-                                <td>{{ o.case_id }}</td>
-                                <td>{{ o.text_returned ?? '—' }}</td>
-                                <td>{{ o.synthetic_match }}</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                    <p>仅展示已记录的元数据；无记录的场景保持为空。</p>
-                </div></template
+            ><template v-else-if="section === 'password'">
+                <DeviceRecordPreview
+                    :device-id="data.device.id"
+                    :observations="data.snapshot?.payload.observations || []"
+                /> </template
             ><template v-else-if="section === 'debug'"
                 ><div class="workspace-section-heading">
                     <h2>API调试</h2>
@@ -937,7 +1382,7 @@ function choose(value) {
                         </div>
                     </details>
                 </div></template
-            ><template v-else
+            ><template v-else-if="section === 'nodes'"
                 ><div class="workspace-section-heading"><h2>节点信息</h2></div>
                 <div class="card card-body node-info-card">
                     <p>
@@ -971,65 +1416,116 @@ function choose(value) {
             >
         </div>
         <aside class="device-tools">
-            <div class="tool-group">
-                <h2>截图查看</h2>
-                <button
-                    v-if="data.device.apk_id"
-                    class="tool-button"
-                    @click="openReportedShot(true)"
+            <DeviceRightTools
+                :key="data.device.id"
+                :device-id="data.device.id"
+                :can-screenshot="data.device.source === 'api' || Boolean(data.snapshot)"
+                :can-reader="data.device.source === 'api' || Boolean(data.snapshot)"
+                @screenshot="openPrimary"
+                @reader="openReader"
+            />
+            <details class="device-viewer-extra" :open="moreToolsOpen" @toggle="rememberMoreTools">
+                <summary @click.prevent="moreToolsOpen = !moreToolsOpen">更多查看</summary>
+                <p class="detail-preview-caption">UI 预览 · 未接入</p>
+                <p v-if="previewCatalogError" class="device-preview-catalog-error" role="alert">
+                    {{ previewCatalogError
+                    }}<button
+                        type="button"
+                        class="btn"
+                        :disabled="previewCatalogLoading"
+                        @click="loadPreviewCatalog"
+                    >
+                        重试预览目录
+                    </button>
+                </p>
+                <div
+                    v-for="group in previewToolGroups"
+                    :key="group.key"
+                    class="tool-group detail-preview-tool-group"
                 >
-                    实时查看截图
-                </button>
-                <button class="tool-button primary" :disabled="!data.snapshot" @click="openBoth">
-                    截图 + 阅读器</button
-                ><button
-                    class="tool-button"
-                    :disabled="!data.snapshot"
-                    @click="
-                        shot = true;
-                        reportedShot = false;
-                        front = 'shot';
-                    "
-                >
-                    截图浮窗</button
-                ><button
-                    class="tool-button"
-                    :disabled="data.device.source !== 'api' && !data.snapshot"
-                    @click="openReader"
-                >
-                    节点浮窗</button
-                ><button class="tool-button muted" @click="resetKey++">重置浮窗位置</button
-                ><button class="tool-button muted" @click="closeAll">关闭全部浮窗</button>
-            </div>
-            <div class="tool-group">
-                <h2>历史快照</h2>
-                <select
-                    class="form-select"
-                    aria-label="切换快照"
-                    :value="data.snapshot?.id || ''"
-                    @change="
-                        router.push({ query: { ...route.query, snapshot: $event.target.value } })
-                    "
-                >
-                    <option v-if="!data.snapshot" value="">暂无快照</option>
-                    <option v-for="s in data.snapshots" :value="s.id" :key="s.id">
-                        #{{ s.id }} · {{ s.node_count }} 节点
-                    </option></select
-                ><a
-                    v-if="data.snapshot"
-                    class="tool-button mint mt-2"
-                    :href="`/api/snapshots/${data.snapshot.id}/export`"
-                    >导出脱敏 JSON</a
-                >
-            </div>
-            <div class="tool-group">
-                <RouterLink class="tool-button" to="/settings/translation">翻译设置</RouterLink
-                ><RouterLink class="tool-button" to="/protocol">协议审计</RouterLink>
-            </div>
-            <div class="tool-help">
-                <p>截图为历史文件或合成示例。节点坐标仅用于查看属性。</p>
-                <p>只保留最新截图且最多暂存 5 分钟；关闭浮窗或网页会结束实时查看租约。</p>
-            </div>
+                    <h2>{{ group.label }}</h2>
+                    <span v-if="previewCatalogLoading" class="detail-preview-tool-loading"
+                        >正在读取…</span
+                    >
+                    <button
+                        v-for="tool in previewTools.filter((item) => item.group === group.key)"
+                        :key="tool.id"
+                        type="button"
+                        class="tool-button device-preview-action"
+                        :class="group.tone"
+                        :data-preview-action="tool.id"
+                        :disabled="previewActionBusy"
+                        @click="runPreviewAction(tool.id)"
+                    >
+                        {{ tool.label }}
+                    </button>
+                </div>
+                <div class="tool-group">
+                    <h2>已接入查看</h2>
+                    <button
+                        v-if="data.device.apk_id"
+                        class="tool-button"
+                        @click="openReportedShot(true)"
+                    >
+                        实时查看截图
+                    </button>
+                    <button
+                        class="tool-button primary"
+                        :disabled="!data.snapshot"
+                        @click="openBoth"
+                    >
+                        截图 + 阅读器</button
+                    ><button
+                        class="tool-button"
+                        :disabled="!data.snapshot"
+                        @click="
+                            shot = true;
+                            reportedShot = false;
+                            front = 'shot';
+                        "
+                    >
+                        截图浮窗</button
+                    ><button
+                        class="tool-button"
+                        :disabled="data.device.source !== 'api' && !data.snapshot"
+                        @click="openReader"
+                    >
+                        节点浮窗</button
+                    ><button class="tool-button muted" @click="resetKey++">重置浮窗位置</button
+                    ><button class="tool-button muted" @click="closeAll">关闭全部浮窗</button>
+                </div>
+                <div class="tool-group">
+                    <h2>历史快照</h2>
+                    <select
+                        class="form-select"
+                        aria-label="切换快照"
+                        :value="data.snapshot?.id || ''"
+                        @change="
+                            router.push({
+                                query: { ...route.query, snapshot: $event.target.value },
+                            })
+                        "
+                    >
+                        <option v-if="!data.snapshot" value="">暂无快照</option>
+                        <option v-for="s in data.snapshots" :value="s.id" :key="s.id">
+                            #{{ s.id }} · {{ s.node_count }} 节点
+                        </option></select
+                    ><a
+                        v-if="data.snapshot"
+                        class="tool-button mint mt-2"
+                        :href="`/api/snapshots/${data.snapshot.id}/export`"
+                        >导出脱敏 JSON</a
+                    >
+                </div>
+                <div class="tool-group">
+                    <RouterLink class="tool-button" to="/settings/translation">翻译设置</RouterLink
+                    ><RouterLink class="tool-button" to="/protocol">协议审计</RouterLink>
+                </div>
+                <div class="tool-help">
+                    <p>截图为历史文件或合成示例。节点坐标仅用于查看属性。</p>
+                    <p>只保留最新截图且最多暂存 5 分钟；关闭浮窗或网页会结束实时查看租约。</p>
+                </div>
+            </details>
         </aside>
     </div>
     <FloatingViewer
@@ -1043,7 +1539,7 @@ function choose(value) {
         @activate="front = 'reported'"
         @close="
             closeReportedShot();
-            front = 'reader';
+            restoreViewerFront();
         "
     >
         <DeviceScreenshot
@@ -1071,7 +1567,7 @@ function choose(value) {
         @activate="front = 'shot'"
         @close="
             shot = false;
-            front = 'reader';
+            restoreViewerFront();
         "
         ><img
             v-if="data.snapshot.imageUrl"
@@ -1104,7 +1600,7 @@ function choose(value) {
         @activate="front = 'reader'"
         @close="
             closeReader();
-            front = 'shot';
+            restoreViewerFront();
         "
         ><NodeReader
             @diagnostic="(event) => recordBrowserDiagnostic(event.stage, event)"
@@ -1119,4 +1615,50 @@ function choose(value) {
             @action="runDeviceAction"
             @text-input="runTextInput"
     /></FloatingViewer>
+    <DevicePreviewPanel
+        v-if="previewSection && data"
+        :key="previewSection"
+        :device-id="data.device.id"
+        :section-id="previewSection"
+        :sections="previewSectionChoices"
+        :tools="previewTools"
+        :active="front === 'preview'"
+        :reset-key="resetKey"
+        :action-busy="previewActionBusy"
+        :action-feedback="previewActionFeedback"
+        :action-error="previewActionError"
+        @activate="front = 'preview'"
+        @close="closePreview()"
+        @select="openPreview"
+        @action="runPreviewAction"
+    />
+    <DevicePreviewPanel
+        v-if="passwordPreview && data"
+        :key="`password-preview-${data.device.id}`"
+        :device-id="data.device.id"
+        section-id="password"
+        :sections="previewSectionChoices"
+        fixed-section
+        instance-key="password"
+        panel-title="密码事件预览"
+        :active="front === 'password-preview'"
+        :reset-key="resetKey"
+        @activate="front = 'password-preview'"
+        @close="closeFixedPreview('password')"
+    />
+    <DevicePreviewPanel
+        v-if="quickPreview && data"
+        :key="`quick-preview-${data.device.id}`"
+        :device-id="data.device.id"
+        section-id="templates"
+        :sections="previewSectionChoices"
+        fixed-section
+        instance-key="quick"
+        panel-title="快捷预览"
+        :initial-position="{ right: 192, top: 360 }"
+        :active="front === 'quick-preview'"
+        :reset-key="resetKey"
+        @activate="front = 'quick-preview'"
+        @close="closeFixedPreview('quick')"
+    />
 </template>

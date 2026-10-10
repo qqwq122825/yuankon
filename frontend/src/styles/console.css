@@ -1305,7 +1305,7 @@
 }
 /* Device page: independent top bar, left menu, open canvas, right tools. */
 .console-detail {
-    --console-header-height: 38px;
+    --console-header-height: 44px;
 }
 .console-detail .console-main {
     margin-left: 0;
@@ -1335,6 +1335,10 @@
     font-size: 12px;
     font-weight: 700;
     margin: 0;
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 .device-system {
     font-size: 10px;
@@ -1381,37 +1385,179 @@
 .device-guide {
     font-size: 9px !important;
 }
+.detail-viewer-toggles {
+    display: flex;
+    align-items: center;
+    flex: 0 0 auto;
+    gap: 5px;
+}
+.detail-viewer-toggles label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 7px;
+    border: 1px solid #e1e5fb;
+    border-radius: 12px;
+    background: #f2f4ff;
+    color: #7b83a8;
+    font-size: 10px;
+    cursor: pointer;
+}
+.detail-viewer-toggles input {
+    width: 12px;
+    height: 12px;
+    margin: 0;
+    accent-color: var(--lab-accent);
+}
+.device-research-menu {
+    margin-top: 5px;
+    padding-top: 7px;
+    border-top: 1px solid var(--lab-line);
+}
+.device-research-menu summary {
+    padding: 3px 0 7px;
+    color: var(--lab-muted);
+    font-size: 10px;
+    cursor: pointer;
+}
+.device-research-menu > button {
+    width: 100%;
+    margin-bottom: 4px;
+}
+.detail-analysis-card {
+    height: 140px;
+    padding: 20px;
+    border: 1px solid var(--lab-line);
+    border-radius: 12px;
+    background: var(--lab-surface);
+}
+.console-detail .detail-analysis-card .card-header {
+    min-height: 26px;
+    padding: 0;
+    border: 0;
+    font-size: 14px;
+}
+.detail-analysis-empty {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    color: var(--lab-muted);
+    font-size: 11px;
+}
+.detail-analysis-empty small {
+    font-size: 9px;
+}
+.detail-research-summary {
+    margin-bottom: 12px;
+}
+.detail-research-info {
+    margin-top: 16px;
+}
+.detail-research-info > summary {
+    padding: 8px 2px;
+    border-bottom: 1px solid var(--lab-line);
+    color: var(--lab-muted);
+    font-size: 11px;
+    cursor: pointer;
+}
+.detail-preview-caption {
+    margin: 0 0 3px;
+    color: var(--lab-muted);
+    font-size: 9px;
+}
+.device-preview-catalog-error {
+    margin: 6px 0;
+    padding: 7px;
+    border: 1px solid #f2ccd1;
+    border-radius: 7px;
+    background: #fff4f4;
+    color: #b94a55;
+    font-size: 10px;
+}
+.device-preview-catalog-error .btn {
+    display: block;
+    margin-top: 7px;
+    width: 100%;
+}
+.detail-preview-tool-loading {
+    color: var(--lab-muted);
+    font-size: 10px;
+}
+.detail-preview-action-feedback {
+    margin: 10px 0 0;
+    padding: 9px 12px;
+    border: 1px solid #f1ccd0;
+    border-radius: 8px;
+    background: #fff3f4;
+    color: #b94a55;
+    font-size: 11px;
+}
+.console-detail .floating-viewer {
+    border-radius: 14px;
+}
+.console-detail .floating-viewer-preview {
+    max-height: max(160px, calc(100vh - 376px));
+}
+[data-bs-theme='dark'] .device-canvas {
+    background: #141922;
+}
+[data-bs-theme='dark'] .detail-viewer-toggles label {
+    border-color: #374263;
+    background: #242e48;
+    color: #b2bce3;
+}
+[data-bs-theme='dark'] .device-preview-catalog-error,
+[data-bs-theme='dark'] .detail-preview-action-feedback {
+    border-color: #683e50;
+    background: #382633;
+    color: #e4a4ad;
+}
 .device-workbench {
     display: grid;
-    grid-template-columns: 88px minmax(0, 1fr) 148px;
+    grid-template-columns: 110px minmax(0, 1fr) 176px;
     height: calc(100dvh - var(--console-header-height));
     min-height: 500px;
 }
 .device-nav {
     background: var(--lab-surface);
     border-right: 1px solid var(--lab-line);
-    padding: 7px 6px;
+    padding: 8px;
     display: flex;
     flex-direction: column;
+    position: fixed;
+    top: 44px;
+    left: 0;
+    width: 110px;
+    z-index: 45;
+    align-self: start;
+    height: calc(100dvh - 44px);
+    overflow-y: auto;
 }
 .device-nav nav {
     display: grid;
     gap: 4px;
 }
 .device-nav nav > a,
-.device-nav nav > button {
+.device-nav nav > button,
+.device-research-menu > button {
     display: block;
     text-align: center;
     background: var(--lab-surface);
     color: var(--lab-ink);
     border: 1px solid var(--lab-line);
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 600;
-    border-radius: 5px;
-    padding: 7px 4px;
+    border-radius: 7px;
+    padding: 8px 4px;
+    min-height: 34px;
+    line-height: 16px;
     cursor: pointer;
 }
-.device-nav nav > .active {
+.device-nav nav > .active,
+.device-research-menu > .active {
     background: var(--lab-accent);
     border-color: var(--lab-accent);
     color: white;
@@ -1424,18 +1570,22 @@
     padding-bottom: 8px;
 }
 .device-canvas {
+    grid-column: 2;
+    grid-row: 1;
     min-width: 0;
     overflow: auto;
-    padding: 0 14px 25px;
+    padding: 16px;
+    background: #f8f9fb;
 }
 .inspection-orbit {
-    height: 204px;
+    height: 236px;
+    padding: 28px 0;
     display: grid;
     place-items: center;
 }
 .orbit-launch {
-    width: 151px;
-    height: 151px;
+    width: 180px;
+    height: 180px;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -1556,14 +1706,42 @@
     border-top: 1px solid var(--lab-line);
 }
 .device-tools {
+    grid-column: 3;
+    grid-row: 1;
     background: var(--lab-surface);
     border-left: 1px solid var(--lab-line);
-    padding: 0 8px 10px;
+    padding: 10px;
     overflow-y: auto;
+    position: sticky;
+    top: 44px;
+    align-self: start;
+    height: calc(100dvh - 44px);
+}
+.device-viewer-extra {
+    margin-top: 10px;
+    border-top: 1px solid var(--lab-line);
+    padding-top: 7px;
+}
+.device-viewer-extra > summary {
+    padding: 6px 3px;
+    color: var(--lab-muted);
+    font-size: 9px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.device-viewer-extra > summary:focus-visible {
+    outline: 2px solid var(--lab-accent);
+    outline-offset: 2px;
+    border-radius: 4px;
+}
+.device-viewer-extra[open] > summary {
+    margin-bottom: 5px;
 }
 .tool-group {
     padding: 9px 0 7px;
     border-bottom: 1px solid #e0e3ee;
+    display: grid;
+    gap: 7px;
 }
 .tool-group:last-child {
     border: 0;
@@ -1584,12 +1762,13 @@
     align-items: center;
     justify-content: center;
     text-align: center;
-    min-height: 29px;
+    min-height: 34px;
+    height: 34px;
     padding: 6px 4px;
-    border-radius: 6px;
-    font-size: 10px;
+    border-radius: 7px;
+    font-size: 11px;
     font-weight: 600;
-    margin-bottom: 4px;
+    margin-bottom: 0;
 }
 .tool-button:last-child {
     margin-bottom: 0;
@@ -2132,14 +2311,14 @@
         --console-header-height: 44px;
     }
     .device-workbench {
-        grid-template-columns: 102px minmax(0, 1fr) 174px;
+        grid-template-columns: 110px minmax(0, 1fr) 176px;
     }
     .inspection-orbit {
-        height: 240px;
+        height: 236px;
     }
     .orbit-launch {
-        width: 174px;
-        height: 174px;
+        width: 180px;
+        height: 180px;
     }
     .research-summary {
         min-height: 155px;
@@ -2151,7 +2330,7 @@
     .device-nav nav > a,
     .device-nav nav > button {
         font-size: 11px;
-        padding: 9px 4px;
+        padding: 8px 4px;
     }
 }
 

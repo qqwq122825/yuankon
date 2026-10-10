@@ -3,6 +3,14 @@ import sharp from 'sharp';
 import { once } from 'node:events';
 import { WebSocket } from '../../backend/node_modules/ws/wrapper.mjs';
 
+async function openMoreViewing(page) {
+    const extra = page.locator('details.device-viewer-extra');
+    await expect(extra).toBeAttached();
+    if ((await extra.getAttribute('open')) === null)
+        await extra.locator(':scope > summary').click();
+    await expect(extra).toHaveAttribute('open');
+}
+
 test('authorization resumes an open viewer and uploads a synthetic JPEG without reopening it', async ({
     page,
 }) => {
@@ -58,6 +66,7 @@ test('authorization resumes an open viewer and uploads a synthetic JPEG without 
     try {
         sendStatus();
         await page.goto(`/devices/${device.localId}`);
+        await openMoreViewing(page);
         await page.getByRole('button', { name: '实时查看截图', exact: true }).click();
         await expect.poll(() => commands.length).toBe(1);
         captureReady = true;

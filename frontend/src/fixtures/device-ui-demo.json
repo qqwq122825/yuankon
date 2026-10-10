@@ -1,0 +1,186 @@
+{
+    "schemaVersion": 1,
+    "source": "synthetic-ui-fixture",
+    "fixtureOnly": true,
+    "description": "合成测试数据，仅用于本地界面演示；不是设备记录，不含真实密码、验证码或第三方应用数据。",
+    "lockEvents": [
+        {
+            "id": "DEMO-EVENT-01",
+            "category": "system",
+            "label": "锁类型",
+            "sampleValue": "DEMO-001",
+            "source": "dev.mtx.demo.system",
+            "time": "09:40:00"
+        },
+        {
+            "id": "DEMO-EVENT-02",
+            "category": "system",
+            "label": "系统图案",
+            "sampleValue": "图案示例 B",
+            "source": "dev.mtx.demo.system",
+            "time": "09:39:00",
+            "pattern": [1, 2, 3, 6]
+        },
+        {
+            "id": "DEMO-EVENT-03",
+            "category": "system",
+            "label": "系统图案",
+            "sampleValue": "图案示例 C",
+            "source": "dev.mtx.demo.system",
+            "time": "09:38:00",
+            "pattern": [2, 5, 8, 9]
+        },
+        {
+            "id": "DEMO-EVENT-04",
+            "category": "system",
+            "label": "锁类型",
+            "sampleValue": "DEMO-004",
+            "source": "dev.mtx.demo.system",
+            "time": "09:37:00"
+        },
+        {
+            "id": "DEMO-EVENT-05",
+            "category": "system",
+            "label": "系统图案",
+            "sampleValue": "图案示例 E",
+            "source": "dev.mtx.demo.system",
+            "time": "09:36:00",
+            "pattern": [1, 2, 3, 6]
+        },
+        {
+            "id": "DEMO-EVENT-06",
+            "category": "system",
+            "label": "系统图案",
+            "sampleValue": "图案示例 F",
+            "source": "dev.mtx.demo.system",
+            "time": "09:35:00",
+            "pattern": [2, 5, 8, 9]
+        },
+        {
+            "id": "DEMO-EVENT-07",
+            "category": "system",
+            "label": "锁类型",
+            "sampleValue": "DEMO-007",
+            "source": "dev.mtx.demo.system",
+            "time": "09:34:00"
+        },
+        {
+            "id": "DEMO-EVENT-08",
+            "category": "system",
+            "label": "系统图案",
+            "sampleValue": "图案示例 H",
+            "source": "dev.mtx.demo.system",
+            "time": "09:33:00",
+            "pattern": [1, 2, 3, 6]
+        },
+        {
+            "id": "DEMO-EVENT-09",
+            "category": "system",
+            "label": "系统图案",
+            "sampleValue": "图案示例 I",
+            "source": "dev.mtx.demo.system",
+            "time": "09:32:00",
+            "pattern": [2, 5, 8, 9]
+        },
+        {
+            "id": "DEMO-EVENT-10",
+            "category": "system",
+            "label": "锁类型",
+            "sampleValue": "DEMO-010",
+            "source": "dev.mtx.demo.system",
+            "time": "09:31:00"
+        },
+        {
+            "id": "DEMO-EVENT-11",
+            "category": "system",
+            "label": "系统图案",
+            "sampleValue": "图案示例 K",
+            "source": "dev.mtx.demo.system",
+            "time": "09:30:00",
+            "pattern": [1, 2, 3, 6]
+        },
+        {
+            "id": "DEMO-EVENT-12",
+            "category": "system",
+            "label": "系统图案",
+            "sampleValue": "图案示例 L",
+            "source": "dev.mtx.demo.system",
+            "time": "09:29:00",
+            "pattern": [2, 5, 8, 9]
+        },
+        {
+            "id": "DEMO-EVENT-13",
+            "category": "scenario",
+            "label": "场景样例",
+            "sampleValue": "DEMO-013",
+            "source": "dev.mtx.demo.scene",
+            "time": "09:28:00"
+        },
+        {
+            "id": "DEMO-EVENT-14",
+            "category": "app",
+            "label": "APP样例",
+            "sampleValue": "图案示例 N",
+            "source": "dev.mtx.demo.app1",
+            "time": "09:27:00",
+            "pattern": [1, 2, 3, 6]
+        },
+        {
+            "id": "DEMO-EVENT-15",
+            "category": "app",
+            "label": "APP样例",
+            "sampleValue": "图案示例 O",
+            "source": "dev.mtx.demo.app2",
+            "time": "09:26:00",
+            "pattern": [2, 5, 8, 9]
+        },
+        {
+            "id": "DEMO-EVENT-16",
+            "category": "app",
+            "label": "APP样例",
+            "sampleValue": "DEMO-016",
+            "source": "dev.mtx.demo.app3",
+            "time": "09:25:00"
+        }
+    ],
+    "applications": [
+        {
+            "id": "DEMO-APP-A",
+            "name": "样例钱包 A",
+            "initial": "A",
+            "packageName": "dev.mtx.demo.wallet",
+            "status": "submitted",
+            "time": "01/01 09:40",
+            "fields": [
+                {
+                    "label": "测试字段 A",
+                    "value": "DEMO-A001"
+                },
+                {
+                    "label": "测试字段 B",
+                    "value": "DEMO-B001"
+                }
+            ],
+            "skip": true
+        },
+        {
+            "id": "DEMO-APP-B",
+            "name": "样例应用 B",
+            "initial": "B",
+            "packageName": "dev.mtx.demo.app",
+            "status": "ready",
+            "time": "01/01 09:35",
+            "fields": [
+                {
+                    "label": "测试字段 A",
+                    "value": "DEMO-A002"
+                },
+                {
+                    "label": "测试字段 B",
+                    "value": "DEMO-B002"
+                }
+            ],
+            "skip": false
+        }
+    ]
+}

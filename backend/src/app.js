@@ -24,6 +24,7 @@ import { BuildQueue } from './build-queue.js';
 import { Installation } from './installation.js';
 import { BuildEnvironment } from './build-environment.js';
 import { ServerLogs } from './server-logs.js';
+import { deviceUiPreviewRoutes, validateDeviceUiPreviewId } from './device-ui-preview.js';
 
 export async function createApplication(
     config,
@@ -186,6 +187,7 @@ export async function createApplication(
             throw fail(403, '子账号不管理翻译配置');
         next();
     });
+    app.use('/api/devices/:id/ui-preview', validateDeviceUiPreviewId);
     app.use('/api/devices/:id', async (req, _res, next) => {
         const id = idSchema.parse(req.params.id);
         if (req.method === 'DELETE' && ['/', ''].includes(req.path)) {
@@ -196,6 +198,7 @@ export async function createApplication(
         } else await req.store.device(id);
         next();
     });
+    app.use('/api', deviceUiPreviewRoutes());
     app.use('/api', accountManagement.routes());
     app.use('/api', serverLogs.routes(accounts.requireSuperadmin()));
     app.use('/api/logs/protocol', accounts.requireSuperadmin());

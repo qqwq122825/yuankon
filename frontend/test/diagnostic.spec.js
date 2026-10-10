@@ -1,5 +1,13 @@
 import { test, expect } from '@playwright/test';
 
+async function openMoreViewing(page) {
+    const extra = page.locator('details.device-viewer-extra');
+    await expect(extra).toBeAttached();
+    if ((await extra.getAttribute('open')) === null)
+        await extra.locator(':scope > summary').click();
+    await expect(extra).toHaveAttribute('open');
+}
+
 test('one-shot diagnostic report copies/exports only this session; details collapsed', async ({
     page,
     context,
@@ -19,10 +27,12 @@ test('one-shot diagnostic report copies/exports only this session; details colla
         })
     ).json();
     await page.goto(`/devices/${device.localId}`);
+    await openMoreViewing(page);
     await page.getByRole('button', { name: '实时查看截图', exact: true }).click();
     const shot = page.getByRole('region', { name: 'BM截图', exact: true });
     expect((await shot.locator('.live-screenshot-stage').boundingBox()).height).toBe(96);
     await expect(shot.locator('.live-screenshot-stage')).toHaveClass(/live-screenshot-waiting/);
+    await openMoreViewing(page);
     await page.getByRole('button', { name: '关闭全部浮窗', exact: true }).click();
     await page.getByRole('button', { name: 'API调试', exact: true }).click();
     await expect(page.locator('.debug-card details')).not.toHaveAttribute('open');

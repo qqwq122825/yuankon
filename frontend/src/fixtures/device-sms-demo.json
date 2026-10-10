@@ -1,0 +1,72 @@
+{
+    "schemaVersion": 1,
+    "source": "synthetic-ui-fixture",
+    "fixtureOnly": true,
+    "description": "八条固定合成短信，仅用于短信记录界面测试；发送方、地址、内容和时间均为虚构，不代表任何设备短信。",
+    "messages": [
+        {
+            "id": "DEMO-SMS-01",
+            "sender": "示例通信",
+            "address": "DEMO-10001",
+            "body": "【合成测试】测试流量包将在 3 天后到期。此消息仅用于布局演示，不是真实运营商通知。",
+            "receivedAt": "2026-01-10T10:30:00+08:00",
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-SMS-02",
+            "sender": "演示账单",
+            "address": "DEMO-10002",
+            "body": "【合成测试】本月样例账单为 128.00 测试单位，已归档。金额与账户均为虚构。",
+            "receivedAt": "2026-01-10T10:20:00+08:00",
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-SMS-03",
+            "sender": "日程提醒",
+            "address": "DEMO-10003",
+            "body": "【合成测试】明天 14:00 进行样例项目评审，请准备演示资料。此日程为测试内容。",
+            "receivedAt": "2026-01-10T10:10:00+08:00",
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-SMS-04",
+            "sender": "Demo Mobile",
+            "address": "DEMO-10004",
+            "body": "【合成测试】Mensaje sintético: tu paquete de demostración vence en tres días. Solo para probar la interfaz.",
+            "receivedAt": "2026-01-10T10:00:00+08:00",
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-SMS-05",
+            "sender": "样例物流",
+            "address": "DEMO-10005",
+            "body": "【合成测试】虚构包裹 DEMO-PACKAGE-08 已到达样例站点。无需操作或提供任何个人信息。",
+            "receivedAt": "2026-01-10T09:50:00+08:00",
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-SMS-06",
+            "sender": "演示服务",
+            "address": "DEMO-10006",
+            "body": "【合成测试】样例服务将在虚构日程 1 月 11 日 02:00–03:00 维护。这不是实际维护通知。",
+            "receivedAt": "2026-01-10T09:40:00+08:00",
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-SMS-07",
+            "sender": "测试账户",
+            "address": "DEMO-10007",
+            "body": "【合成测试】虚构账户 DEMO-ACCOUNT 收到 25.00 测试单位，样例余额 153.00。仅界面演示，无真实交易。",
+            "receivedAt": "2026-01-10T09:30:00+08:00",
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-SMS-08",
+            "sender": "字符测试",
+            "address": "DEMO-10008",
+            "body": "【合成测试】字符显示测试：<b>示例</b> & 1 < 2。应按普通文本显示。",
+            "receivedAt": "2026-01-10T09:20:00+08:00",
+            "synthetic": true
+        }
+    ]
+}

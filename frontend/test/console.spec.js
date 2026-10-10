@@ -1,5 +1,13 @@
 import { test, expect } from '@playwright/test';
 
+async function openMoreViewing(page) {
+    const extra = page.locator('details.device-viewer-extra');
+    await expect(extra).toBeAttached();
+    if ((await extra.getAttribute('open')) === null)
+        await extra.locator(':scope > summary').click();
+    await expect(extra).toHaveAttribute('open');
+}
+
 test.beforeEach(async ({ page }) => {
     await page.goto('/login');
     await page.getByRole('textbox', { name: '账号', exact: true }).fill('mtx');
@@ -167,6 +175,7 @@ test('detail saves notes, keeps screenshots at 300px, resizes reader, drags and 
     await expect(page.getByRole('status')).toHaveText('备注已保存');
     await page.reload();
     await expect(page.getByRole('textbox', { name: '设备备注' })).toHaveValue('Vue 自动化备注');
+    await openMoreViewing(page);
     await page.getByRole('button', { name: '截图 + 阅读器' }).click();
     const reader = page.getByRole('region', { name: '阅读器', exact: true }),
         shot = page.getByRole('region', { name: '截图', exact: true });
@@ -195,6 +204,7 @@ test('detail saves notes, keeps screenshots at 300px, resizes reader, drags and 
     await page.keyboard.press('Escape');
     await expect(shot).toHaveCount(0);
     await expect(reader).toBeVisible();
+    await openMoreViewing(page);
     await page.getByRole('button', { name: '关闭全部浮窗' }).click();
     await expect(reader).toHaveCount(0);
     expect(errors).toEqual([]);
@@ -204,6 +214,7 @@ test('narrow viewport keeps 1280 desktop canvas and parallel independent viewers
 }) => {
     await page.setViewportSize({ width: 800, height: 800 });
     await page.goto('/devices/1');
+    await openMoreViewing(page);
     await page.getByRole('button', { name: '截图 + 阅读器' }).click();
     const shot = await page.getByRole('region', { name: '截图', exact: true }).boundingBox(),
         reader = await page.getByRole('region', { name: '阅读器', exact: true }).boundingBox();
@@ -288,6 +299,13 @@ test('WS reconnects after a real socket drop without stale duplicate subscriptio
     process.kill(Number(health.headers()['x-test-server-pid']), 'SIGUSR2');
     await closed;
     await expect(page.getByText('WS · 已连接')).toBeVisible();
+    await page
+        .getByRole('navigation', { name: '设备内导航', exact: true })
+        .getByRole('button', { name: '备注', exact: true })
+        .click();
+    const researchSummary = page.locator('details.detail-research-info > summary');
+    await expect(researchSummary).toHaveText('设备研究信息');
+    await expect(page.locator('details.detail-research-info')).toHaveAttribute('open');
     await page.getByRole('button', { name: '查询状态' }).click();
     await expect(page.getByRole('status')).toContainText('已请求服务端已知状态');
 });

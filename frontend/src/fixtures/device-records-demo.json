@@ -1,0 +1,88 @@
+{
+    "schemaVersion": 1,
+    "source": "synthetic-ui-fixture",
+    "fixtureOnly": true,
+    "description": "八条固定合成研究记录，仅用于本地表格布局与筛选。内容是虚构测试编号和属性标签，不是设备输入、密码或凭证。",
+    "records": [
+        {
+            "id": "DEMO-RECORD-01",
+            "type": "ui-event",
+            "typeLabel": "界面事件",
+            "content": "DEMO-EVENT-001 · text_present=true",
+            "appName": "样例应用 A",
+            "packageName": "dev.mtx.demo.app1",
+            "occurredAt": "2026-01-10T10:30:00+08:00",
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-RECORD-02",
+            "type": "state",
+            "typeLabel": "状态事件",
+            "content": "DEMO-STATE-002 · sensitive_flag=false",
+            "appName": "样例应用 B",
+            "packageName": "dev.mtx.demo.app2",
+            "occurredAt": "2026-01-10T10:25:00+08:00",
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-RECORD-03",
+            "type": "sample",
+            "typeLabel": "样例标记",
+            "content": "DEMO-SAMPLE-003 · synthetic_match=match",
+            "appName": "样例系统",
+            "packageName": "dev.mtx.demo.system",
+            "occurredAt": "2026-01-10T10:20:00+08:00",
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-RECORD-04",
+            "type": "state",
+            "typeLabel": "状态事件",
+            "content": "DEMO-STATE-004 · channel=accessibility_event",
+            "appName": "样例应用 A",
+            "packageName": "dev.mtx.demo.app1",
+            "occurredAt": "2026-01-10T10:15:00+08:00",
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-RECORD-05",
+            "type": "ui-event",
+            "typeLabel": "界面事件",
+            "content": "DEMO-EVENT-005 · bounds_reported=true",
+            "appName": "样例应用 B",
+            "packageName": "dev.mtx.demo.app2",
+            "occurredAt": "2026-01-10T10:10:00+08:00",
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-RECORD-06",
+            "type": "state",
+            "typeLabel": "状态事件",
+            "content": "DEMO-STATE-006 · permission_state=not_connected",
+            "appName": "样例系统",
+            "packageName": "dev.mtx.demo.system",
+            "occurredAt": "2026-01-10T10:05:00+08:00",
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-RECORD-07",
+            "type": "sample",
+            "typeLabel": "样例标记",
+            "content": "DEMO-SAMPLE-007 · fixture_only=true",
+            "appName": "样例应用 A",
+            "packageName": "dev.mtx.demo.app1",
+            "occurredAt": "2026-01-10T10:00:00+08:00",
+            "synthetic": true
+        },
+        {
+            "id": "DEMO-RECORD-08",
+            "type": "ui-event",
+            "typeLabel": "界面事件",
+            "content": "DEMO-EVENT-008 · label_display=<b>示例</b> & 1 < 2",
+            "appName": "样例应用 B",
+            "packageName": "dev.mtx.demo.app2",
+            "occurredAt": "2026-01-10T09:55:00+08:00",
+            "synthetic": true
+        }
+    ]
+}

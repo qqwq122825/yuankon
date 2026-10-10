@@ -11,6 +11,7 @@ const props = defineProps({
     resizable: Boolean,
     widthLabel: String,
     variant: { type: String, default: '' },
+    initialPosition: { type: Object, default: null },
 });
 const emit = defineEmits(['close', 'activate']);
 const width = ref(300),
@@ -27,6 +28,27 @@ function syncVisualScale() {
     visualScale.value = props.live ? Math.min(1, REFERENCE_DPR / dpr) : 1;
 }
 function reset() {
+    if (props.initialPosition) {
+        left.value = Math.max(
+            0,
+            Math.min(
+                Math.max(1280, window.innerWidth) - width.value,
+                props.initialPosition.right !== undefined
+                    ? Math.max(1280, window.innerWidth) -
+                          width.value -
+                          Number(props.initialPosition.right)
+                    : Number(props.initialPosition.left) || 0,
+            ),
+        );
+        top.value = Math.max(
+            0,
+            Math.min(
+                Math.max(500, window.innerHeight) - 80,
+                Number(props.initialPosition.top) || 0,
+            ),
+        );
+        return;
+    }
     left.value =
         Math.max(108, (Math.max(1280, window.innerWidth) - 648) / 2) + (props.side || 0) * 324;
     top.value = 76;
@@ -91,6 +113,7 @@ onUnmounted(() => {
             transformOrigin: visualScale === 1 ? undefined : 'top left',
         }"
         @pointerdown="emit('activate')"
+        @focusin="variant === 'preview' && emit('activate')"
     >
         <header
             class="floating-heading"
@@ -101,9 +124,12 @@ onUnmounted(() => {
         >
             <span class="floating-heading-title"
                 ><span v-if="live" class="viewer-live-dot" aria-hidden="true"></span
-                ><strong>{{ title }}</strong></span
+                ><slot name="heading-title"
+                    ><strong>{{ title }}</strong></slot
+                ></span
             ><span class="floating-heading-actions"
-                ><span v-if="meta" class="floating-heading-meta">{{ meta }}</span
+                ><slot name="heading-actions"
+                    ><span v-if="meta" class="floating-heading-meta">{{ meta }}</span></slot
                 ><span
                     v-if="variant === 'reader'"
                     ref="headerTools"

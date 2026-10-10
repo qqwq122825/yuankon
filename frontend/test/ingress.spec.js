@@ -3,6 +3,14 @@ import sharp from 'sharp';
 import { once } from 'node:events';
 import { WebSocket } from '../../backend/node_modules/ws/wrapper.mjs';
 
+async function openMoreViewing(page) {
+    const extra = page.locator('details.device-viewer-extra');
+    await expect(extra).toBeAttached();
+    if ((await extra.getAttribute('open')) === null)
+        await extra.locator(':scope > summary').click();
+    await expect(extra).toHaveAttribute('open');
+}
+
 test('APK ownership, automatic online and an actual synthetic JPEG are visible in the existing console', async ({
     page,
 }) => {
@@ -248,7 +256,15 @@ test('APK ownership, automatic online and an actual synthetic JPEG are visible i
     await expect(page.locator('.header-stat').filter({ hasText: '设备总数' })).toContainText('13');
     await expect(page.getByRole('img', { name: '合成截图测试设备 临时首图缩略图' })).toBeVisible();
     await page.goto(`/devices/${device.localId}`);
+    await page
+        .getByRole('navigation', { name: '设备内导航', exact: true })
+        .getByRole('button', { name: '备注', exact: true })
+        .click();
+    const researchSummary = page.locator('details.detail-research-info > summary');
+    await expect(researchSummary).toHaveText('设备研究信息');
+    await expect(page.locator('details.detail-research-info')).toHaveAttribute('open');
     await expect(page.getByText(`${apkId} / mtx`)).toBeVisible();
+    await openMoreViewing(page);
     await page.getByRole('button', { name: '实时查看截图', exact: true }).click();
     const panel = page.getByRole('region', { name: 'BM截图', exact: true });
     const reader = page.getByRole('region', { name: '阅读器', exact: true });
